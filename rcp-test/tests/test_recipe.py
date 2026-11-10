@@ -109,9 +109,8 @@ def test_client_block_cannot_declare_the_injected_fields(tmp_path: Path) -> None
         load_recipe(copied)
 
 
-def test_the_family_client_block_cannot_declare_the_variant_tokenizer(tmp_path: Path) -> None:
-    """client.tokenizer is the variant's own (model@revision) or the family's shared one; a variant-level
-    override of it is refused (the tokenizer is never a per-size fact)."""
+def _two_variant_family(tmp_path: Path, *, override: dict[str, object] | None = None) -> Path:
+    """``fixture-embed`` copied with two sizes: the base, and a second whose client overrides ``override``."""
     import shutil
 
     import yaml
@@ -119,12 +118,73 @@ def test_the_family_client_block_cannot_declare_the_variant_tokenizer(tmp_path: 
     copied = tmp_path / "fixture-embed"
     shutil.copytree(recipe_dirs_path() / "fixture-embed", copied)
     family = yaml.safe_load((copied / "family.yaml").read_text(encoding="utf-8"))
-    family["variants"][0]["overrides"] = {
-        "client": {"tokenizer": "other/tokenizer@0123456789abcdef0123456789abcdef01234567"}
-    }
+    first = {**family["variants"][0], "id": "fixture-embed-base"}
+    second = {**family["variants"][0], "id": "fixture-embed-small", "model": "fixtures/SmallEmbedder"}
+    if override is not None:
+        second["overrides"] = {"client": override}
+    family["variants"] = [first, second]
     (copied / "family.yaml").write_text(yaml.safe_dump(family, sort_keys=False), encoding="utf-8")
-    with pytest.raises(RecipeError, match="not declared per-size fields"):
-        load_recipe(copied)
+    return copied
+
+
+def test_a_variant_can_override_the_family_tokenizer(tmp_path: Path) -> None:
+    """A size may name its own tokenizer (G5): the variant's override replaces the family's default for that
+    size only, and the sibling without one keeps the family's tokenizer unchanged."""
+    override = f"fixtures/OtherTokenizer@{REV}"
+    _two_variant_family(tmp_path, override={"tokenizer": override})
+
+    base = load_recipe("fixture-embed-base", root=tmp_path)
+    small = load_recipe("fixture-embed-small", root=tmp_path)
+    assert base.client["tokenizer"] == "../../tokenizer.json", "the family's default is unchanged"
+    assert small.client["tokenizer"] == override, "the variant's own tokenizer replaces the family's"
+    # the override is validated by the same product endpoint model as the family-level tokenizer
+    EmbeddingEndpoint.model_validate(client_config(base, base_url=None))
+    EmbeddingEndpoint.model_validate(client_config(small, base_url=None))
+
+
+def test_the_injected_tokenizer_default_is_unchanged_without_an_override(tmp_path: Path) -> None:
+    """A family that pins no tokenizer still injects each variant's own ``model@revision``; an override on
+    one size changes that size only, never its sibling's injected default."""
+    import yaml
+
+    override = f"fixtures/OtherTokenizer@{REV}"
+    directory = _two_variant_family(tmp_path, override={"tokenizer": override})
+    family = yaml.safe_load((directory / "family.yaml").read_text(encoding="utf-8"))
+    del family["client"]["tokenizer"]
+    (directory / "family.yaml").write_text(yaml.safe_dump(family, sort_keys=False), encoding="utf-8")
+
+    base = load_recipe("fixture-embed-base", root=tmp_path)
+    small = load_recipe("fixture-embed-small", root=tmp_path)
+    assert base.client["tokenizer"] == f"fixtures/DenseEmbedder@{REV}", "the injected default is unchanged"
+    assert small.client["tokenizer"] == override
+
+
+@pytest.mark.parametrize("field", ["model", "revision"])
+def test_a_variant_cannot_override_its_injected_identity(tmp_path: Path, field: str) -> None:
+    """model and revision stay the variant row's own: an override of either is refused, by name."""
+    directory = _two_variant_family(tmp_path, override={field: "fixtures/OtherEmbedder"})
+    with pytest.raises(RecipeError, match="injected from the variant row"):
+        load_recipe(directory)
+
+
+@pytest.mark.parametrize("value", ["", 42], ids=["empty", "not-a-string"])
+@pytest.mark.parametrize("where", ["family", "variant"])
+def test_a_tokenizer_is_validated_like_the_family_tokenizer(tmp_path: Path, where: str, value: object) -> None:
+    """The override gets the family-level tokenizer's validation: a non-empty string, refused at load with
+    the field named, never passed through to fail later in the product's endpoint model."""
+    import yaml
+
+    directory = _two_variant_family(tmp_path)
+    path = directory / "family.yaml"
+    family = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if where == "family":
+        family["client"]["tokenizer"] = value
+    else:
+        family["variants"][1]["overrides"] = {"client": {"tokenizer": value}}
+    path.write_text(yaml.safe_dump(family, sort_keys=False), encoding="utf-8")
+    selected = "fixture-embed-small" if where == "variant" else "fixture-embed-base"
+    with pytest.raises(RecipeError, match="client.tokenizer must be a non-empty string"):
+        load_recipe(directory, variant=selected)
 
 
 def test_a_variant_id_not_unique_within_the_family_is_refused(tmp_path: Path) -> None:

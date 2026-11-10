@@ -27,10 +27,11 @@ stock engine image — and ``rcp`` validates it with the product's own models wh
 resolution through ``recipe: <id>``). The load-time checks below are the ones readable without the product: the
 role/wire matrix, the injected ids and the budget arithmetic.
 
-The schema is deliberately closed and role-aware: ``client.model``, ``client.revision`` and
-``client.tokenizer`` are the recipe's own (injected at load, refused in the YAML). Recipe-level fields are the
-ones the product cannot know: ``serve`` (the engine argv), ``reference`` (the subprocess reference), ``gates``,
-``status``, ids and revisions.
+The schema is deliberately closed and role-aware: ``client.model`` and ``client.revision`` are the variant's
+own (injected at load, refused in the YAML); ``client.tokenizer`` is the family's default (injected as
+``model@revision`` when the family names none), and a variant may name its own tokenizer in
+``overrides.client``. Recipe-level fields are the ones the product cannot know: ``serve`` (the engine argv),
+``reference`` (the subprocess reference), ``gates``, ``status``, ids and revisions.
 
 The **deployment surface** is declared once, in :data:`FIELD_ROLES`, beside the fields it names: every field of
 ``serve``, ``engine`` and ``resources`` carries a role -- ``CONTENT`` (it shapes what the model returns: a
@@ -158,12 +159,13 @@ PER_VARIANT_SERVE_FIELDS: tuple[str, ...] = (
     "patches",
 )
 
-#: The per-variant ``client`` fields a family may override: the max token lengths, the dimension knobs, the
-#: paper's per-model batch (a content field: request packing can move a bf16 batch's numbers), and the
-#: per-size media caps. Content shapes (template,
-#: instruction mode, overflow rule, normalisation, media policies) are shared: a size that cuts differently
-#: is not the same model family.
+#: The per-variant ``client`` fields a family may override: the tokenizer (a size may ship its own tokenizer
+#: files while the family keeps the shared default), the max token lengths, the dimension knobs, the paper's
+#: per-model batch (a content field: request packing can move a bf16 batch's numbers), and the per-size media
+#: caps. Content shapes (template, instruction mode, overflow rule, normalisation, media policies) are shared:
+#: a size that cuts differently is not the same model family.
 PER_VARIANT_CLIENT_FIELDS: tuple[str, ...] = (
+    "tokenizer",
     "max_tokens",
     "query_max_tokens",
     "document_max_tokens",
@@ -714,8 +716,9 @@ class Recipe(BaseModel):
         resources: The GPUs the engine occupies (``--tensor-parallel-size``).
         serve: Everything rendered into ``vllm serve`` argv.
         client: The product's endpoint config for the role, as plain data (the ``model`` and ``revision`` keys
-            are injected here and refused in the YAML); ``rcp`` validates the whole block with the
-            product's endpoint class when it resolves the recipe.
+            are injected here and refused in the YAML; ``tokenizer`` is the family's default or the variant's
+            own override, and is injected as ``model@revision`` when neither names one); ``rcp`` validates the
+            whole block with the product's endpoint class when it resolves the recipe.
         reference: The subprocess reference the harness compares against; **``None`` for ``role: judge``**
             (a judge recipe has no reference -- its conformance is the judge probe and the T4
             scenarios), and required for every other role.
@@ -819,6 +822,12 @@ class Recipe(BaseModel):
                 "model against it (only role=judge has none)"
             )
         client = self.client
+        tokenizer = client.get("tokenizer")
+        if tokenizer is not None and (not isinstance(tokenizer, str) or not tokenizer):
+            raise ValueError(
+                "client.tokenizer must be a non-empty string (a Hub repository id with an optional @revision, "
+                f"or a path to a tokenizer.json), got {tokenizer!r}"
+            )
         misplaced = sorted(set(client) & _ENGINE_SPECIFIC_CLIENT_KEYS)
         if misplaced:
             raise ValueError(
@@ -1663,12 +1672,13 @@ class VariantOverrides(BaseModel):
     """The per-variant overrides one variant applies to the family's shared blocks.
 
     Only the declared per-size fields may be overridden: :data:`PER_VARIANT_SERVE_FIELDS` under
-    ``serve``, :data:`PER_VARIANT_CLIENT_FIELDS` under ``client``, the whole ``resources`` block (the GPU
-    count) and the stage-2 ``gates`` block (each size's measured bound). A key outside the whitelist is
-    refused with :class:`RecipeError` naming the field — nothing about a size's behaviour may differ
-    silently. Each present ``serve``/``client`` key REPLACES the family's value at that path (no deep merge:
-    a half-merged mapping is exactly the silent difference this refuses); ``gates`` merges field-by-field,
-    because an unset gate field means the published default (or the family's value), never a cleared one.
+    ``serve``, :data:`PER_VARIANT_CLIENT_FIELDS` under ``client`` (``tokenizer`` included: a size may name its
+    own tokenizer while the family keeps its default), the whole ``resources`` block (the GPU count) and the
+    stage-2 ``gates`` block (each size's measured bound). A key outside the whitelist is refused with
+    :class:`RecipeError` naming the field — nothing about a size's behaviour may differ silently. Each
+    present ``serve``/``client`` key REPLACES the family's value at that path (no deep merge: a half-merged
+    mapping is exactly the silent difference this refuses); ``gates`` merges field-by-field, because an unset
+    gate field means the published default (or the family's value), never a cleared one.
     """
 
     model_config = ConfigDict(**_no_extra())
@@ -1737,8 +1747,10 @@ class RecipeFamily(BaseModel):
         engine: The engine image and the startup timeout.
         resources: The default GPUs the engine occupies; a variant's ``overrides.resources`` replaces it.
         serve: The shared ``vllm serve`` block; a variant's ``overrides.serve`` replaces whitelisted keys.
-        client: The shared product endpoint config, plain data; ``model``/``revision``/``tokenizer`` are
-            injected per variant and refused here. A variant's ``overrides.client`` replaces whitelisted keys.
+        client: The shared product endpoint config, plain data; ``model``/``revision`` are injected per
+            variant and refused here, and ``tokenizer`` is the family's default (injected as
+            ``model@revision`` when absent). A variant's ``overrides.client`` replaces whitelisted keys,
+            including ``tokenizer`` for a size with its own tokenizer files.
         reference: The ONE subprocess reference the family's variants share (the harness passes the
             resolved recipe to it through ``--recipe``); ``None`` for a judge family (a judge recipe has
             no reference).
@@ -1792,6 +1804,12 @@ class RecipeFamily(BaseModel):
                 "family whose one variant shares the family's name would hide it from the catalog"
             )
         for variant in self.variants:
+            identity = sorted(set(variant.overrides.client) & {"model", "revision"})
+            if identity:
+                raise ValueError(
+                    f"variant {variant.id!r}: overrides.client carries {identity}: model and revision are "
+                    "the variant's own fields, injected from the variant row -- never a per-variant override"
+                )
             misplaced_serve = sorted(set(variant.overrides.serve) - set(PER_VARIANT_SERVE_FIELDS))
             if misplaced_serve:
                 raise ValueError(
@@ -1800,7 +1818,9 @@ class RecipeFamily(BaseModel):
                     "other serve field, so a size that needs another value differs in behaviour the family "
                     "cannot see -- split the family, or move the field into the shared block"
                 )
-            misplaced_client = sorted(set(variant.overrides.client) - set(PER_VARIANT_CLIENT_FIELDS))
+            misplaced_client = sorted(
+                set(variant.overrides.client) - set(PER_VARIANT_CLIENT_FIELDS) - {"model", "revision"}
+            )
             if misplaced_client:
                 raise ValueError(
                     f"variant {variant.id!r}: overrides.client carries {misplaced_client}, which are not "
@@ -1918,8 +1938,9 @@ def _expand_variant(family: RecipeFamily, variant: Variant, directory: Path, yam
 
     The merge is key-level replacement (``overrides`` keys replace the family's value; nothing deep-merges)
     apart from ``gates``, which merges field-by-field (:func:`_merged_gates`), the client block gains the
-    injected ``model``/``revision``/``tokenizer``, and the result validates against
-    the unchanged ``Recipe`` schema -- the resolved recipe is exactly what a standalone recipe described.  The
+    injected ``model``/``revision`` and the family's or variant's ``tokenizer`` (injected as
+    ``model@revision`` when neither names one), and the result validates against the unchanged ``Recipe``
+    schema -- the resolved recipe is exactly what a standalone recipe described.  The
     referenced files (the family's template, the one ``reference.py``) are checked against the family directory.
     A directory outside the package's recipes root (:func:`_is_shipped_directory`) makes an unshipped recipe:
     its ``status`` is forced to ``unverified``, because the verification record belongs to a shipped recipe,
@@ -1928,16 +1949,15 @@ def _expand_variant(family: RecipeFamily, variant: Variant, directory: Path, yam
     serve = dict(family.serve.model_dump(mode="json"))
     serve.update(variant.overrides.serve)
     client = dict(family.client)
-    if overridden := sorted(set(variant.overrides.client) & {"model", "revision", "tokenizer"}):
+    if overridden := sorted(set(variant.overrides.client) & {"model", "revision"}):
         raise RecipeError(
             f"{yaml_path}: variant {variant.id!r} overrides.client carries {overridden}: model and revision are "
-            "the variant's own fields, and the tokenizer is the family's shared client field (or injected as "
-            "model@revision) -- never a per-variant override"
+            "the variant's own fields, injected from the variant row -- never a per-variant override"
         )
     client.update(variant.overrides.client)
     # client.model/revision are the variant's identity and client.tokenizer its checkpoint's tokenizer spec:
-    # injected, refused in the family YAML (the RecipeFamily schema's client block is plain data, so the refusal
-    # rides here, where the family file is in hand).
+    # model/revision are injected and refused in the family YAML; tokenizer is the family's default, or the
+    # variant's own override, and is injected as model@revision when neither names one.
     for injected in ("model", "revision"):
         if injected in client:
             raise RecipeError(
