@@ -13,7 +13,9 @@ extras=()
 for extra in "$@"; do extras+=(--extra "$extra"); done
 
 if [[ "$(uname -s)" != "Linux" ]]; then
-  uv sync --locked "${extras[@]}"
+  # The runner's own Python moves (3.15 on the macOS image), and torch has no wheel for it: pin the version the
+  # lock and every other CI venv use.
+  uv sync --locked --python 3.12 "${extras[@]}"
   exit 0
 fi
 
