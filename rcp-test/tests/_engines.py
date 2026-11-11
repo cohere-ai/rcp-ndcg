@@ -36,19 +36,49 @@ def stale_corpora() -> dict[str, dict[str, Any]]:
     return {str(entry["recipe_id"]): entry for entry in json.loads(STALE_FILE.read_text(encoding="utf-8"))}
 
 
+def engine_corpora_root(recipe: Any) -> Path:
+    """The corpora root of the engine line ``recipe`` pins: ``corpora/<engine>-<version>``, from its
+    ``engine.name`` and ``engine.min_version`` (``rcp-test/corpora/vllm-0.33.0`` for a recipe pinning
+    ``min_version: "0.33.0"``).
+
+    A superseded line stays committed as evidence and is never the root a corpus is resolved in: a
+    recipe's corpus is the one recorded on the engine its own pin names."""
+    engine = recipe.engine
+    return ENGINES_ROOT / f"{engine.name}-{engine.min_version}"
+
+
+@functools.cache
+def pinned_recipe(recipe_id: str) -> Any:
+    """The shipped recipe of ``recipe_id``, loaded once per process: a corpus scan reads its engine pin
+    (:func:`engine_corpora_root`) once per recipe, not once per corpus directory."""
+    return load_recipe(recipe_id)
+
+
+def on_the_pinned_line(corpus: Any, recipe: Any) -> bool:
+    """Whether ``corpus`` was recorded on the engine line ``recipe`` pins: the manifest's ``engine.name``
+    and ``engine.version`` against the recipe's ``engine.name`` and ``engine.min_version``."""
+    engine = corpus.manifest["engine"]
+    return (str(engine["name"]), str(engine["version"])) == (recipe.engine.name, recipe.engine.min_version)
+
+
 def current_corpora() -> list[Path]:
-    """Every committed corpus a conformance replay runs on: the ones not declared stale (found by scanning
-    manifests, each read through the one corpus reader, ``rcp_test.corpus.load_corpus``). A
-    declared-stale corpus is checked to fail the staleness gate instead."""
+    """Every committed corpus a conformance replay runs on: the ones recorded on the engine line their
+    recipe pins (:func:`on_the_pinned_line`; a superseded line stays committed as evidence and is never
+    replayed as current) and not declared stale (found by scanning manifests, each read through the one
+    corpus reader, ``rcp_test.corpus.load_corpus``). A declared-stale corpus is checked to fail the
+    staleness gate instead."""
     from rcp_test.corpus import load_corpus
     from rcp_test.engines import find_corpora
 
     stale = stale_corpora()
-    return [
-        directory
-        for directory in find_corpora(ENGINES_ROOT)
-        if load_corpus(directory).manifest["recipe"]["id"] not in stale
-    ]
+    current = []
+    for directory in find_corpora(ENGINES_ROOT):
+        corpus = load_corpus(directory)
+        recipe_id = str(corpus.manifest["recipe"]["id"])
+        if recipe_id in stale or not on_the_pinned_line(corpus, pinned_recipe(recipe_id)):
+            continue
+        current.append(directory)
+    return current
 
 
 def harness() -> Any:
@@ -77,15 +107,16 @@ def load_recipe(recipe_id: str, root: Path | None = None) -> Any:
 
 def corpus_of(recipe: Any) -> Any:
     """The committed corpus of the recipe's **current** behaviour fingerprint, resolved by scanning the
-    manifests (``rcp_test.changes.resolve_corpus``); a stale recipe raises ``StaleCorpusError``
-    naming the fingerprint inputs that moved -- never another fingerprint's corpus, never a missing
-    directory."""
+    manifests of the engine line the recipe pins (:func:`engine_corpora_root`; a superseded line stays
+    committed as evidence and is never resolved) through ``rcp_test.changes.resolve_corpus``; a stale recipe
+    raises ``StaleCorpusError`` naming the fingerprint inputs that moved -- never another fingerprint's
+    corpus, never a missing directory."""
     from rcp_test.corpus import load_corpus
 
     harness()
     from rcp_test.changes import resolve_corpus
 
-    return load_corpus(resolve_corpus(recipe, ENGINES_ROOT / "vllm-0.31.0"))
+    return load_corpus(resolve_corpus(recipe, engine_corpora_root(recipe)))
 
 
 def prompt_strategy(recipe: Any, tokenizer: Any) -> Any:

@@ -21,11 +21,24 @@ import httpx
 import pytest
 from rcp_test.corpus import credential_findings, integrity_mismatches, load_corpus, verification_records
 from rcp_test.engines import compare_exchange, corpus_tolerance, exchanges_of, find_corpora
-from tests._engines import ROOT, corpus_of, current_corpora, emulator_for, load_recipe, stale_corpora
+from tests._engines import (
+    ROOT,
+    corpus_of,
+    current_corpora,
+    emulator_for,
+    engine_corpora_root,
+    load_recipe,
+    stale_corpora,
+)
 
 ENGINES_ROOT = ROOT / "corpora"
-INDEX = ENGINES_ROOT / "vllm-0.31.0" / "index.json"
 WAIVERS = Path(__file__).resolve().parent / "waivers.json"
+
+
+def engine_roots() -> list[Path]:
+    """Every committed engine-version corpora root (``corpora/vllm-0.31.0``, ``corpora/vllm-0.33.0``): each
+    carries its own ``index.json`` over its own corpus directories, so an integrity check is per line."""
+    return sorted(directory for directory in ENGINES_ROOT.iterdir() if (directory / "index.json").is_file())
 
 
 def corpus_dirs() -> list[Path]:
@@ -141,19 +154,30 @@ def test_a_tampered_corpus_fails_the_hash_check(tmp_path: Path) -> None:
 
 def test_manifest_and_index_hashes_hold() -> None:
     """Integrity (OBSERVATIONS-SPEC section 4): every corpus file hashes to its subset index, the manifest is
-    the full corpus's, and every manifest hashes to the repository's corpus index."""
+    the full corpus's, and every manifest hashes to its engine line's corpus index.
+
+    Each engine-version root carries its own ``index.json`` over its own corpus directories, so a line's
+    count is checked against that line: a superseded line stays committed as evidence and is checked too
+    (``corpora/vllm-0.31.0`` beside the current ``corpora/vllm-0.33.0``), and one line's entries never
+    answer for another's."""
     import hashlib
 
-    corpora = json.loads(INDEX.read_text(encoding="utf-8"))["corpora"]
-    assert len(corpora) == len(all_corpus_dirs())
-    for directory in all_corpus_dirs():
-        corpus = load_corpus(directory)
-        assert integrity_mismatches(corpus) == [], directory
-        key = f"{directory.parent.name}/{directory.name}"
-        actual = hashlib.sha256((directory / "manifest.json").read_bytes()).hexdigest()
-        assert actual == corpora[key]["manifest_sha256"], f"{key}: the corpus index declares another manifest"
-        fingerprint = corpus.manifest["recipe"]["behaviour_fingerprint"]
-        assert corpora[key]["behaviour_fingerprint"] == fingerprint == directory.name, key
+    for root in engine_roots():
+        corpora = json.loads((root / "index.json").read_text(encoding="utf-8"))["corpora"]
+        directories = find_corpora(root)
+        keys = {f"{directory.parent.name}/{directory.name}" for directory in directories}
+        assert len(corpora) == len(directories), (
+            f"{root.name}: {len(corpora)} index entries, {len(directories)} corpora"
+        )
+        assert set(corpora) == keys, f"{root.name}: the index and the tree name different corpora"
+        for directory in directories:
+            corpus = load_corpus(directory)
+            assert integrity_mismatches(corpus) == [], directory
+            key = f"{directory.parent.name}/{directory.name}"
+            actual = hashlib.sha256((directory / "manifest.json").read_bytes()).hexdigest()
+            assert actual == corpora[key]["manifest_sha256"], f"{key}: the corpus index declares another manifest"
+            fingerprint = corpus.manifest["recipe"]["behaviour_fingerprint"]
+            assert corpora[key]["behaviour_fingerprint"] == fingerprint == directory.name, key
 
 
 def test_no_credential_shaped_string_is_in_any_corpus() -> None:
@@ -190,16 +214,15 @@ def test_staleness_passes_for_the_unmoved_recipes() -> None:
     today = datetime.date.today()
     recorded = {load_corpus(directory).manifest["recipe"]["id"] for directory in all_corpus_dirs()}
     # The replay set computed independently of stale.json: a corpus replays when the recipe's recomputed
-    # fingerprint still equals its recorded one. The union guard then catches a corpus that is neither
-    # replayable nor declared stale (a silent skip), even when stale.json itself is the thing under test.
-    replayable = {
-        load_corpus(directory).manifest["recipe"]["id"]
-        for directory in all_corpus_dirs()
-        if recipe_state(load_recipe(load_corpus(directory).manifest["recipe"]["id"]), ENGINES_ROOT / "vllm-0.31.0")[
-            "state"
-        ]
-        == "unchanged"
-    }
+    # fingerprint still equals its recorded one on the engine line the recipe pins. The union guard then
+    # catches a corpus that is neither replayable nor declared stale (a silent skip), even when stale.json
+    # itself is the thing under test.
+    replayable = set()
+    for directory in all_corpus_dirs():
+        recipe_id = str(load_corpus(directory).manifest["recipe"]["id"])
+        recipe = load_recipe(recipe_id)
+        if recipe_state(recipe, engine_corpora_root(recipe))["state"] == "unchanged":
+            replayable.add(recipe_id)
     assert replayable | set(stale_corpora()) == recorded, (
         "a recorded corpus is neither replayable nor declared stale: "
         f"{sorted(recorded - replayable - set(stale_corpora()))}"
@@ -207,7 +230,8 @@ def test_staleness_passes_for_the_unmoved_recipes() -> None:
     assert replayable or stale_corpora(), "no committed corpus at all"
     for directory in corpus_dirs():
         recipe_id = load_corpus(directory).manifest["recipe"]["id"]
-        state = recipe_state(load_recipe(recipe_id), ENGINES_ROOT / "vllm-0.31.0")
+        recipe = load_recipe(recipe_id)
+        state = recipe_state(recipe, engine_corpora_root(recipe))
         changed = list(state["changed_inputs"])
         if state["state"] != "unchanged" and any(
             waiver_covers(waiver, recipe_id, changed, today=today) for waiver in waivers
@@ -229,7 +253,7 @@ def test_a_declared_stale_corpus_fails_the_staleness_gate_by_name(recipe_id: str
 
     declared = stale_corpora()[recipe_id]
     recipe = load_recipe(recipe_id)
-    corpora_root = ENGINES_ROOT / "vllm-0.31.0"
+    corpora_root = engine_corpora_root(recipe)
     with pytest.raises(StaleCorpusError) as error:
         resolve_corpus(recipe, corpora_root)
     message = str(error.value)
@@ -330,9 +354,9 @@ def test_the_registry_resolves_by_engine_version_and_fingerprint() -> None:
     emulator = emulator_for("zerank-2-reranker")
     assert emulator.verified is not None
     fingerprint = emulator.verified.behaviour_fingerprint
-    assert registry.resolve("vllm", "0.31.0", fingerprint, "zerank-2-reranker") is emulator
+    assert registry.resolve("vllm", "0.33.0", fingerprint, "zerank-2-reranker") is emulator
     with pytest.raises(ConfigError) as error:
-        registry.resolve("vllm", "0.31.0", "f" * 64, "zerank-2-reranker")
+        registry.resolve("vllm", "0.33.0", "f" * 64, "zerank-2-reranker")
     assert fingerprint[:12] in str(error.value)  # the message names the registered fingerprint
 
 
@@ -351,7 +375,7 @@ def test_an_emulator_refuses_another_engine_version_or_recipe_revision() -> None
     )
     with pytest.raises(ConfigError) as error:
         emulator.require_verified_for(
-            "qwen3-embedding-0.6b", "f" * 40, emulator.verified.behaviour_fingerprint, "0.31.0"
+            "qwen3-embedding-0.6b", "f" * 40, emulator.verified.behaviour_fingerprint, "0.33.0"
         )
     assert "revision" in str(error.value)
     with pytest.raises(ConfigError) as error:
@@ -392,7 +416,7 @@ def test_out_of_tree_emulators_register_through_the_entry_point_group(monkeypatc
         assert registry.load_entry_points() == ["example-out-of-tree"]
         verified = emulator_for("zerank-2-reranker").verified
         assert verified is not None
-        assert registry.fingerprints("vllm", "0.31.0", "zerank-2-reranker") == [verified.behaviour_fingerprint]
+        assert registry.fingerprints("vllm", "0.33.0", "zerank-2-reranker") == [verified.behaviour_fingerprint]
     finally:
         registry.clear()
 

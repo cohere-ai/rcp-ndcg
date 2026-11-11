@@ -210,7 +210,7 @@ def record_engine_version(record: dict[str, Any]) -> str | None:
 def predates_record_stamp(engine_version: str) -> bool:
     """Whether an engine version belongs to the pre-stamp epoch (below :data:`RECORD_STAMP_ENGINE_VERSION`).
 
-    The stamp arrived with :data:`RECORD_SCHEMA` 2; the committed recordings are the ``vllm-0.31.0`` line and
+    The stamp arrived with :data:`RECORD_SCHEMA` 2; the pre-stamp recordings are the ``vllm-0.31.0`` line and
     could not have carried one, so an absent ``engine_version`` there is the epoch's fact. From
     :data:`RECORD_STAMP_ENGINE_VERSION` on, a recording without the stamp is refused.
 
@@ -532,9 +532,9 @@ def write_corpus_index(corpora_root: str | Path) -> Path:
     a corpus directory and regenerates this file; it is never hand-edited.
 
     Args:
-        corpora_root: The engine-version directory holding the corpus directories -- the committed ones
-            are still ``corpora/vllm-0.31.0`` until the re-record renames them to ``corpora/vllm-0.33.0``;
-            the index is written beside the recipe directories.
+        corpora_root: The engine-version directory holding the corpus directories -- ``corpora/vllm-0.33.0``
+            is the current line and ``corpora/vllm-0.31.0`` the superseded one, each with its own index; the
+            index is written beside the recipe directories.
 
     Returns:
         The written ``index.json``.

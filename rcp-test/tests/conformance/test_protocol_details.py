@@ -90,9 +90,9 @@ def test_the_registry_names_only_the_requested_engine_versions_fingerprints() ->
     )
     registry.register(other)
     try:
-        assert registry.fingerprints("vllm", "0.31.0", "zerank-2-reranker") == [emulator.verified.behaviour_fingerprint]
+        assert registry.fingerprints("vllm", "0.33.0", "zerank-2-reranker") == [emulator.verified.behaviour_fingerprint]
         with pytest.raises(ConfigError) as error:
-            registry.resolve("vllm", "0.31.0", "f" * 64, "zerank-2-reranker")
+            registry.resolve("vllm", "0.33.0", "f" * 64, "zerank-2-reranker")
         assert "9999" not in str(error.value), error.value
     finally:
         registry.clear()
