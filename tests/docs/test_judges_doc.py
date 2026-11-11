@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-from rcp_ndcg.judging.schedule import RubricSchedule, TournamentSchedule
+from rcp.judging.schedule import RubricSchedule, TournamentSchedule
 from tests.docs._markdown import ROOT, paragraph
 
 PAGE = ROOT / "docs" / "concepts" / "judges.md"

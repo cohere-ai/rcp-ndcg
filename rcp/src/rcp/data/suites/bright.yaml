@@ -1,0 +1,19 @@
+kind: suite
+name: bright
+repo: fabianschmidt-cohere/rcp-ndcg-bright
+protocol: bright
+revision: null
+gains: true
+subsets:
+  - aops
+  - biology
+  - earth_science
+  - economics
+  - leetcode
+  - pony
+  - psychology
+  - robotics
+  - stackoverflow
+  - sustainable_living
+  - theoremqa_questions
+  - theoremqa_theorems

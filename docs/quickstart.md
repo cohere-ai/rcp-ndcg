@@ -2,22 +2,22 @@
 
 ## Install
 
-RCP-nDCG needs Python 3.12 or later, and will be on PyPI (as `rcp-ndcg`):
+RCP-nDCG needs Python 3.12 or later, and will be on PyPI (as `rcp`):
 
 ```bash
-pip install "rcp-ndcg[hf,calibrate]" --extra-index-url https://download.pytorch.org/whl/cpu
+pip install "rcp[hf,calibrate]" --extra-index-url https://download.pytorch.org/whl/cpu
 ```
 
-`uvx rcp-ndcg` runs the command line without installing it (`uvx --from "rcp-ndcg[hf]" rcp-ndcg ...` with extras).
+`uvx rcp` runs the command line without installing it (`uvx --from "rcp[hf]" rcp ...` with extras).
 
-`rcp-ndcg-core` is the metric, the gain, the scoring protocols and the IRT estimators. The metric, gain and
+`rcp-core` is the metric, the gain, the scoring protocols and the IRT estimators. The metric, gain and
 protocols need numpy and pydantic only; the IRT estimators need its `irt` extra (torch and scipy), which the
 `calibrate` extra below brings.
-`rcp-ndcg` adds the data loaders, the judging client, the calibration, the evaluation and the CLI. The third
-distribution, `rcp-ndcg-vllm`, is the lean serving package: the GPU-validated serving recipes and
-`rcp-ndcg-vllm serve <recipe-id>` for the stock vLLM image ([recipes and serving
-models](reference/recipes.md)). `rcp-ndcg-test`, an unpublished contributor package (reference cases,
-conformance, the GPU job tooling), is never installed by users ([its page](reference/rcp-ndcg-test.md)). The
+`rcp` adds the data loaders, the judging client, the calibration, the evaluation and the CLI. The third
+distribution, `rcp-vllm`, is the lean serving package: the GPU-validated serving recipes and
+`rcp-vllm serve <recipe-id>` for the stock vLLM image ([recipes and serving
+models](reference/recipes.md)). `rcp-test`, an unpublished contributor package (reference cases,
+conformance, the GPU job tooling), is never installed by users ([its page](reference/rcp-test.md)). The
 extras:
 
 | Extra | Adds |
@@ -28,12 +28,12 @@ extras:
 | `s3` | the S3 storage backend (`s3://` URIs) |
 | `azure` | the Azure Blob storage backend (`az://` URIs) |
 | `http` | `http(s)://` object URLs (fsspec's aiohttp backend) |
-| `data` | the `hf` and `pdf` readers of `rcp-ndcg data convert` (the Hub dataset loader, PDF rendering) |
+| `data` | the `hf` and `pdf` readers of `rcp data convert` (the Hub dataset loader, PDF rendering) |
 | `dev` | the test and lint tools |
 | `docs` | the local documentation preview (mkdocs-material) |
 
 Every retrieval model is served now: the client talks HTTP to the engines (role clients over one transport) and
-installs beside an engine untouched in its own venv. Serving a shipped recipe via `rcp-ndcg-vllm` adds exactly
+installs beside an engine untouched in its own venv. Serving a shipped recipe via `rcp-vllm` adds exactly
 one pure-Python wheel to the engine's environment (`pip install --no-deps`), and nothing else changes. The old
 `[local]` and `[vllm]` extras are gone; the paper's in-process reference implementations live in
 `experiments/paper/rerankers/reference/` with their own pinned requirements, outside the package's lock. BM25
@@ -41,11 +41,11 @@ and the hosted APIs need no extra.
 
 From a checkout of the repository, `uv sync --extra hf --extra calibrate` sets up the same environment with
 [uv](https://github.com/astral-sh/uv). From git, the release tag installs both packages (pip needs the core in the
-same command, because `rcp-ndcg` pins it; with uv the `rcp-ndcg` line alone suffices):
+same command, because `rcp` pins it; with uv the `rcp` line alone suffices):
 
 ```bash
-pip install "rcp-ndcg-core @ git+https://github.com/cohere-ai/rcp-ndcg@v0.0.1#subdirectory=rcp-ndcg-core" \
-            "rcp-ndcg[hf,calibrate] @ git+https://github.com/cohere-ai/rcp-ndcg@v0.0.1#subdirectory=rcp-ndcg" \
+pip install "rcp-core @ git+https://github.com/cohere-ai/rcp-ndcg@v0.0.1#subdirectory=rcp-core" \
+            "rcp[hf,calibrate] @ git+https://github.com/cohere-ai/rcp-ndcg@v0.0.1#subdirectory=rcp" \
             --extra-index-url https://download.pytorch.org/whl/cpu
 ```
 
@@ -67,13 +67,13 @@ share query ids, so a file that ranks several subsets names each row's subset in
 produces one from a model.
 
 ```bash
-rcp-ndcg eval score --rankings my_system.parquet --suite nanobeir --json
+rcp eval score --rankings my_system.parquet --suite nanobeir --json
 ```
 
 <!-- snippet: skip (needs your rankings file and the network) -->
 ```python
-from rcp_ndcg.data import load_rankings
-from rcp_ndcg.eval import evaluate
+from rcp.data import load_rankings
+from rcp.eval import evaluate
 
 report = evaluate(load_rankings("my_system.parquet"), suite="nanobeir")
 print(report.to_pandas())
@@ -84,16 +84,16 @@ the datasets and shows a complete example.
 
 ### Serve an open model and score it
 
-Engine side, on the stock `vllm/vllm-openai` image: `python3 -m pip install --no-deps rcp-ndcg-vllm` (the one
+Engine side, on the stock `vllm/vllm-openai` image: `python3 -m pip install --no-deps rcp-vllm` (the one
 change the engine environment takes; `pip freeze` differs by exactly that wheel), then serve a recipe:
 
 ```bash
-rcp-ndcg-vllm serve qwen3-embedding-0.6b --port 8000
-rcp-ndcg-vllm serve qwen3-reranker-0.6b --port 8001   # a reranker, in another terminal or engine
-# `rcp-ndcg-vllm serve <id> --dry-run` prints the engine argv and exits
+rcp-vllm serve qwen3-embedding-0.6b --port 8000
+rcp-vllm serve qwen3-reranker-0.6b --port 8001   # a reranker, in another terminal or engine
+# `rcp-vllm serve <id> --dry-run` prints the engine argv and exits
 ```
 
-Client side, `rcp-ndcg-vllm` installed beside `rcp-ndcg`, and a retriever config whose encoder names the recipe;
+Client side, `rcp-vllm` installed beside `rcp`, and a retriever config whose encoder names the recipe;
 `base_url` and the other run-time fields stay on the config (an explicit content field must equal the recipe's,
 or the config is refused naming both values):
 
@@ -106,11 +106,11 @@ encoder:
 ```
 
 ```bash
-rcp-ndcg retrieval index --dataset suite:nanobeir --subset NanoSciFactRetrieval --retriever recipe-retriever.yaml --out index/
-rcp-ndcg retrieval search --dataset suite:nanobeir --subset NanoSciFactRetrieval --retriever recipe-retriever.yaml --out rankings.parquet
-rcp-ndcg retrieval rerank --dataset suite:nanobeir --subset NanoSciFactRetrieval --rankings rankings.parquet \
+rcp retrieval index --dataset suite:nanobeir --subset NanoSciFactRetrieval --retriever recipe-retriever.yaml --out index/
+rcp retrieval search --dataset suite:nanobeir --subset NanoSciFactRetrieval --retriever recipe-retriever.yaml --out rankings.parquet
+rcp retrieval rerank --dataset suite:nanobeir --subset NanoSciFactRetrieval --rankings rankings.parquet \
     --reranker recipe:qwen3-reranker-0.6b --out rankings-reranked.parquet
-rcp-ndcg eval score --rankings rankings-reranked.parquet --suite nanobeir --subset NanoSciFactRetrieval
+rcp eval score --rankings rankings-reranked.parquet --suite nanobeir --subset NanoSciFactRetrieval
 ```
 
 (one suite subset, as here; `--retriever recipe:<id>` / `--reranker recipe:<id>` are shorthands whose URL comes from
@@ -124,8 +124,8 @@ recorded -- never engine-side ([text budgets](concepts/text-budgets.md)). The
 Serve a judge behind an OpenAI-compatible endpoint, estimate the calls and tokens, then run:
 
 ```bash
-rcp-ndcg run start rejudge_nfcorpus --judge-url http://localhost:8000/v1 --judge-model my-model --estimate
-rcp-ndcg run start rejudge_nfcorpus --judge-url http://localhost:8000/v1 --judge-model my-model
+rcp run start rejudge_nfcorpus --judge-url http://localhost:8000/v1 --judge-model my-model --estimate
+rcp run start rejudge_nfcorpus --judge-url http://localhost:8000/v1 --judge-model my-model
 ```
 
 Documents run whole -- the judge's default text policy is `keep`, so nothing is cut; a declared
@@ -150,7 +150,7 @@ python experiments/run_all.py
 
 One complete run config: candidates from a served encoder and reranker (their recipes supply the client blocks),
 a judge config, and one engine per role, started inside the job. The engine image prepares
-`python3 -m pip install --no-deps rcp-ndcg-vllm`; with the recipes the engine command is `rcp-ndcg-vllm serve
+`python3 -m pip install --no-deps rcp-vllm`; with the recipes the engine command is `rcp-vllm serve
 <id>`.
 
 ```yaml
@@ -158,7 +158,7 @@ a judge config, and one engine per role, started inside the job. The engine imag
 dataset: suite:nanobeir
 candidates:
   from: retrieval
-  # with `rcp-ndcg-vllm` installed, `encoder: {recipe: qwen3-embedding-0.6b}` (and `rerank: {recipe:
+  # with `rcp-vllm` installed, `encoder: {recipe: qwen3-embedding-0.6b}` (and `rerank: {recipe:
   # qwen3-reranker-0.6b}`) take their whole client block from the recipe instead of the fields below; a
   # self-hosted role config here must still declare its text budget (tokenizer + max_tokens), and a served
   # reranker sets use_activation explicitly
@@ -172,11 +172,11 @@ steps: [retrieve, rerank, tournament, rubric, calibrate, evaluate]
 serve:
   encoder:
     image: registry.example.com/vllm-openai:my-tag
-    command: ["rcp-ndcg-vllm", "serve", "qwen3-embedding-0.6b"]
+    command: ["rcp-vllm", "serve", "qwen3-embedding-0.6b"]
     resources: {gpus: 1}
   reranker:
     image: registry.example.com/vllm-openai:my-tag
-    command: ["rcp-ndcg-vllm", "serve", "qwen3-reranker-0.6b"]
+    command: ["rcp-vllm", "serve", "qwen3-reranker-0.6b"]
     resources: {gpus: 1}
   judge:
     image: registry.example.com/vllm-openai:my-tag
@@ -189,10 +189,10 @@ runner:
 mirror: s3://YOUR-BUCKET/runs/my-run
 ```
 
-Walk it on the cluster: `rcp-ndcg run start my_run.yaml --runner kubernetes --dry-run` prints the step plan and
+Walk it on the cluster: `rcp run start my_run.yaml --runner kubernetes --dry-run` prints the step plan and
 the manifests it would submit and writes nothing; the same command without `--dry-run` submits (add `--detach`
-to return at once); `rcp-ndcg run status --run runs/<run_id>` and `rcp-ndcg run logs --run runs/<run_id>` follow
-it; `rcp-ndcg run resume --run runs/<run_id> --runner kubernetes` submits a failed job again, engines included,
+to return at once); `rcp run status --run runs/<run_id>` and `rcp run logs --run runs/<run_id>` follow
+it; `rcp run resume --run runs/<run_id> --runner kubernetes` submits a failed job again, engines included,
 asking only for the windows its stores lack. The job runs its steps in **job phases**, each starting only the
 engines its steps use and handing their URLs to the step (`RCP_NDCG_ENGINES`) -- the job's GPUs are the maximum
 over phases, not the sum over engines; a job whose engine stops answering for `outage_timeout_s` fails instead
@@ -204,7 +204,7 @@ the depth.
 With calibrated abilities and item parameters at hand, the metric is a pure function of the core package:
 
 ```python
-from rcp_ndcg_core import gain, ndcg
+from rcp_core import gain, ndcg
 
 items = {"gamma": [1.2, 1.0, 1.1, 0.9, 0.8], "beta": [-2.0, -0.5, 0.0, 0.8, 1.7]}
 gains = {doc_id: gain(theta, items) for doc_id, theta in {"d1": 1.4, "d2": -0.3, "d3": 0.6}.items()}

@@ -13,10 +13,10 @@ from collections.abc import Sequence
 import numpy as np
 import pytest
 
-from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.inference.types import Embeddings
-from rcp_ndcg.retrieval import maxsim
-from rcp_ndcg.retrieval.maxsim import maxsim_topk
+from rcp.errors import ConfigError, DataError
+from rcp.inference.types import Embeddings
+from rcp.retrieval import maxsim
+from rcp.retrieval.maxsim import maxsim_topk
 
 
 def _ragged(rng: np.random.Generator, lengths: list[int], dim: int) -> Embeddings:
@@ -368,7 +368,7 @@ class TestTiesAtTheCut:
 
 class TestScoreTopkDispatch:
     def test_flat_embeddings_use_the_inner_product_path(self) -> None:
-        from rcp_ndcg.retrieval.topk import numpy_topk, score_topk
+        from rcp.retrieval.topk import numpy_topk, score_topk
 
         rng = np.random.default_rng(2)
         docs = Embeddings.single(rng.standard_normal((10, 4)).astype(np.float32))
@@ -379,7 +379,7 @@ class TestScoreTopkDispatch:
         )
 
     def test_ragged_embeddings_use_maxsim(self) -> None:
-        from rcp_ndcg.retrieval.topk import score_topk
+        from rcp.retrieval.topk import score_topk
 
         rng = np.random.default_rng(3)
         docs = _ragged(rng, [2, 3], dim=4)
@@ -390,7 +390,7 @@ class TestScoreTopkDispatch:
         )
 
     def test_numpy_topk_points_at_maxsim_when_given_a_3d_array(self) -> None:
-        from rcp_ndcg.retrieval.topk import numpy_topk
+        from rcp.retrieval.topk import numpy_topk
 
         with pytest.raises(DataError, match="maxsim_topk"):
             numpy_topk(np.zeros((2, 3, 4), dtype=np.float32), np.zeros((1, 4), dtype=np.float32), 1)

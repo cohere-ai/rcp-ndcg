@@ -8,7 +8,7 @@ the protocol it was computed under.
 ## Tie rules
 
 A reranker can give several documents the same score. The order within such a tie must come from a rule, never from
-the order of the candidate pool, which is often sorted by relevance. `rcp_ndcg_core.ndcg` takes the rule explicitly
+the order of the candidate pool, which is often sorted by relevance. `rcp_core.ndcg` takes the rule explicitly
 (`TieRule`):
 
 | Rule | What a tied group gets | Used by |
@@ -34,7 +34,7 @@ A `Protocol` fixes a suite's rules:
   data without a list of excluded documents;
 - `round_digits`: round qrel-nDCG to this many decimals (BEIR rounds to 5). RCP-nDCG is never rounded.
 
-`rcp_ndcg_core.PROTOCOLS` holds the presets:
+`rcp_core.PROTOCOLS` holds the presets:
 
 | Preset | Ties | Candidates | qrel-nDCG rounding |
 |---|---|---|---|
@@ -82,12 +82,12 @@ Python, and fix or drop the broken one.
 ## Aggregation
 
 A leaderboard number is the mean over queries per dataset, then the unweighted mean over the datasets of the suite
-(`rcp_ndcg_core.aggregate`). TREC-DL reports each year separately.
+(`rcp_core.aggregate`). TREC-DL reports each year separately.
 
 ## In code
 
 ```python
-from rcp_ndcg_core import PROTOCOLS, score_query
+from rcp_core import PROTOCOLS, score_query
 
 scores = {"q7": 0.95, "d1": 0.80, "d2": 0.80, "d3": 0.10}  # the system ranked the query's own argument first
 gains = {"d1": 0.9, "d2": 0.2, "d3": 0.5}
@@ -100,9 +100,9 @@ print(score_query(scores, gains, protocol=arxiv_v1, k=10, candidates=pool, exclu
 ```
 
 The two calls differ only in how the tie between `d1` and `d2` is resolved: the preset credits both with their
-mean gain, arXiv v1's rule ranks `d2` first by its id. `rcp_ndcg.eval.evaluate` applies the
+mean gain, arXiv v1's rule ranks `d2` first by its id. `rcp.eval.evaluate` applies the
 protocol of a suite or dataset automatically; its `protocol=` argument overrides it. On the command line the
-equivalent is `rcp-ndcg eval score --suite nanobeir --protocol <name>`.
+equivalent is `rcp eval score --suite nanobeir --protocol <name>`.
 
 ## The MTEB integration
 

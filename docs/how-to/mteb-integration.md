@@ -9,7 +9,7 @@ There are two ways to run the tasks:
 
 - **Stock mteb.** Each dataset on the Hugging Face Hub ships a `rcp_ndcg_tasks.py` that defines its tasks for mteb
   ≥ 2.0.1 (≥ 2.10.5 for ViDoRe v3). The dataset cards show how to use it.
-- **This package.** `rcp_ndcg.eval.mteb.get_tasks(suite)` returns the same tasks (the `mteb` extra). When the
+- **This package.** `rcp.eval.mteb.get_tasks(suite)` returns the same tasks (the `mteb` extra). When the
   installed mteb already ships a task at the same data revision, `get_tasks` returns mteb's own (the reranking
   view; the retrieval view is always built locally, as mteb ships only the reranking names). Each subset is
   accepted under its own name and under its published task name.
@@ -17,7 +17,7 @@ There are two ways to run the tasks:
 <!-- snippet: network -->
 ```python
 import mteb
-from rcp_ndcg.eval.mteb import get_tasks
+from rcp.eval.mteb import get_tasks
 
 tasks = get_tasks("nanobeir", ["NanoFiQA2018Retrieval"])  # or get_tasks("nanobeir") for all 13 tasks
 model = mteb.get_model("sentence-transformers/all-MiniLM-L6-v2")
@@ -29,15 +29,15 @@ searches the full corpus instead and reports only the integer-qrels metrics, bec
 pools only.
 
 mteb credits tied scores with their group's mean gain on every suite, as do this package's suite protocols and the
-paper from arXiv v2 on, so `rcp_ndcg.eval.evaluate` and mteb agree on tied scores too. arXiv v1's NanoBEIR, BRIGHT
+paper from arXiv v2 on, so `rcp.eval.evaluate` and mteb agree on tied scores too. arXiv v1's NanoBEIR, BRIGHT
 and TREC-DL tables broke ties by document id or pool order instead ([scoring protocols](../concepts/protocols.md)
 shows how to score that way).
 
 ## Exporting a dataset to the MTEB layout
 
 ```python
-from rcp_ndcg.data import Dataset
-from rcp_ndcg.data.io import get_writer
+from rcp.data import Dataset
+from rcp.data.io import get_writer
 
 dataset = Dataset.from_records(
     name="NanoArguAnaRetrieval",
@@ -49,8 +49,8 @@ dataset = Dataset.from_records(
 written = get_writer("mteb").write_dataset(dataset, "out/nanobeir", subset="NanoArguAnaRetrieval")
 ```
 
-The writer (`rcp_ndcg.data.io.mteb.MtebWriter`) writes exactly what `push_dataset_to_hub` writes, with
-rcp-ndcg's extras only where mteb ignores them:
+The writer (`rcp.data.io.mteb.MtebWriter`) writes exactly what `push_dataset_to_hub` writes, with
+rcp's extras only where mteb ignores them:
 
 | Config | Columns |
 |---|---|
@@ -114,8 +114,8 @@ needs the model's `ModelMeta` merged into mteb itself.
 <!-- snippet: network -->
 ```python
 import mteb
-from rcp_ndcg.data import Rankings, load_rankings
-from rcp_ndcg.eval.mteb import get_tasks, model_meta, stored_rankings_model
+from rcp.data import Rankings, load_rankings
+from rcp.eval.mteb import get_tasks, model_meta, stored_rankings_model
 
 # the run to score, as the pipeline writes it (system, dataset, query_id, doc_id, score):
 Rankings.from_scores({"q1": {"d1": 0.9, "d2": 0.4}}, dataset="NanoFiQA2018Retrieval").save("run.parquet")
@@ -136,7 +136,7 @@ has no qrels). A task with a `top_ranked` pool (the reranking view) receives the
 every query keeps at most `top_k` documents, ties by document id descending, the tie rule of mteb's integer
 metrics (pytrec_eval's; the retrieval stack's own selection ties toward the *lower* document id, a different,
 declared rule). A query the run did not rank scores 0, the same semantics our evaluator reports
-an unranked labelled query with. The integer `ndcg_at_10` equals `rcp_ndcg.eval.evaluate`'s `qrel_ndcg` under
+an unranked labelled query with. The integer `ndcg_at_10` equals `rcp.eval.evaluate`'s `qrel_ndcg` under
 the suite's protocol with that tie rule (`protocol=PROTOCOLS["nanobeir"].model_copy(update={"ties":
 "doc_id_desc"})`; the presets credit a tie its group's mean gain, as `ndcg_float_at_k` does, so on tied scores
 they differ). The two then differ only in how they round -- mteb rounds its mean to 5 decimals, the protocol
@@ -147,7 +147,7 @@ of the shipped suites carries a positive label, so the two agree there.
 Writing the predictions file directly, without running mteb, is `Rankings.save(format="mteb")`:
 
 ```python
-from rcp_ndcg.data import Dataset, Rankings, load_rankings
+from rcp.data import Dataset, Rankings, load_rankings
 
 rankings = Rankings.from_scores({"q1": {"d1": 2.0, "d2": 1.0}})
 rankings.save("run.parquet")  # a stored run: system, dataset, query_id, doc_id, score

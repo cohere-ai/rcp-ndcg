@@ -30,7 +30,7 @@ sizes every image as that processor would, so the engine needs no pixel-budget f
 ## 2. Describe the run
 
 A run config names the dataset, where the candidates come from, the judge and the steps. The packaged run
-config `nano_nfcorpus_gpt5` (`rcp-ndcg run start nano_nfcorpus_gpt5`) retrieves 50 candidates per query with BM25 and judges the first 10 queries
+config `nano_nfcorpus_gpt5` (`rcp run start nano_nfcorpus_gpt5`) retrieves 50 candidates per query with BM25 and judges the first 10 queries
 of NanoNFCorpus with a hosted judge:
 
 ```yaml
@@ -47,10 +47,10 @@ limit: 10
 
 Copy it, point `judge` at your judge config and `dataset` at your data, and drop `limit` once the estimate looks
 right. A dataset is a URI: `hf://org/name` (a Hub dataset whose card declares its layout, mteb's rules; the
-released rcp-ndcg repositories included), `mteb:<Task>` (a task mteb's own loader builds, the `[mteb]`
-extra), `beir:<dir>` (`corpus.jsonl`, `queries.jsonl`, `qrels/`) or `jsonl:<file>` (one query per line with its candidates, as in the tiny example, which `rcp-ndcg data fetch --dataset tiny --out tiny` copies).
+released rcp repositories included), `mteb:<Task>` (a task mteb's own loader builds, the `[mteb]`
+extra), `beir:<dir>` (`corpus.jsonl`, `queries.jsonl`, `qrels/`) or `jsonl:<file>` (one query per line with its candidates, as in the tiny example, which `rcp data fetch --dataset tiny --out tiny` copies).
 Relative paths in a run config are relative to the config file, so a config and its data move together.
-`rcp-ndcg data inspect --dataset <uri>` checks that it loads. Candidates come from the dataset's own pools
+`rcp data inspect --dataset <uri>` checks that it loads. Candidates come from the dataset's own pools
 (`from: dataset`), from a rankings file, or from first-stage retrieval as here.
 
 The schedules default to the paper's ([the tournament](../concepts/tournament.md),
@@ -60,10 +60,10 @@ The schedules default to the paper's ([the tournament](../concepts/tournament.md
 ## 3. Estimate, then run
 
 ```bash
-rcp-ndcg run start my_benchmark.yaml --estimate                   # calls, tokens, wall time; calls no judge
-rcp-ndcg run start my_benchmark.yaml
-rcp-ndcg run status --run runs/<run_id>
-rcp-ndcg run resume --run runs/<run_id>                            # only what is missing
+rcp run start my_benchmark.yaml --estimate                   # calls, tokens, wall time; calls no judge
+rcp run start my_benchmark.yaml
+rcp run status --run runs/<run_id>
+rcp run resume --run runs/<run_id>                            # only what is missing
 ```
 
 The input token counts of an estimate are exact when the judge config names a `tokenizer`, and an approximation
@@ -81,14 +81,14 @@ The run's `calibrate` step fits the 2PL model and writes `runs/<run_id>/calibrat
 diagnostics before you trust the gains:
 
 ```bash
-rcp-ndcg calibration show --calibration runs/<run_id>/calibration --json
+rcp calibration show --calibration runs/<run_id>/calibration --json
 ```
 
 The same fit from Python:
 
 <!-- snippet: skip (needs the judgements of a finished run) -->
 ```python
-from rcp_ndcg.calibration import calibrate, read_judgements
+from rcp.calibration import calibrate, read_judgements
 
 calibration = calibrate(read_judgements("runs/<run_id>/judgements"))
 calibration.save("my_calibration/")
@@ -99,21 +99,21 @@ calibration.save("my_calibration/")
 Any system that ranks the calibrated pools can now be scored with RCP-nDCG, without calling the judge again:
 
 ```bash
-rcp-ndcg eval score --rankings my_system.parquet --dataset <dataset-uri> --calibration runs/<run_id>/calibration
+rcp eval score --rankings my_system.parquet --dataset <dataset-uri> --calibration runs/<run_id>/calibration
 ```
 
-From Python, `rcp_ndcg.eval.evaluate(rankings, dataset=dataset, gains=calibration)` returns the same report. A
+From Python, `rcp.eval.evaluate(rankings, dataset=dataset, gains=calibration)` returns the same report. A
 document outside the calibrated pools has no gain and counts 0; judging it later without refitting is what the
 [primitives](../concepts/primitives.md) are for.
 
 `--json` prints the summary and the per-dataset means; add `--out report.json` for the full report, which
-`rcp-ndcg eval compare --report report.json` and `rcp-ndcg eval explain --report report.json --query-id <id>` read.
+`rcp eval compare --report report.json` and `rcp eval explain --report report.json --query-id <id>` read.
 From Python, rankings held in a pandas frame go in as records:
-`rcp_ndcg.Rankings.from_records(frame.to_dict("records"))`.
+`rcp.Rankings.from_records(frame.to_dict("records"))`.
 
 **What a run scores.** The evaluate step of a run scores two reference systems: `candidates`, the order of the
 pools the judge was shown, and `judge`, the pool documents ranked by their calibrated abilities, which scores
 RCP-nDCG 1 by construction and is no system to compare. Your own systems join them through `evaluation.systems`
 in the run config (`{name: rankings file}`, `<file>#<system>` for one system of a multi-system file), and
-`rcp-ndcg eval compare --run runs/<run_id>` compares them without the reference systems (`--include-reference`
+`rcp eval compare --run runs/<run_id>` compares them without the reference systems (`--include-reference`
 adds them).

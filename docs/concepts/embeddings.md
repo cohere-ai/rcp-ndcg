@@ -5,18 +5,18 @@ TEI, Infinity) and the OpenAI API answer it as is; the hosted APIs (Cohere, Voya
 of the same adapters. A config selects the wire with `api`, and one role client owns every content decision --
 the prompts, the normalisation, the batching -- so no engine's defaults (silent truncation, unprompted
 pooling changes) ever reach your vectors. This is the one embedding path: the retrieval commands
-(`rcp-ndcg retrieval index|search`, a run's `retrieve` step) build their `EmbeddingClient` or `PoolingClient`
+(`rcp retrieval index|search`, a run's `retrieve` step) build their `EmbeddingClient` or `PoolingClient`
 from a retriever config's `encoder` on exactly this layer.
 
 ## The config
 
-An embedding endpoint is an `EmbeddingEndpoint` (`rcp_ndcg.inference.config`): the endpoint fields
+An embedding endpoint is an `EmbeddingEndpoint` (`rcp.inference.config`): the endpoint fields
 (`model`, `revision`, `api_key_env`, `headers_env`, `concurrency`, the timeouts, retries and
 `wait_on_outage_s`) plus the fields its wire protocol needs.
 
 | Field | What it does |
 |---|---|
-| `api` | The wire adapter, from the embed role's registry: `openai_embeddings` (default), `cohere`, `voyage`, `gemini`, or a third party's from the `rcp_ndcg.adapters` entry-point group (entries named `embed.<name>`) |
+| `api` | The wire adapter, from the embed role's registry: `openai_embeddings` (default), `cohere`, `voyage`, `gemini`, or a third party's from the `rcp.adapters` entry-point group (entries named `embed.<name>`) |
 | `base_url` | The endpoint; `null` for a hosted API, which then uses the profile's public URL |
 | `api_key_env` | The variable holding the key, resolved by the transport; when unset, the wire adapter profile's own variables are tried in the profile's header -- but only when the request goes to the profile's own default host. Any other `base_url` receives a key only from an explicit `api_key_env` ([the credential rule](../reference/cli.md#credentials)) |
 | `query_prompt`, `doc_prompt` | Text prepended to every query / document (an asymmetric embedder's instruction prefix); refused beside a `template` -- the prefix then goes in as the template's fixed segment, so declaring both would double it |
@@ -71,9 +71,9 @@ only among its own role's names. The adapters are usable on their own -- build t
 calls, parse the replies:
 
 ```python
-from rcp_ndcg.inference import EncodeRole, get_adapter
-from rcp_ndcg.inference.types import EmbedRequest
-from rcp_ndcg_core.content import Content
+from rcp.inference import EncodeRole, get_adapter
+from rcp.inference.types import EmbedRequest
+from rcp_core.content import Content
 
 request = EmbedRequest(
     contents=(Content.from_text("a query about foxes"),),
@@ -85,7 +85,7 @@ print(call.path, sorted(call.json))
 
 ## The client
 
-`EmbeddingClient` (`rcp_ndcg.inference.clients`) applies the config's content decisions and sends the batches
+`EmbeddingClient` (`rcp.inference.clients`) applies the config's content decisions and sends the batches
 through a transport -- its own, built from the config, or one you pass as `sender` (any `Sender` with the sync
 bridge `run`; a transport's is used as is and pointed at the profile's credential facts). The config declares
 the content; the client applies it, on the shared client base (`RoleClient` -- the adapter lookup, the hosted
@@ -93,7 +93,7 @@ profile's URL, the transport, the sync bridge, `close()`/`await aclose()` and th
 fan-out under one `asyncio.TaskGroup`):
 
 ```python
-from rcp_ndcg.inference.config import EmbeddingEndpoint
+from rcp.inference.config import EmbeddingEndpoint
 
 config = EmbeddingEndpoint(
     base_url="http://127.0.0.1:8000/v1",
@@ -119,7 +119,7 @@ an `Embeddings` with one vector per content, in the input's order. The client:
 * slices the items into `batch_size`-sized requests and keeps at most `concurrency` in flight under one
   `asyncio.TaskGroup` (a failing request cancels its siblings), reassembling in the input's order whatever
   order the replies arrive in;
-* applies the declared Matryoshka head (`mrl_dim`, through `rcp_ndcg.data.mrl`) when the config selects an
+* applies the declared Matryoshka head (`mrl_dim`, through `rcp.data.mrl`) when the config selects an
   output dimension: the full-width reply is normalised when `normalize`, then truncation cuts and
   renormalises (or the learned projection applies its matrix), and every changed row carries an
   `mrl_cut` `ProcessingRecord` ([matryoshka heads](matryoshka.md));
@@ -147,7 +147,7 @@ index identity key on it.
 
 A self-hosted role config declares its budget explicitly (`tokenizer` + `max_tokens`; a config with one and
 not the other is refused): the client fits every request through the one text-budget mechanism
-(`rcp_ndcg.data.preprocess.fit`), cutting each text at token boundaries of the declared `tokenizer`, with the
+(`rcp.data.preprocess.fit`), cutting each text at token boundaries of the declared `tokenizer`, with the
 template re-attached around the cut so every anchor survives, and every cut recorded -- each census row
 naming its shape's budget (`budget_tokens`: the query rows a declared `query_max_tokens`, the document rows
 `max_tokens`). The template can also declare a per-shape content normalisation (`normalize`:

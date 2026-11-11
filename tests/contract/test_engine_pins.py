@@ -61,13 +61,13 @@ DEFAULT_CLONE = REPO / ".deps" / "vllm"
 #: The swept surface: the three ``src`` trees (the recipes live under the serving package's), the docs, the
 #: exported schemas, and the loose files -- the root NOTICE and the four distributions' NOTICEs, plus the
 #: reproducibility record.
-SWEPT_ROOTS = ("docs", "rcp-ndcg/src", "rcp-ndcg-test/src", "rcp-ndcg-vllm/src", "schemas")
+SWEPT_ROOTS = ("docs", "rcp/src", "rcp-test/src", "rcp-vllm/src", "schemas")
 SWEPT_FILES = (
     "NOTICE",
-    "rcp-ndcg/NOTICE",
-    "rcp-ndcg-core/NOTICE",
-    "rcp-ndcg-test/NOTICE",
-    "rcp-ndcg-vllm/NOTICE",
+    "rcp/NOTICE",
+    "rcp-core/NOTICE",
+    "rcp-test/NOTICE",
+    "rcp-vllm/NOTICE",
     "REPRODUCIBILITY.md",
 )
 
@@ -145,21 +145,17 @@ UNRESOLVABLE = frozenset(
 DRIFT = frozenset(
     f"{path}:{line} {row}"
     for path, rows_by_line in {
-        "rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/pplx/late.py": {32: ("mimo_audio.py:1262-1272 MISSING",)},
-        "rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/pplx/late_data.py": {
-            18: ("model_loader/default_loader.py:230-230 MISSING",)
-        },
-        "rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/topk/pooling.py": {8: ("activations.py:108-110 MISSING",)},
-        "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/ctxl-rerank-v2-instruct-multilingual/family.yaml": {
+        "rcp-vllm/src/rcp_vllm/models/pplx/late.py": {32: ("mimo_audio.py:1262-1272 MISSING",)},
+        "rcp-vllm/src/rcp_vllm/models/pplx/late_data.py": {18: ("model_loader/default_loader.py:230-230 MISSING",)},
+        "rcp-vllm/src/rcp_vllm/models/topk/pooling.py": {8: ("activations.py:108-110 MISSING",)},
+        "rcp-vllm/src/rcp_vllm/recipes/ctxl-rerank-v2-instruct-multilingual/family.yaml": {
             146: ("pooling_params.py:182-182 NEAR",)
         },
-        "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/embeddinggemma-2/family.yaml": {
+        "rcp-vllm/src/rcp_vllm/recipes/embeddinggemma-2/family.yaml": {
             275: ("vllm/model_executor/models/embedding_gemma2.py:707-721 MISSING",)
         },
-        "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/gemma-4-12b/family.yaml": {
-            94: ("reasoning/__init__.py:55-58 MISSING",)
-        },
-        "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/harrier-oss-v1/family.yaml": {
+        "rcp-vllm/src/rcp_vllm/recipes/gemma-4-12b/family.yaml": {94: ("reasoning/__init__.py:55-58 MISSING",)},
+        "rcp-vllm/src/rcp_vllm/recipes/harrier-oss-v1/family.yaml": {
             134: (
                 "vllm/model_executor/models/registry.py:1341-1360 MISSING",
                 "vllm/model_executor/models/registry.py:1402-1402 MISSING",
@@ -167,18 +163,16 @@ DRIFT = frozenset(
             ),
             35: ("vllm/config/model.py:2356-2356 MISSING",),
         },
-        "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/pplx-embed-v1/family.yaml": {
-            22: ("vllm/config/model.py:777-804 MISSING",)
-        },
-        "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/pplx-embed-v2-context/family.yaml": {
+        "rcp-vllm/src/rcp_vllm/recipes/pplx-embed-v1/family.yaml": {22: ("vllm/config/model.py:777-804 MISSING",)},
+        "rcp-vllm/src/rcp_vllm/recipes/pplx-embed-v2-context/family.yaml": {
             138: ("vllm/config/pooler.py:33-33 MISSING",)
         },
-        "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-reranker/family.yaml": {
+        "rcp-vllm/src/rcp_vllm/recipes/qwen3-reranker/family.yaml": {
             117: ("vllm/renderers/hf.py:759-845 NEAR", "vllm/renderers/hf.py:847-914 MISSING"),
             132: ("vllm/entrypoints/pooling/scoring/io_processor.py:782-782 MISSING",),
             137: ("vllm/model_executor/models/adapters.py:569-571 MISSING",),
         },
-        "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3-vl-reranker/family.yaml": {
+        "rcp-vllm/src/rcp_vllm/recipes/qwen3-vl-reranker/family.yaml": {
             12: (
                 "config/model.py:2347-2347 MISSING",
                 "config/pooler.py:60-60 MISSING",
@@ -189,28 +183,28 @@ DRIFT = frozenset(
             139: ("scoring/io_processor.py:807-818 NEAR",),
             152: ("vllm/multimodal/processing/context.py:57-120 MISSING",),
         },
-        "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/qwen3.8-flash-next/family.yaml": {
+        "rcp-vllm/src/rcp_vllm/recipes/qwen3.8-flash-next/family.yaml": {
             92: (
                 "config/model.py:1382-1403 MISSING",
                 "model_executor/layers/quantization/modelopt.py:780-780 MISSING",
             )
         },
-        "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/topk-embed-v1/family.yaml": {
+        "rcp-vllm/src/rcp_vllm/recipes/topk-embed-v1/family.yaml": {
             21: ("qwen3_next.py:345-350 MISSING",),
             203: ("vllm/model_executor/models/utils.py:441-448 MISSING",),
             209: ("vllm/config/pooler.py:66-66 MISSING",),
         },
-        "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/zembed-1/family.yaml": {
+        "rcp-vllm/src/rcp_vllm/recipes/zembed-1/family.yaml": {
             95: ("vllm/transformers_utils/config.py:1012-1095 MISSING",)
         },
-        "rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/zerank/family.yaml": {
+        "rcp-vllm/src/rcp_vllm/recipes/zerank/family.yaml": {
             # 97 is the `variants:` logical line: the variant's status block now names the tag, so the notes'
             # citation is judged; `is_original_qwen3_reranker` sits two lines past the cited range.
             97: ("vllm/entrypoints/pooling/scoring/io_processor.py:460-476 NEAR",),
             129: ("vllm/model_executor/layers/pooler/activations.py:140-140 NEAR",),
         },
-        "rcp-ndcg/src/rcp_ndcg/data/resolution.py": {1473: ("vidcom2.py:19-40 MISSING",)},
-        "rcp-ndcg/src/rcp_ndcg/inference/adapters/embeddings.py": {320: ("vllm/renderers/hf.py:847-914 MISSING",)},
+        "rcp/src/rcp/data/resolution.py": {1473: ("vidcom2.py:19-40 MISSING",)},
+        "rcp/src/rcp/inference/adapters/embeddings.py": {320: ("vllm/renderers/hf.py:847-914 MISSING",)},
     }.items()
     for line, rows in rows_by_line.items()
     for row in rows
@@ -227,11 +221,11 @@ RECORDED_0_31 = {
     "docs/how-to/use-verified-fake-engines.md": "the committed corpora are still the vllm-0.31.0 recording",
     "docs/reference/gpu-validation.md": "the GPU ledger: every row was recorded on the 0.31 image",
     "docs/reference/recipes.md": "the embeddinggemma-2 backport, in prose",
-    "rcp-ndcg-test/src/rcp_ndcg_test/changes.py": "the corpora state: still the vllm-0.31.0 recording",
-    "rcp-ndcg-test/src/rcp_ndcg_test/corpus.py": "the 0.31 recordings predate the record schema's version stamp",
-    "rcp-ndcg-test/src/rcp_ndcg_test/jobs/wave-cosines-topk-small.json": "the wave's own image record",
-    "rcp-ndcg-test/src/rcp_ndcg_test/observe/corpus.py": "the v0.31.0 status table the shakedown measured",
-    "rcp-ndcg-vllm/src/rcp_ndcg_vllm/models/embedding_gemma2/__init__.py": "the fold's history comment",
+    "rcp-test/src/rcp_test/changes.py": "the corpora state: still the vllm-0.31.0 recording",
+    "rcp-test/src/rcp_test/corpus.py": "the 0.31 recordings predate the record schema's version stamp",
+    "rcp-test/src/rcp_test/jobs/wave-cosines-topk-small.json": "the wave's own image record",
+    "rcp-test/src/rcp_test/observe/corpus.py": "the v0.31.0 status table the shakedown measured",
+    "rcp-vllm/src/rcp_vllm/models/embedding_gemma2/__init__.py": "the fold's history comment",
 }
 
 
@@ -349,7 +343,7 @@ def _recorded(path: str, in_engine: bool) -> bool:
     """
     if path in RECORDED_0_31:
         return True
-    if not path.startswith("rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/"):
+    if not path.startswith("rcp-vllm/src/rcp_vllm/recipes/"):
         return False
     return not in_engine
 

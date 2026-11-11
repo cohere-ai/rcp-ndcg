@@ -1,6 +1,6 @@
 """The one text-budget mechanism: template-framed fitting for every served role.
 
-The mechanism (:func:`rcp_ndcg.data.preprocess.fit`) renders a declared template, measures the
+The mechanism (:func:`rcp.data.preprocess.fit`) renders a declared template, measures the
 template's fixed overhead once per (template, shape), cuts only the content spans within the
 remaining budget, re-attaches the template, and records every cut. These tests pin what the review
 lanes found: every anchor a model reads its output from survives a cut at its declared position
@@ -19,7 +19,7 @@ import pickle
 
 import pytest
 
-from rcp_ndcg.data.preprocess import (
+from rcp.data.preprocess import (
     ChunkPolicy,
     TextBudget,
     TextBudgetExceededError,
@@ -30,9 +30,9 @@ from rcp_ndcg.data.preprocess import (
     max_pool_scores_by_document,
     processing_records,
 )
-from rcp_ndcg.data.templates import Segment, TemplateSpec
-from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.support.identity import check_declarations, identity_payload
+from rcp.data.templates import Segment, TemplateSpec
+from rcp.errors import ConfigError, DataError
+from rcp.support.identity import check_declarations, identity_payload
 from tests._tokenizers import bert_like_tokenizer, framed_bpe_tokenizer, spaced_special_tokenizer, word_tokenizer
 
 FRAMED = framed_bpe_tokenizer()
@@ -806,7 +806,7 @@ class TestVendorBudget:
         census = TextTruncationCensus()
         # Its own corpus key: the once-per-(corpus, process) warning is keyed on the corpus, so two tests
         # sharing one would couple the run order (the shuffled suite pass caught exactly that).
-        with caplog.at_level(logging.WARNING, logger="rcp_ndcg.data.preprocess"):
+        with caplog.at_level(logging.WARNING, logger="rcp.data.preprocess"):
             result = fit([LONG], shape="document", budget=vendor, ids=["d0"], corpus="vendor-uncut", census=census)
         assert result.texts == (LONG,)
         assert result.contents == (LONG,)
@@ -996,7 +996,7 @@ class TestMediaHook:
 
 class TestFitArguments:
     """fit's argument checks are typed refusals with hints (the client's preparation hands it these; a bare
-    ValueError was the one error family outside rcp_ndcg.errors)."""
+    ValueError was the one error family outside rcp.errors)."""
 
     @pytest.mark.parametrize(
         ("inputs", "shape", "extra", "said"),
@@ -1023,7 +1023,7 @@ class TestFitArguments:
 
 class TestIdentityAndFamilies:
     def test_the_tokenizer_sha256_is_content_and_its_name_runtime(self) -> None:
-        from rcp_ndcg.errors import ConfigError
+        from rcp.errors import ConfigError
 
         check_declarations(TextBudget)
         check_declarations(ChunkPolicy)

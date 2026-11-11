@@ -46,12 +46,12 @@ Start with the [quickstart](quickstart.md).
 
 - [Command line](reference/cli.md).
 - [Recipes and serving models](reference/recipes.md): the catalog of the 44 recipes (24 families) and the
-  `rcp-ndcg-vllm` surface.
+  `rcp-vllm` surface.
 - [The results record](reference/results-record.md): the versioned evaluation record and its sink contract.
 - [Compatibility and versioning](reference/versioning.md): what is public, the `0.0.x` rules, the recipe
   `schema_version`, the behaviour fingerprint and the artifact tags.
-- [The `rcp-ndcg-test` package](reference/rcp-ndcg-test.md): reference cases, conformance and the GPU job
+- [The `rcp-test` package](reference/rcp-test.md): reference cases, conformance and the GPU job
   tooling for contributors.
-- [`rcp_ndcg_core`: metric, gains and protocols](reference/api/rcp_ndcg_core.md).
-- [`rcp_ndcg.eval`: evaluation](reference/api/rcp_ndcg.eval.md).
-- [`rcp_ndcg.inference`: the rerank wire and client](reference/api/rcp_ndcg.inference.md).
+- [`rcp_core`: metric, gains and protocols](reference/api/rcp_core.md).
+- [`rcp.eval`: evaluation](reference/api/rcp.eval.md).
+- [`rcp.inference`: the rerank wire and client](reference/api/rcp.inference.md).

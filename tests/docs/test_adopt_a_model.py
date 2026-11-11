@@ -7,7 +7,7 @@ semantics and its wire descriptions must be what the shipped recipes and the rec
 from __future__ import annotations
 
 import pytest
-from rcp_ndcg_vllm.recipe import iter_recipes, resolve_recipe
+from rcp_vllm.recipe import iter_recipes, resolve_recipe
 
 from tests.docs._markdown import ROOT, paragraph
 

@@ -18,19 +18,19 @@ from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
-from rcp_ndcg_core.schemas import Judgement, Placement
+from rcp_core.schemas import Judgement, Placement
 
-from rcp_ndcg.judging._parsing.common import (
+from rcp.judging._parsing.common import (
     MAX_ESCAPE_REPAIRS,
     PARSE_VERSION,
     UnparseableAnswer,
     decode_answer,
     strip_code_fence,
 )
-from rcp_ndcg.judging._parsing.listwise import judgement_comparisons, parse_calibrated_listwise, window_comparisons
-from rcp_ndcg.judging._parsing.rubric import parse_rubric_criteria
-from rcp_ndcg.judging._parsing.schema import answer_schema, response_format
-from rcp_ndcg.judging.client import Completion
+from rcp.judging._parsing.listwise import judgement_comparisons, parse_calibrated_listwise, window_comparisons
+from rcp.judging._parsing.rubric import parse_rubric_criteria
+from rcp.judging._parsing.schema import answer_schema, response_format
+from rcp.judging.client import Completion
 
 IDS = ["a", "b", "c"]
 
@@ -399,8 +399,8 @@ def test_an_answer_whose_object_lacks_a_document_is_never_given_an_order() -> No
 def test_the_prompts_own_worked_example_is_refused_as_an_answer() -> None:
     """The shipped prompts show a complete window-shaped example; a model echoing it (or a document block that
     supplies it) must not be recorded as an observation of this window."""
-    from rcp_ndcg.judging.judging import parse_window
-    from rcp_ndcg.judging.prompts import load_prompt
+    from rcp.judging.judging import parse_window
+    from rcp.judging.prompts import load_prompt
 
     tournament = load_prompt("tournament").worked_example
     assert tournament is not None
@@ -421,8 +421,8 @@ def test_the_prompts_own_worked_example_is_refused_as_an_answer() -> None:
 def test_a_genuine_answer_whose_reasoning_differs_from_the_example_parses() -> None:
     """The guard refuses a literal echo of the prompt's worked example, not a real observation whose verdicts
     happen to match the example's: the reasoning strings are part of what was answered."""
-    from rcp_ndcg.judging.judging import parse_window
-    from rcp_ndcg.judging.prompts import load_prompt
+    from rcp.judging.judging import parse_window
+    from rcp.judging.prompts import load_prompt
 
     rubric = load_prompt("rubric").worked_example
     assert rubric is not None

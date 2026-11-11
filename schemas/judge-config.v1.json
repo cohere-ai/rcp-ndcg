@@ -265,5 +265,5 @@
   ],
   "title": "JudgeConfig",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.judge-config.v1"
+  "x-rcp-schema": "rcp.judge-config.v1"
 }

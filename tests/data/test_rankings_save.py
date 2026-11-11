@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg.data import Rankings, load_rankings
+from rcp.data import Rankings, load_rankings
 
 
 @pytest.mark.parametrize("suffix", ["parquet", "jsonl", "csv"])

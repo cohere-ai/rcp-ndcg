@@ -12,11 +12,6 @@
           "type": "integer"
         },
         "metric": {
-          "enum": [
-            "rcp_ndcg",
-            "qrel_ndcg",
-            "count_ndcg"
-          ],
           "title": "Metric",
           "type": "string"
         },
@@ -126,11 +121,6 @@
           "type": "integer"
         },
         "metric": {
-          "enum": [
-            "rcp_ndcg",
-            "qrel_ndcg",
-            "count_ndcg"
-          ],
           "title": "Metric",
           "type": "string"
         },
@@ -167,7 +157,7 @@
     },
     "ReportInputs": {
       "additionalProperties": false,
-      "description": "Where a report's inputs came from, as the command line that scored them names them.\n\n``rcp-ndcg eval score --out`` records them, and ``rcp-ndcg eval explain --report`` reads them again; a report\nfrom evaluate in Python has none (it keeps the objects it scored instead).",
+      "description": "Where a report's inputs came from, as the command line that scored them names them.\n\n``rcp eval score --out`` records them, and ``rcp eval explain --report`` reads them again; a report\nfrom evaluate in Python has none (it keeps the objects it scored instead).",
       "properties": {
         "calibration": {
           "anyOf": [
@@ -281,7 +271,7 @@
       "type": "object"
     },
     "ReportWarning": {
-      "description": "A typed warning: a ``code`` from a closed list and a message.\n\nThe report's own codes, plus the warnings of the calibration whose gains it scores\n(rcp_ndcg.errors.WarningCode, e.g. ``INVALID_WINDOWS``).",
+      "description": "A typed warning: a ``code`` from a closed list and a message.\n\nThe report's own codes, plus the warnings of the calibration whose gains it scores\n(rcp.errors.WarningCode, e.g. ``INVALID_WINDOWS``).",
       "properties": {
         "code": {
           "anyOf": [
@@ -351,11 +341,6 @@
           "type": "integer"
         },
         "metric": {
-          "enum": [
-            "rcp_ndcg",
-            "qrel_ndcg",
-            "count_ndcg"
-          ],
           "title": "Metric",
           "type": "string"
         },
@@ -510,7 +495,7 @@
       "default": null
     },
     "schema": {
-      "const": "rcp-ndcg.eval-score.v1",
+      "const": "rcp.eval-score.v1",
       "type": "string"
     },
     "summary": {
@@ -549,5 +534,5 @@
   ],
   "title": "EvalScoreResult",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.eval-score.v1"
+  "x-rcp-schema": "rcp.eval-score.v1"
 }

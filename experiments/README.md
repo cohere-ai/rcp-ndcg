@@ -3,7 +3,7 @@
 This folder recomputes the main tables and headline numbers of
 [Rubric-Calibrated Preferences (arXiv:2609.35739)](https://arxiv.org/abs/2609.35739), as printed in its version 2,
 from the public datasets on the Hugging Face Hub. No LLM is called and no credentials are needed. The folder is
-not part of the installed `rcp_ndcg` package: the scripts import the library, and the library never imports them.
+not part of the installed `rcp` package: the scripts import the library, and the library never imports them.
 
 Each script prints the paper's value next to the reproduced one and exits with status 1 if any value falls
 outside its stated tolerance.
@@ -13,7 +13,7 @@ outside its stated tolerance.
 From the repository root:
 
 ```bash
-pip install ./rcp-ndcg-core ./rcp-ndcg     # or: uv sync
+pip install ./rcp-core ./rcp     # or: uv sync
 pip install -r experiments/requirements.txt      # huggingface-hub, pyarrow
 python experiments/fetch_data.py                 # about 150 MB into experiments/data/
 python experiments/run_all.py                    # all checks, about one minute on a laptop
@@ -43,7 +43,7 @@ were selected for.
 | `external_judges.py` | Tournament-order test with GLM-5.3-flash, DeepSeek-4.1-flash and Kimi-K3 (sets S1, controls, S2, S3; per judge, by majority, S2 per suite) and Study 1 with the same three judges (NanoBEIR and BRIGHT, both reference judges, the rebuilt BRIGHT cases), without the cases flagged `excluded_under_fit` | `rcp-ndcg-external-validation` `blind_comparisons/` | all 82 values |
 
 The per-suite scoring rules (candidate set, excluded documents, tie rule, ideal ranking, rounding) and the nDCG
-come from the library: `rcp_ndcg_core.protocol` and `rcp_ndcg_core.metric`. Every preset credits tied scores with
+come from the library: `rcp_core.protocol` and `rcp_core.metric`. Every preset credits tied scores with
 their group's mean gain, for qrel-nDCG@10 and RCP-nDCG@10.
 
 The external-judge cases follow arXiv v2's exclusion rule: a case enters only if, under the v2 fit, it keeps the
@@ -73,7 +73,7 @@ These results need LLM calls or inputs that are not public, or are not covered b
 
 | Result | Status |
 |---|---|
-| Re-judging a pool (Stage A tournament, Stage B criteria) | Needs an LLM endpoint; use the `rcp-ndcg` pipeline (see the main README). |
+| Re-judging a pool (Stage A tournament, Stage B criteria) | Needs an LLM endpoint; use the `rcp` pipeline (see the main README). |
 | Refitting the 2PL calibration and its diagnostics (ICCs, item parameters, calibration ablations, Brier and ECE) | Not covered. The inputs are public (the judge's tournament scores are the `is_judge` runs in `provenance-runs`, the Stage B verdicts are `provenance-judge-criteria`), and the fit is the library's calibration API. |
 | Leaderboards with the second judge (gpt-oss-120b) and the TREC-DL calibrations CAL-B and CAL-C | Those gains are not in the public datasets. |
 | TREC-DL analyses over 18 systems (the 14 rerankers plus 4 first-stage runs) | The first-stage runs are not released. |

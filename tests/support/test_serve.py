@@ -1,4 +1,4 @@
-"""The phase plan (:func:`rcp_ndcg.support.serve.plan_phases`) and the engines overlay it is planned from.
+"""The phase plan (:func:`rcp.support.serve.plan_phases`) and the engines overlay it is planned from.
 
 ``plan_phases`` is a pure function of the steps, the engines and their use: consecutive steps that call the
 same served engines share a phase, steps that call no served engine run in a phase without one, and the paper
@@ -11,9 +11,9 @@ import json
 
 import pytest
 
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.support.resources import Resources
-from rcp_ndcg.support.serve import (
+from rcp.errors import ConfigError
+from rcp.support.resources import Resources
+from rcp.support.serve import (
     ENGINES_ENV,
     EngineConfig,
     EngineRole,

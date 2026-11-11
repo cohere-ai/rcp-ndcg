@@ -5,7 +5,7 @@ datasets. They call no LLM and need no GPU and no credentials. The folder is not
 run it from a checkout of the repository:
 
 ```bash
-pip install ./rcp-ndcg-core ./rcp-ndcg     # or: uv sync
+pip install ./rcp-core ./rcp     # or: uv sync
 pip install -r experiments/requirements.txt
 python experiments/fetch_data.py                 # the public datasets, at pinned revisions (about 150 MB)
 python experiments/run_all.py                    # every check; exits 1 if a value falls outside its tolerance
@@ -38,6 +38,6 @@ use the released data as it is ([data](../data.md)).
 
 Running both judging stages and the calibration yourself needs an OpenAI-compatible endpoint that serves the judge.
 The paper used Qwen3.5-397B for NanoBEIR, BRIGHT and ViDoRe v3, and Qwen3.6-27B for TREC-DL. The judge recipes
-ship in `rcp-ndcg-vllm` (`--judge recipe:qwen3.5-397b-a17b-nvfp4`); the paper's judges ran on SGLang (the paper's submission code
+ship in `rcp-vllm` (`--judge recipe:qwen3.5-397b-a17b-nvfp4`); the paper's judges ran on SGLang (the paper's submission code
 is the record of those engine commands), and this release serves them on vLLM v0.33.0
 ([serving](../concepts/judges.md)). [calibrate your benchmark](calibrate-your-benchmark.md) walks through a run.

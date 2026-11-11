@@ -17,10 +17,10 @@ import httpx
 import numpy as np
 import pytest
 
-import rcp_ndcg.inference.fake as fake_module
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.inference import Call, Endpoint, Transport, register_fake_route
-from rcp_ndcg.inference.fake import FakeEndpoint, _fake_endpoint, fake_uniform, hidden_ability
+import rcp.inference.fake as fake_module
+from rcp.errors import ConfigError
+from rcp.inference import Call, Endpoint, Transport, register_fake_route
+from rcp.inference.fake import FakeEndpoint, _fake_endpoint, fake_uniform, hidden_ability
 
 PINNED_UNIT_VECTOR = (-0.41370025636660385, -0.5207374821709475, -0.5862891756258611, -0.4625468355619963)
 """The fake's unit vector for (seed 0, "embedding", "hello") at 4 dimensions."""
@@ -191,7 +191,7 @@ class TestPooling:
         document prefix loses the declared positions, a row that opens with anything else is a query and keeps
         every position, and a row under no declared rule is whole.  The usage report stays the prompt's own
         count (the engine's report), which the client's declared kept count replaces on the reply's arrays."""
-        from rcp_ndcg.inference.fake import fake_transport
+        from rcp.inference.fake import fake_transport
 
         def answered(ids: list[int], **rule: object) -> tuple[int, int]:
             transport = fake_transport("fake://pool?dim=2", model="m", **rule)  # type: ignore[arg-type]
@@ -247,7 +247,7 @@ class TestTokenCounts:
 
     @staticmethod
     def _pooling(tokenizer_json: str, **fields: object) -> Transport:
-        from rcp_ndcg.inference.config import PoolingEndpoint
+        from rcp.inference.config import PoolingEndpoint
 
         config = PoolingEndpoint(
             base_url="fake://seed/2?dim=4", model="mv", tokenizer=tokenizer_json, max_tokens=64, dim=4, **fields
@@ -278,11 +278,11 @@ class TestTokenCounts:
         """The pooling client checks the returned vector count against the ids it sent before it drops the
         skip ids: over the fake that count is now the declared tokenizer's (it was whitespace words, a
         ProviderError for any text whose words and tokens differ)."""
-        from rcp_ndcg_core.content import Content
+        from rcp_core.content import Content
 
-        from rcp_ndcg.inference import PoolingClient
-        from rcp_ndcg.inference.config import PoolingEndpoint
-        from rcp_ndcg.inference.types import EncodeRole
+        from rcp.inference import PoolingClient
+        from rcp.inference.config import PoolingEndpoint
+        from rcp.inference.types import EncodeRole
 
         config = PoolingEndpoint(
             base_url="fake://seed/2?dim=4",
@@ -301,13 +301,13 @@ class TestTokenCounts:
         config does not carry the rule's role gate), the fake answers only the kept positions under the gate,
         and the client's declared kept count accepts the reply -- while the query side, which the gate spares,
         keeps every vector."""
-        from rcp_ndcg_core.content import Content
+        from rcp_core.content import Content
 
-        from rcp_ndcg.data.tokenizer import load_tokenizer
-        from rcp_ndcg.inference import PoolingClient
-        from rcp_ndcg.inference.config import PoolingEndpoint
-        from rcp_ndcg.inference.fake import fake_transport
-        from rcp_ndcg.inference.types import EncodeRole
+        from rcp.data.tokenizer import load_tokenizer
+        from rcp.inference import PoolingClient
+        from rcp.inference.config import PoolingEndpoint
+        from rcp.inference.fake import fake_transport
+        from rcp.inference.types import EncodeRole
 
         tokenizer = load_tokenizer(tokenizer_json)
         document, query = "the,a of", "of the"
@@ -343,7 +343,7 @@ class TestTokenCounts:
 
 class TestRerank:
     def test_scores_are_the_documents_hidden_ability_best_first(self) -> None:
-        from rcp_ndcg.inference.fake import hidden_ability
+        from rcp.inference.fake import hidden_ability
 
         docs = ["first document", "second document", "third document"]
         transport = _transport("fake://seed/5", "rr")
@@ -359,8 +359,8 @@ class TestRerank:
 
     def test_the_ability_is_the_fake_judges(self) -> None:
         """The rerank and the judge read one hidden truth, so a tiny run's rerank and judge agree."""
-        from rcp_ndcg.inference.fake import hidden_ability
-        from rcp_ndcg.judging._fake import _hidden_ability
+        from rcp.inference.fake import hidden_ability
+        from rcp.judging._fake import _hidden_ability
 
         assert _hidden_ability(3)("some document") == hidden_ability(3)("some document")
 
@@ -397,7 +397,7 @@ class TestModelsAndRoutes:
         register_fake_route(*CHAT, _custom_route)  # type: ignore[arg-type]  # the same handler again: fine
 
     def test_an_unknown_route_is_a_404(self) -> None:
-        from rcp_ndcg.errors import ProviderError
+        from rcp.errors import ProviderError
 
         transport = _transport("fake://embed", "enc")
         with pytest.raises(ProviderError, match=r"fake://embed/nope.*no route for POST /nope"):
@@ -435,7 +435,7 @@ class TestFakeWireFidelity:
     def test_the_embeddings_usage_reports_total_equals_prompt(self) -> None:
         import httpx
 
-        from rcp_ndcg.inference.fake import fake_transport
+        from rcp.inference.fake import fake_transport
 
         transport = fake_transport("fake://embed?dim=8", model="m")
         response = transport.handler(
@@ -448,7 +448,7 @@ class TestFakeWireFidelity:
     def test_a_rerank_document_keyed_by_id_scores_that_document(self) -> None:
         import httpx
 
-        from rcp_ndcg.inference.fake import fake_transport
+        from rcp.inference.fake import fake_transport
 
         transport = fake_transport("fake://rerank?dim=8", model="m")
         plain = transport.handler(
@@ -467,7 +467,7 @@ class TestFakeWireFidelity:
         import httpx
         import numpy as np
 
-        from rcp_ndcg.inference.fake import fake_transport
+        from rcp.inference.fake import fake_transport
 
         transport = fake_transport("fake://pool?dim=2", model="m")
 
@@ -495,17 +495,17 @@ class TestFakeWireFidelity:
 
 class TestEngineUrlsWithoutAProvider:
     """A ``fake://<engine>-<version>/<recipe>`` URL names a verified fake engine; without an emulator
-    provider (rcp-ndcg-test's ``rcp_ndcg.fake_transports`` entry point) the refusal is typed and names
+    provider (rcp-test's ``rcp.fake_transports`` entry point) the refusal is typed and names
     the package (decision 20's product-side seam)."""
 
     def test_without_a_provider_the_refusal_names_the_package(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """In an environment without a provider (a plain rcp-ndcg install: no dev group), the refusal names
-        the missing package and its entry-point group; the dev venv has rcp-ndcg-test, so the group is
+        """In an environment without a provider (a plain rcp install: no dev group), the refusal names
+        the missing package and its entry-point group; the dev venv has rcp-test, so the group is
         emptied here to exercise the product's own fallback."""
         import sys
         import types
 
-        from rcp_ndcg.errors import ConfigError
+        from rcp.errors import ConfigError
 
         empty = types.SimpleNamespace(select=lambda group: [])
         monkeypatch.setitem(
@@ -513,11 +513,11 @@ class TestEngineUrlsWithoutAProvider:
             "importlib.metadata",
             types.SimpleNamespace(entry_points=lambda group: empty.select(group=group)),
         )
-        from rcp_ndcg.inference.fake import fake_transport
+        from rcp.inference.fake import fake_transport
 
         with pytest.raises(ConfigError, match="no emulator provider is installed") as excinfo:
             fake_transport("fake://vllm-0.33.0/qwen3-embedding-0.6b", model="qwen3-embedding-0.6b", tokenizer=None)
-        assert "rcp-ndcg-test" in str(excinfo.value)
+        assert "rcp-test" in str(excinfo.value)
 
     def test_a_provider_is_used_when_installed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The seam resolves through the group: a registered provider's transport answers the URL, so the
@@ -534,14 +534,14 @@ class TestEngineUrlsWithoutAProvider:
                 return lambda url: transport if "vllm-0.33.0" in url else None
 
         fake_eps = types.SimpleNamespace(
-            select=lambda group: [FakeEntryPoint()] if group == "rcp_ndcg.fake_transports" else []
+            select=lambda group: [FakeEntryPoint()] if group == "rcp.fake_transports" else []
         )
         monkeypatch.setitem(
             sys.modules,
             "importlib.metadata",
             types.SimpleNamespace(entry_points=lambda group: fake_eps.select(group=group)),
         )
-        from rcp_ndcg.inference.fake import fake_transport
+        from rcp.inference.fake import fake_transport
 
         answered = fake_transport("fake://vllm-0.33.0/qwen3-embedding-0.6b", model="m", tokenizer=None)
         assert answered is transport

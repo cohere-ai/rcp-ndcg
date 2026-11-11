@@ -8,10 +8,10 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.judging import JudgeConfig, TournamentSchedule
-from rcp_ndcg.runs import RunConfig
-from rcp_ndcg.support.config import apply_overrides, load_config
+from rcp.errors import ConfigError
+from rcp.judging import JudgeConfig, TournamentSchedule
+from rcp.runs import RunConfig
+from rcp.support.config import apply_overrides, load_config
 from tests.conftest import SESSION_TOKENIZER
 
 _SERVED_BUDGET = {"tokenizer": str(SESSION_TOKENIZER), "max_tokens": 8192}
@@ -95,7 +95,7 @@ class TestValidation:
             )
 
     def test_schedules_default_to_none_and_validate_when_given(self) -> None:
-        from rcp_ndcg.judging import RubricSchedule
+        from rcp.judging import RubricSchedule
 
         config = RunConfig(dataset=DATASET, judge="fake", tournament={"window": 5}, rubric={"placements_per_doc": 13.0})
         assert isinstance(config.tournament, TournamentSchedule) and config.tournament.window == 5
@@ -163,7 +163,7 @@ class TestServe:
         assert "retrieve" not in config.engine_uses()
 
     def test_a_served_role_with_base_url_is_refused(self) -> None:
-        from rcp_ndcg.errors import ConfigError
+        from rcp.errors import ConfigError
 
         served = {
             "from": "retrieval",
@@ -362,7 +362,7 @@ class TestJudge:
         but the config's directory failed ('no family at ./my-judge')."""
         import shutil
 
-        from rcp_ndcg_vllm.recipe import default_recipes_root
+        from rcp_vllm.recipe import default_recipes_root
 
         configs = tmp_path / "configs"
         configs.mkdir()
@@ -491,7 +491,7 @@ class TestRunnerOptions:
     @pytest.mark.parametrize("name", ["local", "slurm", "kubernetes"])
     def test_the_typed_options_are_the_runners_own_model(self, name: str) -> None:
         # One model per runner: the config's options are exactly what the runner validates.
-        from rcp_ndcg.runners import get_runner
+        from rcp.runners import get_runner
 
         config = RunConfig.model_validate({"dataset": DATASET, "steps": ["evaluate"], "runner": {"name": name}})
         runner = get_runner(name)
@@ -507,7 +507,7 @@ class TestRunnerOptions:
     def test_a_job_env_naming_the_engines_overlay_is_refused_at_load(self, tmp_path: Path) -> None:
         """The phase overlay owns ``RCP_NDCG_ENGINES``: a job env entry of that name silently defeated every
         phase's own URLs, so the config refuses it instead of letting the runner's value be overridden."""
-        from rcp_ndcg.support.serve import ENGINES_ENV
+        from rcp.support.serve import ENGINES_ENV
 
         data = {
             "dataset": DATASET,
@@ -531,7 +531,7 @@ class TestRunnerOptions:
     def test_a_plugin_option_named_env_cannot_carry_the_overlay(self) -> None:
         """A plugin runner's options are free-form, so the refusal must reach them at config load, not only
         when the job is built."""
-        from rcp_ndcg.support.serve import ENGINES_ENV
+        from rcp.support.serve import ENGINES_ENV
 
         with pytest.raises(ValidationError, match=ENGINES_ENV):
             RunConfig.model_validate(

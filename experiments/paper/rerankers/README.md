@@ -1,6 +1,6 @@
 # Reranker configs
 
-Each YAML is a `rcp_ndcg.retrieval.RerankerConfig`; pass it to `rcp-ndcg retrieval rerank --reranker <file>`
+Each YAML is a `rcp.retrieval.RerankerConfig`; pass it to `rcp retrieval rerank --reranker <file>`
 and override a field with `--set KEY=VALUE`.
 
 The `api` says which wire the model speaks, and each one takes only its own fields:
@@ -18,14 +18,14 @@ A served reranker needs no GPU on the client:
 
 ```bash
 vllm serve <reranker-model> --runner pooling --max-model-len 32768 &
-rcp-ndcg retrieval rerank --dataset <uri> --rankings fused.parquet --reranker my_reranker.yaml \
+rcp retrieval rerank --dataset <uri> --rankings fused.parquet --reranker my_reranker.yaml \
   --out reranked.parquet
 ```
 
 ## The paper's models
 
 The paper's in-process rerankers are served now (the package carries no in-process model code). The three
-`ctxl_rerank_*` configs point at their serving recipe (`recipe:`; the recipes live in `rcp-ndcg-vllm`, with the
+`ctxl_rerank_*` configs point at their serving recipe (`recipe:`; the recipes live in `rcp-vllm`, with the
 paper's exact scoring kept under `reference/` for the equivalence check) — the id is the checkpoint's lowercased
 Hub repo name, never a short redirect (`zerank-1-reranker`, not `zerank-1`) — and the other served configs
 (`jina_v3`, the three `qwen3_reranker_*` and the three `zerank_*`) deliberately keep the paper's explicit fields

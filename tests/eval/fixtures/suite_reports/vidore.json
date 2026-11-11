@@ -1,0 +1,79 @@
+{
+  "schema": "rcp.eval-report.v1",
+  "protocol": {
+    "name": "vidore",
+    "ties": "group_mean",
+    "qrel_gain": "linear",
+    "restrict_to_candidates": true,
+    "drop_identical_ids": false,
+    "round_digits": null
+  },
+  "gains_source": "dataset",
+  "metrics": [
+    "rcp_ndcg",
+    "qrel_ndcg"
+  ],
+  "k": [
+    10
+  ],
+  "per_query": [
+    {
+      "system": "system",
+      "dataset": "vidore",
+      "query_id": "query-test-7",
+      "metric": "rcp_ndcg",
+      "k": 10,
+      "value": 0.8227864051509935
+    },
+    {
+      "system": "system",
+      "dataset": "vidore",
+      "query_id": "query-test-7",
+      "metric": "qrel_ndcg",
+      "k": 10,
+      "value": 0.4977024886349646
+    }
+  ],
+  "per_dataset": [
+    {
+      "system": "system",
+      "dataset": "vidore",
+      "metric": "rcp_ndcg",
+      "k": 10,
+      "value": 0.8227864051509935,
+      "num_queries": 1
+    },
+    {
+      "system": "system",
+      "dataset": "vidore",
+      "metric": "qrel_ndcg",
+      "k": 10,
+      "value": 0.4977024886349646,
+      "num_queries": 1
+    }
+  ],
+  "summary": [
+    {
+      "system": "system",
+      "metric": "rcp_ndcg",
+      "k": 10,
+      "value": 0.8227864051509935,
+      "ci_low": null,
+      "ci_high": null,
+      "num_queries": 1,
+      "num_datasets": 1
+    },
+    {
+      "system": "system",
+      "metric": "qrel_ndcg",
+      "k": 10,
+      "value": 0.4977024886349646,
+      "ci_low": null,
+      "ci_high": null,
+      "num_queries": 1,
+      "num_datasets": 1
+    }
+  ],
+  "warnings": [],
+  "inputs": null
+}

@@ -67,7 +67,7 @@
       "type": "integer"
     },
     "identity": {
-      "description": "The store's content identity: the retrieval identity of the full-width encoder plus a full-width marker (rcp_ndcg.retrieval.build_store). ``k`` never enters it.",
+      "description": "The store's content identity: the retrieval identity of the full-width encoder plus a full-width marker (rcp.retrieval.build_store). ``k`` never enters it.",
       "minLength": 1,
       "title": "Identity",
       "type": "string"
@@ -222,9 +222,12 @@
       "title": "Revision"
     },
     "schema": {
-      "const": "rcp-ndcg.embedding-store.v1",
-      "default": "rcp-ndcg.embedding-store.v1",
-      "description": "``rcp-ndcg.embedding-store.v1`` (the ``schema`` field).",
+      "default": "rcp.embedding-store.v1",
+      "description": "``rcp.embedding-store.v1`` (the ``schema`` field).",
+      "enum": [
+        "rcp.embedding-store.v1",
+        "rcp-ndcg.embedding-store.v1"
+      ],
       "title": "Schema",
       "type": "string"
     },
@@ -271,5 +274,5 @@
   ],
   "title": "EmbeddingStore",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.embedding-store.v1"
+  "x-rcp-schema": "rcp.embedding-store.v1"
 }

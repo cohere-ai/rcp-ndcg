@@ -11,7 +11,7 @@
       "type": "array"
     },
     "schema": {
-      "const": "rcp-ndcg.data-formats.v1",
+      "const": "rcp.data-formats.v1",
       "type": "string"
     },
     "writers": {
@@ -29,5 +29,5 @@
   ],
   "title": "DataFormats",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.data-formats.v1"
+  "x-rcp-schema": "rcp.data-formats.v1"
 }

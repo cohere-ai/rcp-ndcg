@@ -15,9 +15,9 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from rcp_ndcg.data import load_dataset
-from rcp_ndcg.data.revisions import resolve_revision
-from rcp_ndcg.errors import DataError, MissingInputError, ProviderError, RcpNdcgWarning
+from rcp.data import load_dataset
+from rcp.data.revisions import resolve_revision
+from rcp.errors import DataError, MissingInputError, ProviderError, RcpNdcgWarning
 
 REPO = "org/data"
 SUBSET = "hr__english"
@@ -151,7 +151,7 @@ def _offline(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_offline_unpinned_without_a_recorded_ref_names_the_revision_fix(cache: Path) -> None:
     """A cache with no ref to resolve says so, with the revision fix, and never reports missing data."""
-    from rcp_ndcg.errors import RcpNdcgWarning
+    from rcp.errors import RcpNdcgWarning
 
     stage(cache, files=_TABLES)
 
@@ -191,7 +191,7 @@ def test_a_hub_without_the_private_absence_sentinel_never_reports_silent_absence
 
     stage(cache, files={f"{SUBSET}/qrels.parquet": _TABLES[f"{SUBSET}/qrels.parquet"]})  # top_ranked: unmarked
 
-    with caplog.at_level(logging.DEBUG, logger="rcp_ndcg.data.io.hub"):
+    with caplog.at_level(logging.DEBUG, logger="rcp.data.io.hub"):
         with pytest.raises(MissingInputError) as caught:
             load_dataset(f"hf://{REPO}/{SUBSET}", revision=SHA)
 
@@ -243,7 +243,7 @@ def test_offline_pinned_required_table_the_cache_marks_absent_says_does_not_exis
 
 def test_offline_corpus_materializes_from_the_snapshot(cache: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Offline, the repository listing comes from the local snapshot, so a run reads its corpus from the cache."""
-    from rcp_ndcg.errors import RcpNdcgWarning
+    from rcp.errors import RcpNdcgWarning
 
     card = (
         "---\nconfigs:\n- config_name: hr__english-corpus\n  data_files:\n  - path: hr__english/corpus/*.parquet\n---\n"
@@ -264,7 +264,7 @@ def test_offline_corpus_materializes_from_the_snapshot(cache: Path, monkeypatch:
 
 def test_offline_listing_without_a_snapshot_names_the_revision_fix(cache: Path) -> None:
     """With no snapshot to list, the offline failure is the classified cache miss with the revision fix."""
-    from rcp_ndcg.data.io.hub import _hub_listing
+    from rcp.data.io.hub import _hub_listing
 
     with pytest.raises(MissingInputError) as caught:
         _hub_listing(REPO, None)
@@ -281,8 +281,8 @@ def test_a_hub_down_on_the_listing_serves_the_snapshot_or_is_a_retryable_provide
     import huggingface_hub
     from huggingface_hub.errors import HfHubHTTPError
 
-    from rcp_ndcg.data.io.hub import _hub_listing
-    from rcp_ndcg.errors import RcpNdcgWarning
+    from rcp.data.io.hub import _hub_listing
+    from rcp.errors import RcpNdcgWarning
 
     def down(*args: object, **kwargs: object):
         response = httpx.Response(503, request=httpx.Request("GET", "https://hub.example/tree"))
@@ -320,7 +320,7 @@ def test_an_unreachable_hub_on_the_listing_is_a_retryable_provider_error_not_off
     import httpx
     import huggingface_hub
 
-    from rcp_ndcg.data.io.hub import _hub_listing
+    from rcp.data.io.hub import _hub_listing
 
     stage(cache, files=_TABLES)
     _online(monkeypatch, {(REPO, "main"): SHA})  # env online: the offline flag is not the cause
@@ -347,7 +347,7 @@ def test_a_requests_unreachable_or_non_json_listing_is_a_provider_error(
     import huggingface_hub
     import requests
 
-    from rcp_ndcg.data.io.hub import _hub_listing
+    from rcp.data.io.hub import _hub_listing
 
     stage(cache, files=_TABLES)
     _online(monkeypatch, {(REPO, "main"): SHA})
@@ -376,8 +376,8 @@ def test_a_requests_unreachable_or_non_json_listing_is_a_provider_error(
 
 def test_a_snapshot_listing_warns_with_the_snapshot_listing_code(cache: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A partial snapshot standing in for the listing warns ``SNAPSHOT_LISTING`` (so ``--json`` carries it)."""
-    from rcp_ndcg.data.io.hub import _hub_listing
-    from rcp_ndcg.errors import RcpNdcgWarning
+    from rcp.data.io.hub import _hub_listing
+    from rcp.errors import RcpNdcgWarning
 
     stage(cache, files=_TABLES)
     _offline(monkeypatch)
@@ -393,7 +393,7 @@ def test_a_snapshot_listing_warns_with_the_snapshot_listing_code(cache: Path, mo
 
 def test_a_snapshot_listing_needs_a_commit(cache: Path) -> None:
     """An unresolved revision lists nothing: the snapshot tree is per commit, never across commits."""
-    from rcp_ndcg.data.io.hub import _snapshot_listing
+    from rcp.data.io.hub import _snapshot_listing
 
     stage(cache, files=_TABLES, sha=SHA)
 
@@ -402,7 +402,7 @@ def test_a_snapshot_listing_needs_a_commit(cache: Path) -> None:
 
 def test_an_unreachable_hub_is_a_retryable_provider_error(cache: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """A Hub that cannot be reached is not missing data: the failure is retryable and names the endpoint."""
-    from rcp_ndcg.errors import RcpNdcgWarning
+    from rcp.errors import RcpNdcgWarning
 
     _online(monkeypatch, {})  # the fake Hub has no ref: every lookup raises
     import httpx
@@ -429,7 +429,7 @@ def test_a_required_table_that_does_not_exist_upstream_says_so_with_what_to_chec
     cache: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Online, a required table the repository lacks stays a missing input, naming the file and a hint."""
-    from rcp_ndcg.errors import RcpNdcgWarning
+    from rcp.errors import RcpNdcgWarning
 
     _online(monkeypatch, {})
     import huggingface_hub
@@ -456,13 +456,13 @@ def test_a_read_only_cache_skips_the_ref_write(
     """A cache that refuses the ref write costs one debug line: the resolution still returns the commit."""
     import logging
 
-    from rcp_ndcg.errors import RcpNdcgWarning
+    from rcp.errors import RcpNdcgWarning
 
     stage(cache, files=_TABLES, absent=(f"{SUBSET}/excluded.parquet",))
     (cache / f"datasets--{REPO.replace('/', '--')}" / "refs").write_text("a file blocks the refs directory")
     _online(monkeypatch, {(REPO, "main"): SHA})
 
-    with caplog.at_level(logging.DEBUG, logger="rcp_ndcg.data.revisions"):
+    with caplog.at_level(logging.DEBUG, logger="rcp.data.revisions"):
         resolved = resolve_revision(REPO, None)
 
     assert resolved.commit == SHA

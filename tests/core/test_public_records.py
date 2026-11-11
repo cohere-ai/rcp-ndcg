@@ -1,4 +1,4 @@
-"""The public records of ``rcp_ndcg_core.schemas``: validation, keys and round trips."""
+"""The public records of ``rcp_core.schemas``: validation, keys and round trips."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
-from rcp_ndcg_core.records import RankingExample
-from rcp_ndcg_core.schemas import (
+from rcp_core.records import RankingExample
+from rcp_core.schemas import (
     DocumentEstimate,
     ItemParams,
     Judgement,
@@ -202,7 +202,7 @@ def test_a_placement_carries_one_shape_not_both() -> None:
 def test_judgement_json_round_trip_carries_the_schema_id() -> None:
     judgement = _rubric()
     payload = judgement.model_dump_json()
-    assert '"schema":"rcp-ndcg.judgement.v1"' in payload
+    assert '"schema":"rcp.judgement.v1"' in payload
     assert Judgement.model_validate_json(payload) == judgement
 
 
@@ -259,12 +259,12 @@ def test_the_facade_exports_the_types_its_public_functions_return() -> None:
     """``score_document``/``insert_document`` return :class:`DocumentEstimate` (flags included) and the
     facade docstring names it, but the frozen surface exported neither, so a user could not import the
     type of the value the public API hands back."""
-    import rcp_ndcg_core
-    from rcp_ndcg_core import DocumentEstimate, EstimateFlags
-    from rcp_ndcg_core.schemas import DocumentEstimate as SchemaEstimate
-    from rcp_ndcg_core.schemas import EstimateFlags as SchemaFlags
+    import rcp_core
+    from rcp_core import DocumentEstimate, EstimateFlags
+    from rcp_core.schemas import DocumentEstimate as SchemaEstimate
+    from rcp_core.schemas import EstimateFlags as SchemaFlags
 
     assert DocumentEstimate is SchemaEstimate
     assert EstimateFlags is SchemaFlags
-    assert "DocumentEstimate" in rcp_ndcg_core.__all__
-    assert "EstimateFlags" in rcp_ndcg_core.__all__
+    assert "DocumentEstimate" in rcp_core.__all__
+    assert "EstimateFlags" in rcp_core.__all__

@@ -1,4 +1,4 @@
-"""Scoring inside mteb (`rcp_ndcg.eval.mteb.stored`): a `SearchProtocol` serving stored `Rankings` to
+"""Scoring inside mteb (`rcp.eval.mteb.stored`): a `SearchProtocol` serving stored `Rankings` to
 `mteb.evaluate`, a `ModelMeta` from our model identity, and the round trips: the integer nDCG@10 equals our
 evaluator's under the trec_eval tie rule (mteb's integer metrics, through pytrec_eval, break ties by doc id; the
 presets credit a tie its group's mean, as mteb's `ndcg_float_at_k` does), and `TaskResult` files land in mteb's
@@ -17,14 +17,14 @@ MTEB = pytest.importorskip("mteb")
 from mteb.abstasks.retrieval import AbsTaskRetrieval  # noqa: E402
 from mteb.abstasks.task_metadata import TaskMetadata  # noqa: E402
 from mteb.cache import ResultCache  # noqa: E402
-from rcp_ndcg_core import PROTOCOLS  # noqa: E402
+from rcp_core import PROTOCOLS  # noqa: E402
 
-from rcp_ndcg.data import Rankings  # noqa: E402
-from rcp_ndcg.data.dataset import Dataset  # noqa: E402
-from rcp_ndcg.data.io.mteb import MtebWriter  # noqa: E402
-from rcp_ndcg.errors import ConfigError, DataError  # noqa: E402
-from rcp_ndcg.eval.evaluate import evaluate  # noqa: E402
-from rcp_ndcg.eval.mteb import model_meta, stored_rankings_model  # noqa: E402
+from rcp.data import Rankings  # noqa: E402
+from rcp.data.dataset import Dataset  # noqa: E402
+from rcp.data.io.mteb import MtebWriter  # noqa: E402
+from rcp.errors import ConfigError, DataError  # noqa: E402
+from rcp.eval.evaluate import evaluate  # noqa: E402
+from rcp.eval.mteb import model_meta, stored_rankings_model  # noqa: E402
 
 SUBSET = "NanoArguAnaRetrieval"
 #: The nanobeir protocol with pytrec_eval's tie rule (document id, descending): mteb's integer ``ndcg_at_10``.
@@ -113,7 +113,7 @@ def test_model_meta_defaults_cover_every_required_field() -> None:
     fails until the defaults follow)."""
     from mteb.models.model_meta import ModelMeta
 
-    from rcp_ndcg.eval.mteb import stored
+    from rcp.eval.mteb import stored
 
     required = {name for name, field in ModelMeta.model_fields.items() if field.is_required()} - {"name", "revision"}
     assert required <= set(stored._META_DEFAULTS), sorted(required - set(stored._META_DEFAULTS))

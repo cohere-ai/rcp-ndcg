@@ -16,7 +16,7 @@ from pathlib import Path
 
 def test_cache_dirs_are_the_session_scratch() -> None:
     cache = Path(os.environ["RCP_NDCG_CACHE_DIR"])
-    assert "rcp-ndcg-tests-" in cache.as_posix(), cache
+    assert "rcp-tests-" in cache.as_posix(), cache
     assert "RCP_NDCG_MEDIA_CACHE" not in os.environ
     assert "RCP_NDCG_RUNS_DIR" not in os.environ
 

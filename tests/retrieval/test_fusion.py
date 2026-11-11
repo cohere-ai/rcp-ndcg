@@ -1,14 +1,14 @@
-"""Unit tests for :mod:`rcp_ndcg.retrieval.fusion`."""
+"""Unit tests for :mod:`rcp.retrieval.fusion`."""
 
 from __future__ import annotations
 
 import math
 
 import pytest
-from rcp_ndcg_core.records import RankingExample
+from rcp_core.records import RankingExample
 
-from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.retrieval.fusion import reciprocal_rank_fusion
+from rcp.errors import ConfigError, DataError
+from rcp.retrieval.fusion import reciprocal_rank_fusion
 
 
 def _ex(qid: str, doc_ids: list[str], qrels: dict[str, int] | None = None) -> RankingExample:

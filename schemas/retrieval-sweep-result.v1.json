@@ -38,7 +38,7 @@
       "title": "Report"
     },
     "schema": {
-      "const": "rcp-ndcg.retrieval-sweep-result.v1",
+      "const": "rcp.retrieval-sweep-result.v1",
       "type": "string"
     },
     "store": {
@@ -62,5 +62,5 @@
   ],
   "title": "RetrievalSweepResult",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.retrieval-sweep-result.v1"
+  "x-rcp-schema": "rcp.retrieval-sweep-result.v1"
 }

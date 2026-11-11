@@ -49,11 +49,11 @@ where $N$ is the number of rubric placements, each answering all $C$ criteria, a
 cross-entropy of placement $n$ on criterion $c$. The priors are $\tau_j \sim \mathcal{N}(1, 1)$ and
 $\alpha_j \sim \mathcal{N}(0, 2^2)$, and the ridge is $\lambda = 10^{-4}$. The fit is thus the maximum a
 posteriori estimate. It starts from $\tau_j = 1$, $\alpha_j = 0$ and equal criterion parameters, and runs
-L-BFGS for at most 500 iterations on the CPU. `rcp_ndcg.calibration.Priors` holds these settings (`sigma_tau`,
+L-BFGS for at most 500 iterations on the CPU. `rcp.calibration.Priors` holds these settings (`sigma_tau`,
 `sigma_alpha`, `l2_gamma`, `l2_beta`), and `bt_l2`, the L2 penalty ($10^{-4}$) of the Bradley-Terry abilities the
 fit refits from the tournament's windows; the defaults, `Priors()`, are the paper's. The tournament's live fit uses
 the default `bt_l2` while judging, and the judgement store records it. A fit with another `bt_l2` refits abilities
-the adaptive windows were not chosen from: `rcp-ndcg calibration fit` and a run's calibrate step fit it anyway and
+the adaptive windows were not chosen from: `rcp calibration fit` and a run's calibrate step fit it anyway and
 record a `BT_L2_MISMATCH` warning, which `calibration show` lists.
 
 The fit is deterministic: identical judgements give identical parameters, whatever the order of the records or the
@@ -127,11 +127,11 @@ tournament](tournament.md#parsing-an-answer)). `coverage.json` counts the invali
 schedule phase (`random`, `stratified`, `adaptive`) and by category. A query is flagged when more than 5% of its windows
 in a stage the fit reads are invalid, or when any of its adaptive tournament windows is: the adaptive windows are the
 few that order the top of the ranking. The flags are an `INVALID_WINDOWS` warning, kept in the calibration's diagnostics
-and shown by `rcp-ndcg calibration show` and in the warnings of an evaluation scored with the calibration's gains.
-`calibrate(..., strict=True)` and `rcp-ndcg calibration fit --strict` refuse a flagged fit with `DataError` (exit 12)
+and shown by `rcp calibration show` and in the warnings of an evaluation scored with the calibration's gains.
+`calibrate(..., strict=True)` and `rcp calibration fit --strict` refuse a flagged fit with `DataError` (exit 12)
 instead. What clears a flag depends on the failure. A window the endpoint refused (no answer) is asked again by the
 same judging call or command. An unparseable answer is the judge's answer and is kept by a resumed pass: re-reading
-the stored answers with a newer parser (`rcp-ndcg judge reparse`) can recover it, and otherwise the windows are judged
+the stored answers with a newer parser (`rcp judge reparse`) can recover it, and otherwise the windows are judged
 again only into a new store.
 
 ## Documents without a tournament ability
@@ -141,14 +141,14 @@ tournament did not judge (added to the pool after it, for instance) gets no abil
 document the tournament showed only in windows whose answers could not be read: no comparison informs it, and its
 prior is never reported as an ability. The fit lists such
 documents in `coverage.json` (`uncalibrated_documents`) and warns with `UNCALIBRATED_DOCUMENTS`. Score them from
-their rubric verdicts with `score_documents` (`rcp-ndcg calibration score`), or insert them into the tournament
+their rubric verdicts with `score_documents` (`rcp calibration score`), or insert them into the tournament
 ([primitives](primitives.md)).
 
 When the query has at least one valid window, such a document is named by the windows that did not parse, but no
 comparison involves it: the Bradley-Terry model would only give it its prior, the query's mean ability, which is
 no evidence. The fit gives it no ability (a document judged in chunks pools only its compared chunks), lists it in
 `coverage.json` (`no_tournament_evidence_documents`, beside `uncalibrated_documents` when it has rubric verdicts)
-and warns with `NO_VALID_TOURNAMENT_EVIDENCE`, and `calibrate(..., strict=True)` (`rcp-ndcg calibration fit
+and warns with `NO_VALID_TOURNAMENT_EVIDENCE`, and `calibrate(..., strict=True)` (`rcp calibration fit
 --strict`) refuses it. Judge a valid window for it (an insertion plan's windows are the way in) or leave it out of
 the pool.
 When every window of a query is invalid, nothing of the query is fitted at all: it is listed under
@@ -166,7 +166,7 @@ judgement (by `recorded_at`) is used, and an invalid copy is used only when the 
 is counted twice.
 
 Re-judging documents asks new windows: other positions or other companions, hence new record ids. A refit over the
-stores (`rcp-ndcg calibration fit --judgements <store> --judgements <re-judged store>`) counts them together with
+stores (`rcp calibration fit --judgements <store> --judgements <re-judged store>`) counts them together with
 the documents' earlier windows, so the re-judged documents are refit on all their evidence, and so is every
 calibrated parameter. `calibration score` differs: it adds documents that have no theta and leaves a document that
 has one as it is ([primitives](primitives.md)).
@@ -179,8 +179,8 @@ calibration end to end:
 ```python
 import warnings
 
-from rcp_ndcg.calibration import Calibration, calibrate, read_judgements
-from rcp_ndcg.testing import build_tiny_world
+from rcp.calibration import Calibration, calibrate, read_judgements
+from rcp.testing import build_tiny_world
 
 build_tiny_world("tiny")  # judgements of a fake judge under tiny/judgements
 # The store also holds two rubric-only documents (the re-judged q2-d10, q2-d11 above), so the fit warns about
@@ -196,5 +196,5 @@ gains = Calibration.load("tiny/my_calibration").gains()  # {query_id: {doc_id: g
 print(sorted(gains["q1"].items(), key=lambda kv: -kv[1])[:3])
 ```
 
-On the command line, `rcp-ndcg calibration fit` fits judgements into a calibration directory and
-`rcp-ndcg calibration show` prints its parameters, coverage and diagnostics.
+On the command line, `rcp calibration fit` fits judgements into a calibration directory and
+`rcp calibration show` prints its parameters, coverage and diagnostics.

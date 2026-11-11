@@ -1,6 +1,6 @@
-"""``rcp-ndcg results``: list the registered sinks and export records to one.
+"""``rcp results``: list the registered sinks and export records to one.
 
-``results export`` builds one ``rcp-ndcg.result-record.v1`` record per (system, dataset, metric, cutoff) from a
+``results export`` builds one ``rcp.result-record.v1`` record per (system, dataset, metric, cutoff) from a
 run directory or a report file and hands it to the named sink. The registry's entry points are injected here
 (the lane's environment predates the group; the gate rebuilds it and the packaging snapshot pins the
 declaration).
@@ -13,12 +13,12 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
-from rcp_ndcg_core.protocol import Protocol
+from rcp_core.protocol import Protocol
 
-from rcp_ndcg.cli.results import results_group
-from rcp_ndcg.data import Dataset, Rankings
-from rcp_ndcg.eval import ReportInputs, evaluate
-from rcp_ndcg.results import ResultRecord
+from rcp.cli.results import results_group
+from rcp.data import Dataset, Rankings
+from rcp.eval import ReportInputs, evaluate
+from rcp.results import ResultRecord
 from tests.results._runs import build_run
 from tests.results._sinks import inject_sinks
 
@@ -99,7 +99,7 @@ def test_export_writes_jsonl_from_a_report(report_path: Path, tmp_path: Path, mo
     assert {record.artifacts[0].uri for record in records} == {str(report_path)}
     assert all(record.dataset.protocol == "bright" for record in records)
     assert all(record.dataset.protocol_spec.ties == "doc_id_desc" for record in records)
-    assert all(record.artifacts[0].schema_name == "rcp-ndcg.eval-report.v1" for record in records)
+    assert all(record.artifacts[0].schema_name == "rcp.eval-report.v1" for record in records)
 
 
 def test_export_of_a_suite_report_names_the_suite_on_the_summary(

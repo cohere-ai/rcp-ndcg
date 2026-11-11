@@ -2,8 +2,8 @@
 
 The shipped ``api`` names select their own config classes; any other ``api`` is resolved against the role's
 registry where the config is read (an unregistered or wrong-role name is refused with the registry's hint) and
-builds the role's generic endpoint config (:class:`~rcp_ndcg.retrieval.config.PluginEmbedding`,
-:class:`~rcp_ndcg.retrieval.config.PluginReranker`), which ``index``/``search``/``retrieve``/``rerank`` run like
+builds the role's generic endpoint config (:class:`~rcp.retrieval.config.PluginEmbedding`,
+:class:`~rcp.retrieval.config.PluginReranker`), which ``index``/``search``/``retrieve``/``rerank`` run like
 any other. The test adapters below speak the offline fakes' wire, so the round trips run over ``fake://``.
 """
 
@@ -18,19 +18,19 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from rcp_ndcg.data import Rankings, load_dataset
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.inference.adapters.base import register_adapter
-from rcp_ndcg.inference.types import Call, Embeddings, Reply, RerankResult
-from rcp_ndcg.retrieval import (
+from rcp.data import Rankings, load_dataset
+from rcp.errors import ConfigError
+from rcp.inference.adapters.base import register_adapter
+from rcp.inference.types import Call, Embeddings, Reply, RerankResult
+from rcp.retrieval import (
     DenseConfig,
     ServedEmbedding,
     index,
     validate_reranker,
     validate_retriever,
 )
-from rcp_ndcg.retrieval import _api as retrieval_api
-from rcp_ndcg.retrieval.config import PluginEmbedding, PluginPooling, PluginReranker
+from rcp.retrieval import _api as retrieval_api
+from rcp.retrieval.config import PluginEmbedding, PluginPooling, PluginReranker
 from tests.conftest import SESSION_TOKENIZER
 from tests.retrieval.conftest import DOCS
 
@@ -100,7 +100,7 @@ class SlowPooling:
 
     def interpret(self, request: Any, replies: list[Reply]) -> Embeddings:
         """The ragged rows of the base64 frames, one slice per item."""
-        from rcp_ndcg.inference.adapters.pooling import VllmPooling
+        from rcp.inference.adapters.pooling import VllmPooling
 
         return VllmPooling().interpret(request, replies)
 
@@ -164,7 +164,7 @@ def dataset(tmp_path: Path):
 
 def test_a_registered_embed_adapter_runs_retrieve_end_to_end(dataset, tmp_path: Path) -> None:
     """`api: slow_embed` builds the generic endpoint config and `retrieve` runs it over the offline fake wire."""
-    from rcp_ndcg.retrieval import retrieve
+    from rcp.retrieval import retrieve
 
     config = validate_retriever(
         {
@@ -181,7 +181,7 @@ def test_a_registered_embed_adapter_runs_retrieve_end_to_end(dataset, tmp_path: 
 
 
 def test_a_registered_rerank_adapter_runs_rerank_end_to_end(dataset, tmp_path: Path) -> None:
-    from rcp_ndcg.retrieval import rerank
+    from rcp.retrieval import rerank
 
     config = validate_reranker(
         {
@@ -212,8 +212,8 @@ def test_a_registered_pooling_adapter_runs_late_interaction_end_to_end(
     dataset, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A plugin multi_vector config dispatches to PoolingClient: the adapter only ever sees `/pooling`."""
-    from rcp_ndcg.retrieval import retrieve
-    from rcp_ndcg.retrieval.config import PluginPooling
+    from rcp.retrieval import retrieve
+    from rcp.retrieval.config import PluginPooling
 
     config = validate_retriever(
         {
@@ -228,7 +228,7 @@ def test_a_registered_pooling_adapter_runs_late_interaction_end_to_end(
     def _wrong_dispatch(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("a pooling config reached the embedding client")
 
-    monkeypatch.setattr("rcp_ndcg.retrieval._api.EmbeddingClient", _wrong_dispatch)
+    monkeypatch.setattr("rcp.retrieval._api.EmbeddingClient", _wrong_dispatch)
 
     built = index(dataset, config, out=tmp_path / "idx")
     rankings = retrieve(dataset, config, depth=3, out=tmp_path / "idx")
@@ -241,7 +241,7 @@ def test_a_registered_pooling_adapter_runs_late_interaction_end_to_end(
 def test_a_plugin_wires_base_url_is_the_adapters_own() -> None:
     """The registry knows a third-party adapter's role, not its route: a plugin multi_vector wire's
     ``base_url`` is its own, so the shipped pooling wire's root rule is not imposed on it."""
-    from rcp_ndcg.retrieval.config import PluginPooling
+    from rcp.retrieval.config import PluginPooling
 
     config = validate_retriever(
         {
@@ -254,7 +254,7 @@ def test_a_plugin_wires_base_url_is_the_adapters_own() -> None:
 
 def test_the_identity_keys_on_the_adapter_name(dataset) -> None:
     """The adapter name is content: the config payload carries it, so two plugins never share a key."""
-    from rcp_ndcg.support.identity import identity_payload
+    from rcp.support.identity import identity_payload
     from tests.conftest import SESSION_TOKENIZER
 
     budget = {"tokenizer": str(SESSION_TOKENIZER), "max_tokens": 8192}

@@ -72,8 +72,11 @@
       "type": "integer"
     },
     "schema": {
-      "const": "rcp-ndcg.cost-estimate.v1",
-      "default": "rcp-ndcg.cost-estimate.v1",
+      "default": "rcp.cost-estimate.v1",
+      "enum": [
+        "rcp.cost-estimate.v1",
+        "rcp-ndcg.cost-estimate.v1"
+      ],
       "title": "Schema",
       "type": "string"
     },
@@ -104,5 +107,5 @@
   ],
   "title": "CostEstimate",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.cost-estimate.v1"
+  "x-rcp-schema": "rcp.cost-estimate.v1"
 }

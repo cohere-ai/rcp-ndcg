@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from rcp_ndcg.data.preprocess import (
+from rcp.data.preprocess import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_TEXT_POLICY,
     DocumentOverCapError,
@@ -23,7 +23,7 @@ from rcp_ndcg.data.preprocess import (
     apply_text_policy,
     token_prefix,
 )
-from rcp_ndcg.errors import ConfigError
+from rcp.errors import ConfigError
 from tests._tokenizers import byte_bpe_tokenizer, word_tokenizer
 
 WORDS = word_tokenizer()
@@ -146,7 +146,7 @@ class TestApplyTextPolicy:
         assert apply_text_policy(text, doc_id="doc-1", policy=policy, tokenizer=WORDS) is text
 
     def test_mechanisms_are_separate_namespaces(self) -> None:
-        from rcp_ndcg.errors import DataError
+        from rcp.errors import DataError
 
         census = TextTruncationCensus()
         with pytest.raises(DataError, match="mechanism"):

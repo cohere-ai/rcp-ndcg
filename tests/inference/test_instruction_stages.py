@@ -16,13 +16,13 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from rcp_ndcg_core.content import Content
+from rcp_core.content import Content
 
-from rcp_ndcg.data.templates import Segment, TemplateSpec
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.inference.clients.embed import EmbeddingClient
-from rcp_ndcg.inference.config import EmbeddingEndpoint
-from rcp_ndcg.inference.types import Call, EncodeRole, Reply
+from rcp.data.templates import Segment, TemplateSpec
+from rcp.errors import ConfigError
+from rcp.inference.clients.embed import EmbeddingClient
+from rcp.inference.config import EmbeddingEndpoint
+from rcp.inference.types import Call, EncodeRole, Reply
 from tests.inference._embed import FakeSender
 
 INSTRUCTION = "Given a claim, find documents that refute the claim"
@@ -185,7 +185,7 @@ class TestTheConfigDeclaration:
     def test_the_instruction_field_is_content_and_optional(self, tokenizer_json: str) -> None:
         """The field enters the run identity when declared and is absent (``None``) otherwise, so a config
         that never declares it keeps the identity it had."""
-        from rcp_ndcg.support.identity import identity_payload
+        from rcp.support.identity import identity_payload
 
         undeclared = EmbeddingEndpoint(model="m", tokenizer=tokenizer_json, max_tokens=64)
         assert "instruction" not in identity_payload(undeclared)

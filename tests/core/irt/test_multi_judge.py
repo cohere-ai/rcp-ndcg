@@ -15,8 +15,8 @@ import random
 import numpy as np
 import pytest
 import torch
-from rcp_ndcg_core.irt import fit_calibration
-from rcp_ndcg_core.irt._tournament_2pl import Tournament2PLCalibrator
+from rcp_core.irt import fit_calibration
+from rcp_core.irt._tournament_2pl import Tournament2PLCalibrator
 
 torch.set_num_threads(1)
 

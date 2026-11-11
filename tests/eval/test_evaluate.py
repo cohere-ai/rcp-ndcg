@@ -1,4 +1,4 @@
-"""``evaluate``, ``compare``, ``sensitivity`` and ``explain`` through the public ``rcp_ndcg.eval`` API."""
+"""``evaluate``, ``compare``, ``sensitivity`` and ``explain`` through the public ``rcp.eval`` API."""
 
 from __future__ import annotations
 
@@ -10,14 +10,14 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-from rcp_ndcg_core import gain, ndcg
-from rcp_ndcg_core.protocol import PROTOCOLS, score_query
+from rcp_core import gain, ndcg
+from rcp_core.protocol import PROTOCOLS, score_query
 from scipy.stats import ttest_rel
 
-from rcp_ndcg.data import Dataset, Rankings
-from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.eval import EvalReport, compare, evaluate, explain, sensitivity
-from rcp_ndcg.eval.evaluate import bootstrap_interval
+from rcp.data import Dataset, Rankings
+from rcp.errors import ConfigError, DataError
+from rcp.eval import EvalReport, compare, evaluate, explain, sensitivity
+from rcp.eval.evaluate import bootstrap_interval
 
 LOG2_3 = math.log2(3)
 ITEMS = {"gamma": [1.0, 1.2, 0.8, 1.1], "beta": [-1.0, -0.5, 0.0, 0.5]}
@@ -104,11 +104,11 @@ def test_gains_come_from_the_argument_then_a_calibration_then_the_dataset() -> N
 
 
 def _calibration(thetas: dict[str, dict[str, dict[str, float]]]):
-    """A :class:`~rcp_ndcg.calibration.Calibration` holding ``{dataset: {query_id: {doc_id: theta}}}``."""
-    from rcp_ndcg_core.schemas import ItemParams
+    """A :class:`~rcp.calibration.Calibration` holding ``{dataset: {query_id: {doc_id: theta}}}``."""
+    from rcp_core.schemas import ItemParams
 
-    from rcp_ndcg.calibration import Calibration
-    from rcp_ndcg.calibration.fit import ThetaRow
+    from rcp.calibration import Calibration
+    from rcp.calibration.fit import ThetaRow
 
     rows = tuple(
         ThetaRow(dataset=name, query_id=q, doc_id=d, theta=t, theta_se=None, source="fit")
@@ -370,7 +370,7 @@ def test_bad_arguments_are_config_errors() -> None:
 def test_the_report_serialises_and_tabulates(report: EvalReport) -> None:
     payload = json.loads(report.to_json())
 
-    assert payload["schema"] == "rcp-ndcg.eval-report.v1"
+    assert payload["schema"] == "rcp.eval-report.v1"
     assert EvalReport.model_validate(payload).model_dump() == report.model_dump()
     assert len(report.to_pandas()) == 3 * 6 * 2 * 2
     assert list(report.to_pandas("summary").columns)[:4] == ["system", "metric", "k", "value"]
@@ -758,9 +758,9 @@ def test_sensitivity_is_the_share_of_pairs_a_paired_t_test_separates(report: Eva
 def test_sensitivity_is_the_mean_over_datasets_of_each_datasets_share_of_separated_pairs() -> None:
     """The paper's definition: per dataset, the share of all system pairs whose paired t-test has p < alpha (a pair
     without two shared queries is not separated), then the mean over datasets."""
-    from rcp_ndcg_core.protocol import PROTOCOLS
+    from rcp_core.protocol import PROTOCOLS
 
-    from rcp_ndcg.eval import QueryValue, SummaryValue
+    from rcp.eval import QueryValue, SummaryValue
 
     x_a = [0.1, 0.2, 0.3, 0.4]
     per_system = {
@@ -797,10 +797,10 @@ def test_sensitivity_is_the_mean_over_datasets_of_each_datasets_share_of_separat
 def test_a_pair_with_zero_variance_in_its_differences_is_not_separated() -> None:
     """The docstrings say a pair whose differences have no variance is not separated; scipy returns t=inf and
     p=0.0 for constant nonzero differences, which used to count as significant with ``t`` serialised as null."""
-    from rcp_ndcg_core.protocol import PROTOCOLS
+    from rcp_core.protocol import PROTOCOLS
 
-    from rcp_ndcg.eval import QueryValue, SummaryValue
-    from rcp_ndcg.eval.compare import _paired_t
+    from rcp.eval import QueryValue, SummaryValue
+    from rcp.eval.compare import _paired_t
 
     assert _paired_t(np.array([0.25, 0.25])) == (None, None)
     assert _paired_t(np.array([0.1, 0.1, 0.1])) == (None, None)
@@ -915,7 +915,7 @@ def test_explain_computes_the_gap_under_the_protocols_own_tie_rule() -> None:
 def test_explain_drops_the_query_id_from_the_ideal_when_the_protocol_says_so() -> None:
     """A ``drop_identical_ids`` protocol removes the query's own id from the ranking *and* the ideal; the deltas
     must be scored against the ideal the report was, or they are not the report's gap."""
-    from rcp_ndcg_core.protocol import Protocol
+    from rcp_core.protocol import Protocol
 
     dataset = Dataset(name="toy", qrels={"q1": {"q1": 2.0, "b": 1.0, "c": 0.0}}, candidates={"q1": ["q1", "b", "c"]})
     gains = {"q1": {"q1": 0.9, "b": 0.4, "c": 0.1}}
@@ -937,7 +937,7 @@ def test_explain_drops_the_query_id_from_the_ideal_when_the_protocol_says_so() -
 def test_score_delta_refuses_one_score_mapping_alone() -> None:
     """A single mapping used to silently fall back to list scoring: the mapping is the metric's tie rule, so
     half of it is a mistake, not a default."""
-    from rcp_ndcg.eval.explain import score_delta
+    from rcp.eval.explain import score_delta
 
     with pytest.raises(ValueError, match="both score mappings"):
         score_delta(["a", "b"], ["b", "a"], {"a": 1.0, "b": 0.0}, scores_a={"a": 1.0, "b": 0.0})
@@ -948,7 +948,7 @@ def test_score_delta_refuses_one_score_mapping_alone() -> None:
 def test_score_delta_does_not_depend_on_the_score_scale() -> None:
     """The mixed arrangement is built from A's order, so a B-only document's place must not depend on how
     large B's scores are: rescaling B leaves every nDCG unchanged and used to move the split."""
-    from rcp_ndcg.eval.explain import score_delta
+    from rcp.eval.explain import score_delta
 
     order_a, order_b = ["a1", "a2", "g"], ["n", "g", "a1"]
     scores_a = {"a1": 0.9, "a2": 0.8, "g": 0.7}
@@ -967,7 +967,7 @@ def test_score_delta_does_not_depend_on_the_score_scale() -> None:
 
 def test_explain_names_the_known_queries_when_it_refuses_one(report: EvalReport) -> None:
     """An unknown `--query-id` names the next step (one of the report's query ids), on both explain paths."""
-    from rcp_ndcg.eval import explain
+    from rcp.eval import explain
 
     with pytest.raises(DataError) as caught:
         explain(report, "nosuch")

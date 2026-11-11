@@ -11,12 +11,12 @@ from collections.abc import Sequence
 from typing import Any, ClassVar
 
 import pytest
-from rcp_ndcg_core.records import RankingExample
+from rcp_core.records import RankingExample
 
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.inference.clients import RerankClient
-from rcp_ndcg.inference.config import RerankEndpoint
-from rcp_ndcg.inference.types import Call, Reply, RerankResult, Usage
+from rcp.errors import ConfigError
+from rcp.inference.clients import RerankClient
+from rcp.inference.config import RerankEndpoint
+from rcp.inference.types import Call, Reply, RerankResult, Usage
 from tests.inference import _budget
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -25,7 +25,7 @@ from tests.inference import _budget
 
 
 class _FakeRerankServer:
-    """A :class:`~rcp_ndcg.inference.transport.Sender` that answers each ``/rerank`` call with one row per
+    """A :class:`~rcp.inference.transport.Sender` that answers each ``/rerank`` call with one row per
     document, scored by the text so that every document scores differently, in arrival order shuffled -- so a
     positional reading of the answers shows."""
 
@@ -191,7 +191,7 @@ class TestInstructionModes:
         """A recipe with an instruction slot declares how the two combine, once: the template's span is
         rendered by the ENGINE from the request's ``instruction`` field (the wire carries the cut spans), the
         per-query instruction rides the query text, and the client does not also fold the task instruction."""
-        from rcp_ndcg.data.templates import Segment, TemplateSpec
+        from rcp.data.templates import Segment, TemplateSpec
 
         server = _server()
         client = RerankClient(
@@ -222,7 +222,7 @@ class TestInstructionModes:
         """The span is rendered by the ENGINE from the request's ``instruction`` field: a wire that has no
         such field (a hosted profile) cannot carry it, and the client refuses at construction -- naming the
         adapter's fact -- rather than sending a field the vendor body does not declare or dropping it."""
-        from rcp_ndcg.data.templates import Segment, TemplateSpec
+        from rcp.data.templates import Segment, TemplateSpec
 
         template = TemplateSpec(
             pair=(
@@ -240,7 +240,7 @@ class TestInstructionModes:
     def test_instruction_none_beside_a_template_span_is_refused(self) -> None:
         """``none`` sends none; a span the engine renders from the instruction field would render empty.
         Refused at the config, never sent as an empty slot."""
-        from rcp_ndcg.data.templates import Segment, TemplateSpec
+        from rcp.data.templates import Segment, TemplateSpec
 
         template = TemplateSpec(
             pair=(
@@ -258,7 +258,7 @@ class TestInstructionModes:
     def test_an_empty_query_is_refused_before_the_task_frame(self) -> None:
         """The empty-query refusal is decided on the DATA's query: a run-level task instruction folded around
         nothing must not turn an empty query into a scorable one."""
-        from rcp_ndcg.errors import DataError
+        from rcp.errors import DataError
 
         server = _server()
         with pytest.raises(DataError, match="is empty"):
@@ -386,14 +386,14 @@ class TestRefusalsAndPassthrough:
         async def fake_sleep(seconds: float) -> None:
             sleeps.append(seconds)
 
-        monkeypatch.setattr("rcp_ndcg.inference.clients.rerank.asyncio.sleep", fake_sleep)
+        monkeypatch.setattr("rcp.inference.clients.rerank.asyncio.sleep", fake_sleep)
         server = _server()
         RerankClient(RerankEndpoint(api="voyage", model="rerank-2.5"), sender=server).rerank("q", ["a"])
 
         assert sleeps == [0.5]
 
     def test_a_refusal_travels_as_its_typed_error(self) -> None:
-        from rcp_ndcg.errors import CapabilityError
+        from rcp.errors import CapabilityError
 
         server = _server(refuse=400, body={"error": {"message": "maximum context length exceeded"}})
         with pytest.raises(CapabilityError, match="too long"):
@@ -426,7 +426,7 @@ class TestTokenizerIdentity:
 
     def test_the_name_stays_runtime(self) -> None:
         """The sha enters the identity; the tokenizer's name never does (as the judge's already works)."""
-        from rcp_ndcg.support.identity import identity_payload
+        from rcp.support.identity import identity_payload
 
         config = RerankEndpoint(
             base_url="http://a:8000/v1",
@@ -440,8 +440,8 @@ class TestTokenizerIdentity:
 
 def test_the_adapter_seam_re_exports_the_family_and_its_base() -> None:
     """The third-party seam: the concrete wires and the base they share, one import away."""
-    from rcp_ndcg.inference import adapters
-    from rcp_ndcg.inference.adapters.rerank import RerankAdapter, RerankWire
+    from rcp.inference import adapters
+    from rcp.inference.adapters.rerank import RerankAdapter, RerankWire
 
     assert adapters.RerankWire is RerankWire
     assert issubclass(RerankAdapter, RerankWire)
@@ -450,7 +450,7 @@ def test_the_adapter_seam_re_exports_the_family_and_its_base() -> None:
 def test_an_incomplete_rerank_wire_subclass_is_refused_at_construction() -> None:
     """A subclass that omits the wire facts fails with a typed error naming them, not an AttributeError at
     first use."""
-    from rcp_ndcg.inference.adapters.rerank import RerankWire
+    from rcp.inference.adapters.rerank import RerankWire
 
     class _HalfWire(RerankWire):
         name = "half_wire"
@@ -463,8 +463,8 @@ def test_a_wire_that_does_not_declare_hosted_is_refused_at_registration() -> Non
     """HOSTED decides what a wire is (a hosted profile's published cap, the refusals of served-only fields):
     AdapterBase's False default would silently treat a hosted third-party wire as a served engine, so the
     class itself (or a base below AdapterBase) must declare it -- the other facts keep their defaults."""
-    from rcp_ndcg.inference.adapters import register_adapter
-    from rcp_ndcg.inference.adapters.rerank import RerankWire
+    from rcp.inference.adapters import register_adapter
+    from rcp.inference.adapters.rerank import RerankWire
 
     class _HostedButUndeclared(RerankWire):
         name = "hosted_but_undeclared_probe"
@@ -484,8 +484,8 @@ def test_the_wire_facts_refusal_asks_only_for_what_a_subclass_can_miss() -> None
     """The credential facts are AdapterBase's declared contract (inherited with their defaults, checked at
     registration): a RerankWire subclass cannot miss them, so its own refusal names the rerank facts alone
     and never asks for a credential fact as if it were required."""
-    from rcp_ndcg.inference.adapters.base import ADAPTER_FACTS
-    from rcp_ndcg.inference.adapters.rerank import RerankWire
+    from rcp.inference.adapters.base import ADAPTER_FACTS
+    from rcp.inference.adapters.rerank import RerankWire
 
     class _HalfWire(RerankWire):
         name = "half_wire"
@@ -501,9 +501,9 @@ def test_an_adapter_without_the_profile_facts_is_refused_at_registration() -> No
     """The registration contract: a class whose credential facts are undeclared registers nothing -- before
     the check, a missing fact was silently duck-typed with a default that could send a key where none
     belongs (or refuse one where it was owed)."""
-    from rcp_ndcg.errors import ConfigError
-    from rcp_ndcg.inference.adapters import register_adapter
-    from rcp_ndcg.inference.adapters.base import AdapterRole
+    from rcp.errors import ConfigError
+    from rcp.inference.adapters import register_adapter
+    from rcp.inference.adapters.base import AdapterRole
 
     class _FactsMissing:
         name = "facts_missing_probe"
@@ -539,8 +539,8 @@ def test_an_adapter_of_another_role_is_refused_by_the_client() -> None:
     silent no-op: it is unknown in the rerank registry, and the error names where the name does live."""
     """A registered adapter of the wrong role (a judge's, say, selected by typo) is a config error, not a
     silent no-op: it is unknown in the rerank registry, and the error names where the name does live."""
-    from rcp_ndcg.inference.adapters import register_adapter
-    from rcp_ndcg.inference.adapters.base import AdapterRole
+    from rcp.inference.adapters import register_adapter
+    from rcp.inference.adapters.base import AdapterRole
 
     class _JudgeShaped:
         name = "wrong_role_probe"
@@ -560,7 +560,7 @@ def test_an_adapter_of_another_role_is_refused_by_the_client() -> None:
         def usage(self, reply: Any) -> None:
             return None
 
-    import rcp_ndcg.inference.adapters as registry
+    import rcp.inference.adapters as registry
 
     saved = dict(registry.base._BUILTINS)
     register_adapter(_JudgeShaped)
@@ -585,8 +585,8 @@ def test_an_adapter_of_another_role_is_refused_by_the_client() -> None:
 def test_a_third_party_adapter_constructs_from_the_protocol_shape() -> None:
     """A third-party rerank adapter that declares the credential facts (the registration contract) still
     constructs and serves: no default base URL (the config sets one) and no pause."""
-    from rcp_ndcg.inference.adapters import register_adapter
-    from rcp_ndcg.inference.adapters.base import AdapterRole
+    from rcp.inference.adapters import register_adapter
+    from rcp.inference.adapters.base import AdapterRole
 
     class _ThirdParty:
         name = "third_party_rerank"
@@ -609,7 +609,7 @@ def test_a_third_party_adapter_constructs_from_the_protocol_shape() -> None:
         def usage(self, reply: Reply) -> None:
             return None
 
-    import rcp_ndcg.inference.adapters as registry
+    import rcp.inference.adapters as registry
 
     saved = dict(registry.base._BUILTINS)
     register_adapter(_ThirdParty)

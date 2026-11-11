@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg.runners import JobSpec, JobStatus, LocalRunner
-from rcp_ndcg.testing import runner_conformance
+from rcp.runners import JobSpec, JobStatus, LocalRunner
+from rcp.testing import runner_conformance
 
 
 class GoodRunner:

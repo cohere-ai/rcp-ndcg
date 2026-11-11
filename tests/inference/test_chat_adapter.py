@@ -2,7 +2,7 @@
 
 The judge's request is the OpenAI chat-completions shape exactly as the OpenAI SDK used to build it, with
 ``extra_body`` merged at the top level; the answer's text, reasoning channel, ``finish_reason`` and usage
-come back as a :class:`~rcp_ndcg.inference.types.Completion`; and the endpoint's refusals map onto typed
+come back as a :class:`~rcp.inference.types.Completion`; and the endpoint's refusals map onto typed
 errors -- media counts and the answer schema are capabilities, everything else one request's refusal.
 """
 
@@ -11,10 +11,10 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef
+from rcp_core.content import Content, ImagePart, MediaRef
 
-from rcp_ndcg.errors import CapabilityError, ConfigError, RequestRejectedError
-from rcp_ndcg.inference.adapters.chat import (
+from rcp.errors import CapabilityError, ConfigError, RequestRejectedError
+from rcp.inference.adapters.chat import (
     REASONING_KEYS,
     REASONING_WATCH,
     OpenAIChat,
@@ -22,9 +22,9 @@ from rcp_ndcg.inference.adapters.chat import (
     build_messages,
     media_counts,
 )
-from rcp_ndcg.inference.types import Reply, TokenCount
-from rcp_ndcg.judging import JudgeConfig
-from rcp_ndcg.judging.client import CompletionInput
+from rcp.inference.types import Reply, TokenCount
+from rcp.judging import JudgeConfig
+from rcp.judging.client import CompletionInput
 
 SCHEMA = {"type": "json_schema", "json_schema": {"name": "a", "schema": {"type": "object"}}}
 PAGE = Content.from_parts([ImagePart(ref=MediaRef(uri="data:image/png;base64,AAAA", mime="image/png"))])
@@ -220,14 +220,14 @@ class TestTheReasoningWatch:
         body = _answer('{"ranking": [1]}')
         if reasoning is not None:
             body["choices"][0]["message"]["reasoning_content"] = reasoning
-        with caplog.at_level("WARNING", logger="rcp_ndcg"):
+        with caplog.at_level("WARNING", logger="rcp"):
             for _ in range(3 * REASONING_WATCH):
                 adapter.interpret(self.SCHEMA_REQUEST, [_reply(body)])
         assert sum("reasoning parser" in record.getMessage() for record in caplog.records) == warned
 
     def test_free_decoding_is_not_watched_for_reasoning(self, caplog: pytest.LogCaptureFixture) -> None:
         adapter = OpenAIChat(CONFIG)
-        with caplog.at_level("WARNING", logger="rcp_ndcg"):
+        with caplog.at_level("WARNING", logger="rcp"):
             for _ in range(2 * REASONING_WATCH):
                 adapter.interpret(CompletionInput(user_prompt="judge"), [_reply(_answer())])
         assert not any("reasoning parser" in record.getMessage() for record in caplog.records)
@@ -249,7 +249,7 @@ class TestMaxVideoBytes:
         assert "bytes" in (raised.value.hint or "")
 
     def test_a_malformed_max_video_bytes_does_not_break_import(self, tmp_path: Any) -> None:
-        """``RCP_NDCG_MAX_VIDEO_BYTES=64MB rcp-ndcg --help`` used to die with an untyped ``ValueError`` at
+        """``RCP_NDCG_MAX_VIDEO_BYTES=64MB rcp --help`` used to die with an untyped ``ValueError`` at
         import time: every CLI command, and every import of the package, crashed."""
         import os
         import subprocess
@@ -258,7 +258,7 @@ class TestMaxVideoBytes:
         env = {key: value for key, value in os.environ.items() if key != "RCP_NDCG_MAX_VIDEO_BYTES"}
         env.update(RCP_NDCG_MAX_VIDEO_BYTES="64MB", PYTHONDONTWRITEBYTECODE="1")
         result = subprocess.run(
-            [sys.executable, "-c", "import rcp_ndcg, rcp_ndcg.cli.main, rcp_ndcg.inference.adapters.chat"],
+            [sys.executable, "-c", "import rcp, rcp.cli.main, rcp.inference.adapters.chat"],
             cwd=tmp_path,
             env=env,
             capture_output=True,

@@ -117,7 +117,7 @@ reason (the media stage still gates placement, geometry and tokens).
 
 The wave's recipes are grouped by their `engine.image` before submission: one job
 per image, so a digest-pinned nightly recipe runs on its own image without changing the wave list. The
-pairs files under `rcp-ndcg-test/pairs/` are the fixed request sets.
+pairs files under `rcp-test/pairs/` are the fixed request sets.
 
 ## Fakes and conformance on CPU afterwards
 
@@ -125,7 +125,7 @@ GPU work produces observation corpora; it never runs under pytest. Afterwards, m
 the recordings verify the CPU side: one conformance suite with two targets -- the live engine and a
 recipe-level fake engine -- both driven through the product's role clients (never raw HTTP, never a copy of
 the client), plus golden replays and a forward-compatibility run. Those suites live in the unpublished
-contributor package (`rcp_ndcg_test`) and run per its README.
+contributor package (`rcp_test`) and run per its README.
 
 ## The release-candidate loop
 

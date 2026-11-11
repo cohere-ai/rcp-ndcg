@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg.data import Rankings
-from rcp_ndcg.errors import ConfigError, DataError
+from rcp.data import Rankings
+from rcp.errors import ConfigError, DataError
 
 
 def run(dataset: str = "NanoArguAnaRetrieval", **overrides) -> Rankings:

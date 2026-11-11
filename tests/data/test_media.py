@@ -7,11 +7,11 @@ import os
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef
+from rcp_core.content import Content, ImagePart, MediaRef
 
-from rcp_ndcg.data import media
-from rcp_ndcg.data.media import MediaError, MediaResolver, data_uri, default_resolver, sha256_of
-from rcp_ndcg.errors import MissingInputError, classify
+from rcp.data import media
+from rcp.data.media import MediaError, MediaResolver, data_uri, default_resolver, sha256_of
+from rcp.errors import MissingInputError, classify
 
 PIL = pytest.importorskip("PIL.Image")
 
@@ -44,7 +44,7 @@ def offline_info(monkeypatch) -> None:
     An unhashed reference's fingerprint stats its object (one metadata call, by design); a test that names a
     ``gs://`` URI must not reach the network for it, and an unreachable object is the fallback's own case.
     """
-    from rcp_ndcg import storage
+    from rcp import storage
 
     def refuse(uri):
         raise OSError(f"no backend for {uri} in this test")
@@ -170,7 +170,7 @@ class TestHydrate:
 class TestWhereTheCacheLives:
     """Resolvable wherever this package is installed, not only in the checkout.
 
-    The default used to come from the repository's ``[tool.rcp_ndcg] cache_dir``,
+    The default used to come from the repository's ``[tool.rcp] cache_dir``,
     which every consumer that installs this as a *dependency* -- the UI, an MCP
     server, a user's venv -- has no way to read: constructing a resolver there
     raised a ``KeyError`` about a config key the caller had never heard of.
@@ -194,12 +194,12 @@ class TestWhereTheCacheLives:
         monkeypatch.delenv("RCP_NDCG_CACHE_DIR", raising=False)
         monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
 
-        assert MediaResolver().cache_dir == tmp_path / "xdg" / "rcp-ndcg" / "media"
+        assert MediaResolver().cache_dir == tmp_path / "xdg" / "rcp" / "media"
 
 
 def test_stored_media_is_where_the_resolver_reads_it(resolver, png_bytes) -> None:
     """A released page image written into the cache must not be copied a second time when it is read."""
-    from rcp_ndcg.data.media import store_media
+    from rcp.data.media import store_media
 
     ref = store_media(png_bytes, ".png", width=64, height=32)
 
@@ -210,7 +210,7 @@ def test_stored_media_is_where_the_resolver_reads_it(resolver, png_bytes) -> Non
 
 def test_stored_media_is_recorded_under_its_registered_mime_type(resolver, png_bytes) -> None:
     """A '.jpg' cell was once recorded (and sent) as the unregistered 'image/jpg'."""
-    from rcp_ndcg.data.media import store_media
+    from rcp.data.media import store_media
 
     assert store_media(png_bytes, ".jpg").mime == "image/jpeg"
     with pytest.raises(MediaError, match="unknown media type"):
@@ -220,7 +220,7 @@ def test_stored_media_is_recorded_under_its_registered_mime_type(resolver, png_b
 def test_a_torn_media_cache_file_heals_on_the_next_write(resolver, png_bytes) -> None:
     """store_media wrote the content-addressed cache with a plain write and skipped an existing target, so a
     kill mid-write left a truncated file that every later read served, and nothing ever repaired it."""
-    from rcp_ndcg.data.media import store_media
+    from rcp.data.media import store_media
 
     ref = MediaRef(uri="media.png", sha256=sha256_of(png_bytes))
     target = resolver.cache_path(ref)
@@ -254,7 +254,7 @@ class TestDataUris:
     def test_data_uri_round_trips_through_bytes_of(self) -> None:
         import base64
 
-        from rcp_ndcg.data.media import data_uri
+        from rcp.data.media import data_uri
 
         payload = b"inline-bytes"
         ref = MediaRef(uri=data_uri("image/png", base64.b64encode(payload).decode("ascii")))
@@ -312,7 +312,7 @@ class TestTruncatedContainerHeaders:
     bare ``struct.error`` or ``IndexError`` from the field peeks."""
 
     def test_a_truncated_isobmff_header_returns_none(self, tmp_path: Path) -> None:
-        from rcp_ndcg.data.media import probe_video_header
+        from rcp.data.media import probe_video_header
         from tests.conftest import write_mp4_header
 
         path = write_mp4_header(tmp_path / "a.mp4", frames=30, timescale=1000, duration=2500, size=(320, 240))
@@ -328,7 +328,7 @@ class TestTruncatedContainerHeaders:
         ``None``, where an unguarded peek raised ``IndexError`` (no version byte) or ``struct.error``."""
         import struct
 
-        from rcp_ndcg.data.media import probe_video_header
+        from rcp.data.media import probe_video_header
 
         def box(kind: bytes, body: bytes) -> bytes:
             return struct.pack(">I", 8 + len(body)) + kind + body
@@ -364,9 +364,9 @@ class TestAnUnhashedReferenceIsKeyedByItsObject:
         media-cache key lookup would ask the backend once per reference each time. The ``(size,
         etag/mtime)`` lookup is memoized per URI for the process, so two identity computations and a cache
         lookup ask once per reference."""
-        from rcp_ndcg import storage
-        from rcp_ndcg.retrieval import BM25Config
-        from rcp_ndcg.retrieval import _api as retrieval_api
+        from rcp import storage
+        from rcp.retrieval import BM25Config
+        from rcp.retrieval import _api as retrieval_api
 
         pages = [tmp_path / f"page_{index}.png" for index in range(3)]
         for page in pages:

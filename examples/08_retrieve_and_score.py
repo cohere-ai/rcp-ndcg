@@ -5,9 +5,9 @@ python examples/08_retrieve_and_score.py
 
 import json
 
-import rcp_ndcg as rcp
-from rcp_ndcg.examples import tiny
-from rcp_ndcg.retrieval import validate_retriever
+import rcp
+from rcp.examples import tiny
+from rcp.retrieval import validate_retriever
 
 TINY = tiny()  # the example dataset that ships with the package
 dataset = rcp.load_dataset(f"jsonl:{TINY / 'rows.jsonl'}")

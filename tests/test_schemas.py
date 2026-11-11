@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg import schemas
-from rcp_ndcg.errors import UsageError
+from rcp import schemas
+from rcp.errors import UsageError
 from tests._jsonschema import problems
 
 
@@ -18,14 +18,14 @@ def test_every_schema_carries_its_id_and_url() -> None:
         schema = schemas.show(entry.name)
 
         assert schema["$id"] == f"{schemas.SCHEMA_ID_BASE}/{entry.name}.v1.json"
-        assert schema["x-rcp-ndcg-schema"] == f"rcp-ndcg.{entry.name}.v1"
+        assert schema["x-rcp-schema"] == f"rcp.{entry.name}.v1"
         assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
 
 
 def test_a_command_output_schema_requires_its_tag() -> None:
-    schema = schemas.show("rcp-ndcg.run-list.v1")
+    schema = schemas.show("rcp.run-list.v1")
 
-    assert schema["properties"]["schema"] == {"const": "rcp-ndcg.run-list.v1", "type": "string"}
+    assert schema["properties"]["schema"] == {"const": "rcp.run-list.v1", "type": "string"}
     assert schema["required"][0] == "schema"
 
 
@@ -42,12 +42,28 @@ def test_a_record_that_names_its_schema_names_its_entry() -> None:
     # A judgement, a manifest, an estimate and an extension carry their schema id; it must be the exported one.
     tagged = 0
     for entry in schemas.SCHEMAS:
-        const = schemas.show(entry.name).get("properties", {}).get("schema", {}).get("const")
-        if const is not None:
-            assert const == entry.schema_id, entry.name
+        field = schemas.show(entry.name).get("properties", {}).get("schema", {})
+        current = field.get("const") or (field.get("enum") or [None])[0]
+        if current is not None:
+            assert current == entry.schema_id, entry.name
             tagged += 1
     assert tagged >= 4
-    assert schemas.show("judge-config")["x-rcp-ndcg-schema"] == "rcp-ndcg.judge-config.v1"
+    assert schemas.show("judge-config")["x-rcp-schema"] == "rcp.judge-config.v1"
+
+
+def test_a_record_admits_both_spellings_and_writes_the_new_one() -> None:
+    """An artifact written before the rename carries ``rcp-ndcg.<name>.v1``: every exported record admits both
+    spellings, and its own default is the new ``rcp.<name>.v1``."""
+    records = 0
+    for entry in schemas.SCHEMAS:
+        field = schemas.show(entry.name)["properties"].get("schema", {})
+        accepted = field.get("enum") or [field.get("const")]
+        if None in accepted:
+            continue
+        assert accepted == [f"rcp.{entry.name}.v1", f"rcp-ndcg.{entry.name}.v1"], entry.name
+        assert field["default"] == f"rcp.{entry.name}.v1", entry.name
+        records += 1
+    assert records >= 4
 
 
 def test_an_unknown_name_is_a_usage_error_listing_the_known_ones() -> None:
@@ -55,6 +71,12 @@ def test_an_unknown_name_is_a_usage_error_listing_the_known_ones() -> None:
         schemas.show("nope")
 
     assert "run-manifest" in caught.value.details["known"]
+
+
+def test_a_schema_id_from_before_the_rename_names_the_same_schema() -> None:
+    """``rcp-ndcg.<name>.v1`` is the id an artifact written before the rename carries: ``show`` takes it (``_key``
+    strips either prefix), so a reader can paste the tag it found in an old artifact."""
+    assert schemas.show("rcp-ndcg.run-manifest.v1") == schemas.show("rcp.run-manifest.v1")
 
 
 def test_export_writes_one_file_per_schema(tmp_path: Path) -> None:
@@ -68,7 +90,7 @@ def test_the_shipped_run_configs_have_the_types_the_run_config_schema_declares()
     import yaml
 
     schema = schemas.show("run-config")
-    from rcp_ndcg.examples import run_config_names, run_config_path
+    from rcp.examples import run_config_names, run_config_path
 
     paths = [run_config_path(name) for name in run_config_names()]
     assert len(paths) > 1
@@ -80,19 +102,22 @@ def test_the_shipped_run_configs_have_the_types_the_run_config_schema_declares()
 
 
 def test_every_model_that_tags_its_payload_has_an_exported_schema() -> None:
-    """A payload that names ``rcp-ndcg.<name>.v1`` promises a schema of that name (the manifest, a calibration's
-    coverage and identity, an index record, ...)."""
+    """A payload that names a schema id promises a schema of that name (the manifest, a calibration's coverage
+    and identity, an index record, ...). Every spelling a model admits is checked: since the rename each payload
+    tag admits both ``rcp.<name>.v1`` and the pre-rename ``rcp-ndcg.<name>.v1``."""
     import importlib
     import pkgutil
     import typing
 
     from pydantic import BaseModel
+    from rcp_core.schemas import accepted_schema_ids
 
-    import rcp_ndcg
+    import rcp
 
-    exported = {entry.schema_id for entry in schemas.entries()}
+    names = {entry.name for entry in schemas.entries()}
+    exported = {spelling: name for name in names for spelling in accepted_schema_ids(name)}
     tagged: dict[str, str] = {}
-    for info in pkgutil.walk_packages(rcp_ndcg.__path__, "rcp_ndcg."):
+    for info in pkgutil.walk_packages(rcp.__path__, "rcp."):
         if info.name.endswith("__main__"):
             continue
         try:
@@ -101,14 +126,17 @@ def test_every_model_that_tags_its_payload_has_an_exported_schema() -> None:
             continue
         for obj in vars(module).values():
             if isinstance(obj, type) and issubclass(obj, BaseModel) and "schema_name" in obj.model_fields:
-                args = typing.get_args(obj.model_fields["schema_name"].annotation)
-                if len(args) != 1:
+                annotation = obj.model_fields["schema_name"].annotation
+                if typing.get_origin(annotation) is not typing.Literal:
                     # Not a payload tag: an artifact's own schema id is a plain ``str | None``.
                     continue
-                (tag,) = args
-                tagged[tag] = f"{obj.__module__}.{obj.__qualname__}"
+                for tag in typing.get_args(annotation):
+                    tagged[tag] = f"{obj.__module__}.{obj.__qualname__}"
     missing = {tag: where for tag, where in tagged.items() if tag not in exported}
     assert not missing, missing
+    # The walk finds 15 distinct payload records today; a floor near that count bites on a regression that
+    # silently stopped finding most of them, where a floor of 4 would not.
+    assert len({exported[tag] for tag in tagged}) >= 10, tagged
 
 
 def _runner_sections_of_the_docs() -> list[tuple[str, dict]]:
@@ -130,7 +158,7 @@ def _runner_sections_of_the_docs() -> list[tuple[str, dict]]:
 def test_a_written_run_config_and_the_docs_runner_examples_validate_against_the_run_config_schema() -> None:
     """Every runner section matched two branches of the schema's oneOf (a public runner's and the plugin's), so no
     written run.yaml validated; and a public runner's option typo matched the plugin's branch, so it did."""
-    from rcp_ndcg.runs import RunConfig
+    from rcp.runs import RunConfig
 
     schema = schemas.show("run-config")
     runners = [
@@ -156,12 +184,12 @@ def test_a_written_run_config_and_the_docs_runner_examples_validate_against_the_
 
 def test_the_eval_score_schema_describes_the_results_fields() -> None:
     """``EvalScoreResult``'s wrap serializer returns ``dict[str, Any]``, and pydantic takes that return type
-    for the serialization-mode schema: the exported ``rcp-ndcg.eval-score.v1`` (and the ``eval_score`` MCP
+    for the serialization-mode schema: the exported ``rcp.eval-score.v1`` (and the ``eval_score`` MCP
     tool's outputSchema) described one property, ``schema``, with ``additionalProperties: true`` -- an empty
     contract for the output of the main ``--json`` command."""
-    from rcp_ndcg_core.protocol import Protocol
+    from rcp_core.protocol import Protocol
 
-    from rcp_ndcg.cli.eval import EvalScoreResult
+    from rcp.cli.eval import EvalScoreResult
 
     schema = schemas.show("eval-score")
     assert {
@@ -177,7 +205,7 @@ def test_the_eval_score_schema_describes_the_results_fields() -> None:
         "out",
     } <= set(schema["properties"])
     data = {
-        "schema": "rcp-ndcg.eval-score.v1",
+        "schema": "rcp.eval-score.v1",
         **EvalScoreResult(protocol=Protocol(name="plain", ties="doc_id_desc"), k=[10]).model_dump(mode="json"),
     }
     assert problems({**schema, "additionalProperties": False}, data) == []

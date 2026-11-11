@@ -7,23 +7,68 @@ bumps the patch version; from `1.0` on, semantic versioning applies. The public 
 `tests/contract/snapshots/` and `schemas/` pin (the rules are on
 [compatibility and versioning](docs/reference/versioning.md)):
 - the Python names in the `__all__` of the public modules, which `PUBLIC_MODULES` in
-  `rcp_ndcg.support.api_docs` lists (the same list generates the API pages): the facade `rcp_ndcg`; `rcp_ndcg_core` with `rcp_ndcg_core.gain`, `.irt`, `.metric`, `.protocol` and
-  `.records`; `rcp_ndcg.calibration`, `rcp_ndcg.data`, `rcp_ndcg.data.preprocess`, `rcp_ndcg.data.revisions`,
-  `rcp_ndcg.errors`, `rcp_ndcg.eval`, `rcp_ndcg.eval.mteb`, `rcp_ndcg.examples`, `rcp_ndcg.inference`,
-  `rcp_ndcg.judging`, `rcp_ndcg.results`, `rcp_ndcg.retrieval`, `rcp_ndcg.runners`, `rcp_ndcg.runs`,
-  `rcp_ndcg.testing` and `rcp_ndcg_vllm.recipe`;
+  `rcp.support.api_docs` lists (the same list generates the API pages): the facade `rcp`; `rcp_core` with `rcp_core.gain`, `.irt`, `.metric`, `.protocol` and
+  `.records`; `rcp.calibration`, `rcp.data`, `rcp.data.preprocess`, `rcp.data.revisions`,
+  `rcp.errors`, `rcp.eval`, `rcp.eval.mteb`, `rcp.examples`, `rcp.inference`,
+  `rcp.judging`, `rcp.results`, `rcp.retrieval`, `rcp.runners`, `rcp.runs`,
+  `rcp.testing` and `rcp_vllm.recipe`;
 - the command tree with its flags and output schemas, the exit codes, the MCP tools, the packaging (distributions,
   extras, entry points) and the JSON Schemas in `schemas/`.
 
-Every other module (for example `rcp_ndcg.cli`, `rcp_ndcg.storage`, `rcp_ndcg.support`, `rcp_ndcg.data.io` and the
+Every other module (for example `rcp.cli`, `rcp.storage`, `rcp.support`, `rcp.data.io` and the
 submodules of `retrieval`, `judging`, `calibration`, `runs` and `runners`) is internal and may change without notice. A
 pull request that changes `tests/contract/snapshots/` or `schemas/` must add an entry here; CI checks it.
 
 Every artifact schema carries its own version (`rcp-ndcg.<name>.v1`), bumped only when that artifact changes
-incompatibly, independently of the package version. All four distributions carry the tag version; `rcp-ndcg` pins
-`rcp-ndcg-core==<version>`; `rcp-ndcg-vllm` pins no sibling; `rcp-ndcg-test` is never published.
+incompatibly, independently of the package version. All four distributions carry the tag version; `rcp` pins
+`rcp-core==<version>`; `rcp-vllm` pins no sibling; `rcp-test` is never published.
 
 ## Unreleased
+
+### Public surface
+
+- **The serving recipes are a declared extra, and the three kept modules say why they stay** (the four hygiene
+  items of the downstream-surface work): `rcp` declares `vllm = ["rcp-vllm"]`, so `pip install "rcp[vllm]"`
+  installs the sibling a `recipe:` config needs, a `recipe:` config without it is refused naming that install
+  line, and `rcp_vllm` joins the error map (so `rcp doctor` reports the extra and a stray import gets the install
+  command); `rcp.data.preprocess` is kept as the one import path for the text machinery, and its docstring and
+  `docs/concepts/preprocessing.md` now say so; `rcp.eval.mteb` is kept in the product behind the `[mteb]` extra,
+  with a test that imports it and runs its mteb-only branch under that extra; and `rcp.judging.tokens` is kept
+  beside `TextBudget` because an estimate runs where no tokenizer can count, a split
+  `docs/concepts/text-budgets.md` states.
+
+### Changed
+
+- **The core distribution is `rcp-core` and its package is `rcp_core`**: the `rcp-ndcg-core` distribution and
+  the `rcp_ndcg_core` package are renamed, the `rcp-ndcg` pin moves to `rcp-core==<version>`, and there is no
+  compatibility shim — the old names are gone. The historical entries below keep the old names.
+- **The main distribution is `rcp` and its package is `rcp`**: the `rcp-ndcg` distribution, the `rcp_ndcg`
+  package and the `rcp-ndcg` command are renamed, the four entry-point groups are `rcp.runners`, `rcp.readers`,
+  `rcp.writers` and `rcp.results`, and `python -m rcp_ndcg.cli` is `python -m rcp.cli`. There is no compatibility
+  shim.
+  The artifact tags move with it (`rcp.<name>.v1`, below); the emulator's extension keys
+  (`x-rcp-ndcg-emulator-*`), the public dataset ids, the bucket prefix and the repository URL keep the spellings
+  they shipped with, and so do the historical entries below.
+- **An artifact's schema id is `rcp.<name>.v1`**: `rcp.schemas.SchemaEntry.schema_id` returns it, a payload carries
+  it in its `schema` field, and the exported schema's header key is `x-rcp-schema` (was `x-rcp-ndcg-schema`).
+  **Every reader accepts both spellings**: each artifact written before the rename carries `rcp-ndcg.<name>.v1` --
+  every existing run manifest, judgement store, calibration directory, index and result record -- and a reader
+  that knew only the new id would reject all of them. New artifacts carry the new id only: the migration is
+  read-compatible and write-forward, so no file is rewritten and the exported schemas admit both spellings.
+- **The serving distribution is `rcp-vllm` and its package is `rcp_vllm`**: the `rcp-ndcg-vllm` distribution,
+  the `rcp_ndcg_vllm` package, the `rcp-ndcg-vllm` console and the `vllm.general_plugins` entry point are renamed,
+  and the recipes declare `serve.plugin: rcp-vllm`. **The behaviour fingerprint moves for every recipe that
+  declares a plugin** (`serve.plugin` and the plugin's module names are inputs, `rcp-fp/4`), so the committed
+  observation corpora are stale and the record and equivalence waves re-run before the ledger is regenerated;
+  the goldens are regenerated here. The CHANGELOG's historical entries and the wave records keep the old names.
+- **The harness is `rcp-test` and its package is `rcp_test`**: the `rcp-ndcg-test` distribution, the
+  `rcp_ndcg_test` package and the `rcp-ndcg-test` checkout directory are renamed; the fake-transport entry
+  point is `rcp-test` under the `rcp.fake_transports` group, `python -m rcp_ndcg_test.<tool>` is
+  `python -m rcp_test.<tool>`, and the harness wheel the build stages follows the new name. There is no
+  compatibility shim.
+  The behaviour fingerprints do not move (the harness is not a fingerprint input), the committed corpora and
+  the pairs corpus keep the spellings they were recorded with, the ledger's historical wave paths keep their
+  placeholders, and so do the historical entries below.
 
 ### Fixed
 
@@ -469,7 +514,7 @@ incompatibly, independently of the package version. All four distributions carry
   ties). The vLLM harness keeps reading release 1 (`PINNED_DATASET_COMMITS`, its e2e scenarios and quality test):
   those commits are part of its request generator's identity (`GENERATOR_VERSION` 1, the committed `pairs/`), and
   the queries and documents it samples are identical in release 2.
-- **Every scoring preset credits ties with their group's mean gain** (`rcp_ndcg_core.PROTOCOLS`): `nanobeir`
+- **Every scoring preset credits ties with their group's mean gain** (`rcp_core.PROTOCOLS`): `nanobeir`
   and `bright` broke tied scores by document id, descending, and `trecdl` by judge-pool order, as arXiv v1's tables
   did. A document id is an arbitrary order and a judged pool is often sorted by relevance, so a tie straddling the
   cutoff took credit the system did not earn. All presets now use `group_mean` (each tied document is credited

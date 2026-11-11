@@ -1,14 +1,14 @@
 import pytest
 from pydantic import ValidationError
 
-from rcp_ndcg.runners.base import JobPhase, JobSpec
-from rcp_ndcg.support.serve import ServeConfig
+from rcp.runners.base import JobPhase, JobSpec
+from rcp.support.serve import ServeConfig
 
 ENGINE = ServeConfig(command=("vllm", "serve", "m"))
 
 
 def test_a_phase_names_its_engines_by_role() -> None:
-    phase = JobPhase(engines={"encoder": ENGINE}, argv=("rcp-ndcg", "run", "resume"))
+    phase = JobPhase(engines={"encoder": ENGINE}, argv=("rcp", "run", "resume"))
     assert phase.engines["encoder"] is ENGINE
     assert JobPhase(argv=("true",)).engines == {}
 
@@ -38,7 +38,7 @@ def test_a_job_takes_exactly_one_of_argv_or_phases() -> None:
 
 def test_a_phased_job_runs_each_phase_s_argv_in_order(tmp_path) -> None:
     """A phased job has no command of its own: the local runner runs the phases' argv, in order."""
-    from rcp_ndcg.runners import LocalRunner
+    from rcp.runners import LocalRunner
 
     phases = (JobPhase(argv=("echo", "one")), JobPhase(argv=("echo", "two")))
     job = JobSpec(name="phased", phases=phases)

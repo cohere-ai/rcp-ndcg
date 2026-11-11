@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart
-from rcp_ndcg_core.records import RankingExample
+from rcp_core.content import Content, ImagePart, MediaRef, TextPart
+from rcp_core.records import RankingExample
 
-from rcp_ndcg.data.preprocess import (
+from rcp.data.preprocess import (
     DEFAULT_TEXT_POLICY,
     ChunkPolicy,
     Preprocessing,
@@ -19,7 +19,7 @@ from rcp_ndcg.data.preprocess import (
     max_pool_scores_by_document,
     split_into_chunks,
 )
-from rcp_ndcg.errors import DataError
+from rcp.errors import DataError
 from tests._tokenizers import byte_bpe_tokenizer, word_tokenizer
 
 WORDS = word_tokenizer()

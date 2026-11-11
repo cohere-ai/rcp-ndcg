@@ -25,7 +25,7 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 from pydantic import BaseModel
-from rcp_ndcg_core._hashing import (
+from rcp_core._hashing import (
     UnhashableValueError,
     canonical,
     canonical_json,
@@ -48,7 +48,7 @@ class TestDeterminism:
         # leaked iteration order would differ between runs and no in-process test
         # could see it.
         program = (
-            "from rcp_ndcg.support.identity import hash_payload;"
+            "from rcp.support.identity import hash_payload;"
             "print(hash_payload({'b': 2, 'a': 1, 'c': {'z': [1, 2], 'y': 'x'}}))"
         )
         digests = {
@@ -237,19 +237,19 @@ class TestDigestFunctions:
 
 class TestThereIsOneRecipe:
     def test_the_preprocessing_key_uses_it(self) -> None:
-        from rcp_ndcg.data.preprocess import Preprocessing, TextPolicy
+        from rcp.data.preprocess import Preprocessing, TextPolicy
 
         policy = Preprocessing(text=TextPolicy(on_overflow="truncate"))
         assert policy.key == short(hash_payload(policy.model_dump(mode="json")), 16)
 
     def test_the_mirrored_copy_is_gone(self) -> None:
         # ``shared.preprocessing`` held a verbatim copy of the manifest's function.
-        from rcp_ndcg.data import preprocess as preprocessing
+        from rcp.data import preprocess as preprocessing
 
         assert not hasattr(preprocessing, "hash_payload")
 
     def test_the_deleted_recipes_are_gone(self) -> None:
-        from rcp_ndcg.support import identity as hashing
+        from rcp.support import identity as hashing
 
         for name in ("compute_hash", "compute_hash_long", "save_cache_metadata", "verify_cache_metadata"):
             assert not hasattr(hashing, name), f"{name} is still importable"

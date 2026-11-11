@@ -3,15 +3,28 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
+from typing import Any, Literal
 
 import pytest
+from pydantic import BaseModel, ConfigDict, Field
+from rcp_core.schemas import JudgementFamily
 
-from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.judging import Usage
-from rcp_ndcg.runs import RunLayout, RunManifest, RunStatus, StepStatus, discover_runs, new_run_id
-from rcp_ndcg.storage.artifacts import artifact_ref
-from rcp_ndcg.support.identity import hash_payload
+from rcp.errors import ConfigError, DataError
+from rcp.judging import Usage
+from rcp.runs import (
+    DatasetRef,
+    RunLayout,
+    RunManifest,
+    RunStatus,
+    StepRecord,
+    StepStatus,
+    discover_runs,
+    new_run_id,
+)
+from rcp.storage.artifacts import CodeVersion, artifact_ref
+from rcp.support.identity import hash_payload
 
 
 @pytest.fixture
@@ -75,8 +88,8 @@ class TestSteps:
         """RunState/StepState/JobState status fields are the three vocabularies themselves (one enum each),
         `StepStatus` covers `pending` (which `run status` emits for a step not started), and a finished-OK job
         reads `completed` like a finished-OK step and run — one word per meaning."""
-        from rcp_ndcg.runners.base import JobStatus
-        from rcp_ndcg.runs.run import JobState, RunState, StepState
+        from rcp.runners.base import JobStatus
+        from rcp.runs.run import JobState, RunState, StepState
 
         assert StepState.model_fields["status"].annotation is StepStatus
         assert RunState.model_fields["status"].annotation is RunStatus
@@ -138,7 +151,7 @@ class TestPersistence:
         assert loaded.status is RunStatus.RUNNING
         assert loaded.code.package_version
         payload = json.loads(Path(layout.manifest).read_text(encoding="utf-8"))
-        assert (payload["schema"], payload["layout"]) == ("rcp-ndcg.run-manifest.v1", "rcp-ndcg.run-layout.v1")
+        assert (payload["schema"], payload["layout"]) == ("rcp.run-manifest.v1", "rcp-ndcg.run-layout.v1")
         assert not list(Path(layout.root).glob("*.tmp"))
 
     def test_a_remote_run_directory_is_refused(self) -> None:
@@ -156,8 +169,162 @@ class TestPersistence:
         with pytest.raises(DataError) as caught:
             RunManifest.load(layout)
 
-        assert "rcp-ndcg.run-manifest.v1" in caught.value.message
+        assert "rcp.run-manifest.v1" in caught.value.message
         assert caught.value.hint and "run" in caught.value.hint
+
+
+class _FirstV1Reader(BaseModel):
+    """The first ``run-manifest.v1``'s thirteen fields, and only those, under the additive rule.
+
+    A reader that ignores the fields it does not know reads a later ``v1`` record: the additions are optional,
+    so it does not need them. Pinning the field set here means a change that made a new field required, or
+    changed an old field's type, fails this reader instead of passing unnoticed. The shipped reader is not
+    this one: ``RunManifest`` is a closed record and refuses a field it does not know, which
+    ``test_a_first_v1_reader_reads_a_later_v1_manifest`` pins beside this reader.
+    """
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    # The artifact identity moved from `rcp-ndcg.` to `rcp.` while the fields stayed the same, so a reader
+    # written against the first v1 accepts both spellings: that is what the move promised, and `accepted_schema_ids`
+    # is where the product states it.
+    schema_name: Literal["rcp.run-manifest.v1", "rcp-ndcg.run-manifest.v1"] = Field(alias="schema")
+    layout: Literal["rcp-ndcg.run-layout.v1"] = "rcp-ndcg.run-layout.v1"
+    run_id: str
+    created_at: datetime
+    updated_at: datetime
+    status: RunStatus = RunStatus.RUNNING
+    code: CodeVersion
+    config: dict[str, Any] = Field(default_factory=dict)
+    dataset: DatasetRef | None = None
+    families: dict[str, JudgementFamily] = Field(default_factory=dict)
+    steps: list[StepRecord] = Field(default_factory=list)
+    metrics: dict[str, float] = Field(default_factory=dict)
+    usage: Usage = Field(default_factory=Usage)
+
+
+class TestTheV1Additions:
+    """G4: five optional fields were added to ``run-manifest.v1``, and no existing field moved."""
+
+    @staticmethod
+    def _first_v1() -> dict[str, Any]:
+        """A manifest exactly as the first ``v1`` wrote it: thirteen properties, no additions."""
+        return {
+            "schema": "rcp-ndcg.run-manifest.v1",
+            "layout": "rcp-ndcg.run-layout.v1",
+            "run_id": "20260102-030405-first-v1",
+            "created_at": "2026-01-02T03:04:05Z",
+            "updated_at": "2026-01-02T03:04:05Z",
+            "status": "completed",
+            "code": {"package_version": "0.0.1", "python_version": "3.12", "platform": "linux"},
+            "config": {"dataset": "tiny"},
+            "dataset": {"name": "tiny", "subset": "test", "split": "test"},
+            "families": {},
+            "steps": [],
+            "metrics": {"mine/qrel_ndcg@10": 0.5},
+            "usage": {"requests": 1, "input_tokens": 10},
+        }
+
+    @staticmethod
+    def _later_v1(layout: RunLayout) -> dict[str, Any]:
+        """A later ``v1`` manifest: the same fields, plus the five additions populated."""
+        return {
+            "run_id": layout.run_id,
+            "code": {"package_version": "0.0.1", "python_version": "3.12", "platform": "linux"},
+            "datasets": [
+                {
+                    "name": "tiny",
+                    "subset": "test",
+                    "split": "test",
+                    "internal": True,
+                    "args": {"qrels_uri": "qrels.jsonl"},
+                }
+            ],
+            "suites": [{"name": "nanobeir", "entries": ["NanoNFCorpusRetrieval"]}],
+            "rows": {"schema": "example.rows.v1"},
+        }
+
+    def test_a_first_v1_manifest_still_validates(self) -> None:
+        manifest = RunManifest.model_validate(self._first_v1())
+
+        assert manifest.run_id == "20260102-030405-first-v1"
+        assert manifest.metrics == {"mine/qrel_ndcg@10": 0.5}
+        assert manifest.dataset is not None and manifest.dataset.subset == "test"
+        # The additions are optional: an old record gets their defaults and no existing value moves.
+        assert manifest.path is None
+        assert manifest.datasets == []
+        assert manifest.suites == []
+        assert manifest.rows is None
+
+    def test_a_later_v1_manifest_round_trips_the_added_fields(self, layout: RunLayout) -> None:
+        manifest = RunManifest.model_validate(self._later_v1(layout))
+        manifest.save(layout)
+
+        loaded = RunManifest.load(layout)
+        assert loaded == manifest
+        assert loaded.path == layout.root
+        assert loaded.datasets[0].name == "tiny"
+        assert loaded.datasets[0].internal is True
+        assert loaded.datasets[0].args == {"qrels_uri": "qrels.jsonl"}
+        assert loaded.suites[0].name == "nanobeir"
+        assert loaded.suites[0].entries == ["NanoNFCorpusRetrieval"]
+        assert loaded.rows is not None and loaded.rows.schema_name == "example.rows.v1"
+
+        payload = json.loads(Path(layout.manifest).read_text(encoding="utf-8"))
+        assert payload["path"] == layout.root
+        assert payload["datasets"][0]["internal"] is True
+        assert payload["datasets"][0]["args"] == {"qrels_uri": "qrels.jsonl"}
+        assert payload["suites"][0]["entries"] == ["NanoNFCorpusRetrieval"]
+        assert payload["rows"] == {"schema": "example.rows.v1"}
+
+    def test_a_first_v1_reader_reads_a_later_v1_manifest(self, layout: RunLayout) -> None:
+        manifest = RunManifest.model_validate(self._later_v1(layout))
+        manifest.save(layout)
+
+        first = _FirstV1Reader.model_validate_json(Path(layout.manifest).read_text(encoding="utf-8"))
+        assert first.run_id == manifest.run_id
+        assert first.config == manifest.config
+        assert first.metrics == manifest.metrics
+        assert "path" not in first.model_dump()
+
+        # The shipped reader is a closed record: it reads a later record only while it knows every field, and
+        # it refuses a field it does not know instead of dropping it. A field added after a release therefore
+        # needs a reader at least as new as the writer -- a refusal, never a misread -- and the additive rule
+        # is what keeps that the only breakage.
+        later = json.loads(Path(layout.manifest).read_text(encoding="utf-8")) | {"added_later": 1}
+        Path(layout.manifest).write_text(json.dumps(later), encoding="utf-8")
+        with pytest.raises(DataError) as caught:
+            RunManifest.load(layout)
+        assert "added_later" in caught.value.message
+        assert _FirstV1Reader.model_validate(later).run_id == manifest.run_id
+
+        # Closed wherever the field sits, not only at the top: a step's `usage` is the one nested record a
+        # producer could extend, and it refuses an unknown field like the manifest does.
+        nested = json.loads(Path(layout.manifest).read_text(encoding="utf-8"))
+        nested.pop("added_later")
+        nested["usage"] = {"requests": 1, "added_later": 1}
+        Path(layout.manifest).write_text(json.dumps(nested), encoding="utf-8")
+        with pytest.raises(DataError) as nested_caught:
+            RunManifest.load(layout)
+        assert "added_later" in nested_caught.value.message
+
+    def test_the_added_fields_are_optional_and_the_manifest_stays_closed(self) -> None:
+        schema = RunManifest.model_json_schema(mode="serialization")
+
+        assert schema["additionalProperties"] is False
+        assert set(schema["required"]) == {"run_id", "code"}
+        added = {"path", "datasets", "suites", "rows"}
+        assert added <= set(schema["properties"])
+        assert added.isdisjoint(schema["required"])
+
+        definitions = schema["$defs"]
+        assert definitions["DatasetEntry"]["properties"]["internal"]["default"] is False
+        assert "args" not in definitions["DatasetEntry"]["required"]
+        assert "internal" not in definitions["DatasetEntry"]["required"]
+        assert "entries" not in definitions["SuiteEntry"]["required"]
+        assert definitions["Rows"]["properties"]["schema"]["default"] is None
+        # The existing ``dataset`` field keeps its closed shape: the additions live on the new array's entries.
+        assert {"internal", "args"}.isdisjoint(definitions["DatasetRef"]["properties"])
 
 
 class TestAFailedRerun:

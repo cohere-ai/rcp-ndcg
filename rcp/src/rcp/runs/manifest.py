@@ -1,0 +1,283 @@
+"""The run manifest: what happened in a run, to what, at what cost.
+
+One JSON file per run (schema ``rcp.run-manifest.v1``), updated as each
+step finishes. Per step it records the state, the step's identity (a digest of
+everything that decides its output), the inputs and outputs with content
+hashes, the judge's usage, the timing and, for a judging step, what the judge's
+endpoints said they serve; for the run, the resolved config (the seed and the
+preprocessing included), the dataset and its revisions, the datasets and suites
+read, the run's path and row schema, the judgement families and the code
+version. A run is resumable exactly when every completed step's identity and
+inputs are unchanged.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from enum import StrEnum
+from pathlib import Path
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+from rcp_core.schemas import JudgementFamily
+
+from rcp.errors import DataError
+from rcp.judging.client import EngineInfo, Usage
+from rcp.runs.layout import LAYOUT_VERSION, RunLayout
+from rcp.storage import publish
+from rcp.storage.artifacts import ArtifactRef, CodeVersion, code_version
+from rcp.support.identity import hash_payload
+
+MANIFEST_SCHEMA = "rcp.run-manifest.v1"
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+class StepStatus(StrEnum):
+    """The state of one step (also what ``run status`` reports for it)."""
+
+    PENDING = "pending"
+    """Planned but not started (and not yet recorded in the manifest)."""
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    """Stopped by ``run cancel`` while it ran."""
+
+
+class RunStatus(StrEnum):
+    """The state of the run."""
+
+    SUBMITTED = "submitted"
+    """Handed to a job runner; the job has not started the run yet."""
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    PARTIAL = "partial"
+    """Ended with steps of its config not done (an invocation that ran only some of them): a resume runs the rest."""
+    CANCELLED = "cancelled"
+
+
+class StepRecord(BaseModel):
+    """One step's execution: its identity, what it read and wrote, the judge calls it made, how long it took."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    status: StepStatus
+    identity: dict[str, Any] = Field(default_factory=dict)
+    identity_hash: str | None = None
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    duration_s: float | None = None
+    inputs: list[ArtifactRef] = Field(default_factory=list)
+    outputs: list[ArtifactRef] = Field(default_factory=list)
+    usage: Usage | None = None
+    engines: list[EngineInfo] = Field(default_factory=list)
+    """What the judge's endpoints said they serve (judging steps; runtime information, never in an identity)."""
+    error: str | None = None
+
+    @property
+    def succeeded(self) -> bool:
+        return self.status is StepStatus.COMPLETED
+
+
+class DatasetRef(BaseModel):
+    """What was evaluated: the dataset's name, provenance and the revision each source resolved to.
+
+    Attributes:
+        name: The dataset name.
+        revisions: ``{source URI: {"repo", "commit", "verified"}}`` of the Hub sources, or ``None``.
+        subset: The source subset the data was read for (mteb's ``hf_subset``), or ``None``.
+        split: The source split the labels were read at, or ``None``.
+        task: The mteb task the dataset realises, or ``None``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    revisions: dict[str, dict[str, Any]] | None = None
+    subset: str | None = None
+    split: str | None = None
+    task: str | None = None
+
+
+class DatasetEntry(DatasetRef):
+    """One dataset a run read: the :class:`DatasetRef` provenance plus the reader's slice and its visibility.
+
+    Attributes:
+        internal: Whether the source is internal to the producer (not for publication). The default is
+            ``False`` and it is a statement by the producer, never an inference: the product reads the field,
+            it does not decide it, and a source the producer did not mark is not internal.
+        args: The reader arguments that selected the slice (the options passed to
+            :func:`~rcp.data.load_dataset`); ``{}`` when none were recorded.
+    """
+
+    internal: bool = False
+    args: dict[str, Any] = Field(default_factory=dict)
+
+
+class SuiteEntry(BaseModel):
+    """A suite a run read and the entries of it the run used.
+
+    Attributes:
+        name: The suite's name (the ``suite:<name>`` it was loaded by, or the directory's name).
+        entries: The suite entries the run evaluated; empty when the suite ran whole or the entries were not
+            recorded.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    entries: list[str] = Field(default_factory=list)
+
+
+class Rows(BaseModel):
+    """The downstream row schema a run's exported rows are written as.
+
+    Attributes:
+        schema: The row schema's name, a free string the package never interprets, or ``None``.
+    """
+
+    model_config = ConfigDict(extra="forbid", validate_by_name=True, serialize_by_alias=True)
+
+    schema_name: str | None = Field(default=None, alias="schema")
+
+
+class RunManifest(BaseModel):
+    """Everything known about one run.
+
+    Attributes:
+        path: The run directory this manifest was last written in, or ``None`` in a manifest written before
+            the field existed. The artifact paths in ``steps`` are relative to it.
+        datasets: The datasets the run read, with the reader arguments that selected each slice and whether the
+            source is internal; empty when the producer recorded none. ``dataset`` remains the primary dataset.
+        suites: The suites the run read and the entries of each it used; empty when none were recorded.
+        rows: The downstream row schema the run's rows were written as, or ``None``.
+    """
+
+    model_config = ConfigDict(extra="forbid", validate_by_name=True, serialize_by_alias=True)
+
+    schema_name: Literal["rcp.run-manifest.v1", "rcp-ndcg.run-manifest.v1"] = Field(
+        default=MANIFEST_SCHEMA, alias="schema"
+    )
+    layout: Literal["rcp-ndcg.run-layout.v1"] = LAYOUT_VERSION
+    run_id: str
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+    status: RunStatus = RunStatus.RUNNING
+    code: CodeVersion
+    config: dict[str, Any] = Field(default_factory=dict)
+    dataset: DatasetRef | None = None
+    path: str | None = None
+    datasets: list[DatasetEntry] = Field(default_factory=list)
+    suites: list[SuiteEntry] = Field(default_factory=list)
+    rows: Rows | None = None
+    families: dict[str, JudgementFamily] = Field(default_factory=dict)
+    """``{family_key: JudgementFamily}`` of the judgements the run wrote."""
+    steps: list[StepRecord] = Field(default_factory=list)
+    metrics: dict[str, float] = Field(default_factory=dict)
+    """``{"<system>/<metric>@<k>": value}`` of the evaluate step's summary, every system but the judge's own order
+    (the full report, with confidence intervals: ``metrics/report.json``)."""
+    usage: Usage = Field(default_factory=Usage)
+
+    @classmethod
+    def new(cls, run_id: str, *, config: dict[str, Any]) -> RunManifest:
+        """A fresh manifest for ``run_id``."""
+        return cls(run_id=run_id, code=code_version(), config=config)
+
+    # -- steps ---------------------------------------------------------------
+
+    def step(self, name: str) -> StepRecord | None:
+        return next((record for record in self.steps if record.name == name), None)
+
+    def start_step(self, name: str, *, identity: dict[str, Any]) -> StepRecord:
+        """Mark ``name`` running (one record per step: a retry replaces it).
+
+        A retry is a new attempt: the previous attempt's inputs, outputs, usage and engines are cleared, so a
+        record that ends ``failed`` describes only what that attempt did (a failed record listing outputs it
+        never wrote would mislead a reader and a resume)."""
+        record = self.step(name)
+        if record is None:
+            record = StepRecord(name=name, status=StepStatus.RUNNING)
+            self.steps.append(record)
+        record.status = StepStatus.RUNNING
+        record.started_at = _now()
+        record.ended_at = record.duration_s = record.error = None
+        record.inputs = []
+        record.outputs = []
+        record.usage = Usage()
+        record.engines = []
+        record.identity = identity
+        record.identity_hash = hash_payload(identity)
+        self.updated_at = _now()
+        return record
+
+    def finish_step(
+        self,
+        name: str,
+        *,
+        status: StepStatus = StepStatus.COMPLETED,
+        inputs: list[ArtifactRef] | None = None,
+        outputs: list[ArtifactRef] | None = None,
+        usage: Usage | None = None,
+        error: str | None = None,
+    ) -> StepRecord:
+        """Close ``name`` and add its usage to the run total."""
+        record = self.step(name)
+        if record is None:
+            record = StepRecord(name=name, status=status)
+            self.steps.append(record)
+        record.status = status
+        record.ended_at = _now()
+        if record.started_at is not None:
+            record.duration_s = (record.ended_at - record.started_at).total_seconds()
+        if inputs is not None:
+            record.inputs = inputs
+        if outputs is not None:
+            record.outputs = outputs
+        if usage is not None:
+            record.usage = usage
+            self.usage = self.usage.merged_with(usage)
+        record.error = error
+        self.updated_at = _now()
+        return record
+
+    # -- disk ----------------------------------------------------------------
+
+    def save(self, layout: RunLayout) -> str:
+        """Write the manifest atomically (the one storage helper: a per-process, per-call temp file and a
+        rename, so a concurrent reader of a running job's manifest never sees a truncated moment, and two
+        writers never share a temp file). Owner-only: the manifest carries the resolved config and the run's
+        records, and a cluster filesystem is shared. The run directory is recorded in ``path``."""
+        self.path = layout.root
+        self.updated_at = _now()
+        payload = self.model_dump_json(indent=2)
+        target = layout.manifest
+        publish(Path(target), lambda tmp: tmp.write_text(payload, encoding="utf-8"), mode=0o600)
+        return target
+
+    @classmethod
+    def load(cls, source: str | Path | RunLayout) -> RunManifest:
+        """Read the manifest of a run directory (or the manifest file itself).
+
+        Raises:
+            DataError: the file is not a manifest of this schema.
+        """
+        path = source.manifest if isinstance(source, RunLayout) else str(source)
+        if not path.endswith(".json"):
+            path = RunLayout.at(path).manifest
+        text = Path(path).read_text(encoding="utf-8")
+        try:
+            return cls.model_validate_json(text)
+        except ValueError as exc:
+            raise DataError(
+                f"{path} is not a {MANIFEST_SCHEMA} manifest: {exc}",
+                hint="the manifest is damaged: restore it from the run's mirror (`run resume --mirror`), or re-run "
+                "the run (`run start`/`run resume`) into a new run directory",
+            ) from exc
+
+
+__all__ = ["MANIFEST_SCHEMA", "DatasetRef", "RunManifest", "RunStatus", "StepRecord", "StepStatus"]

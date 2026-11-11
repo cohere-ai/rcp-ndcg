@@ -41,7 +41,7 @@
       "title": "Revision"
     },
     "schema": {
-      "const": "rcp-ndcg.data-fetch.v1",
+      "const": "rcp.data-fetch.v1",
       "type": "string"
     },
     "subset": {
@@ -67,5 +67,5 @@
   ],
   "title": "DataFetch",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.data-fetch.v1"
+  "x-rcp-schema": "rcp.data-fetch.v1"
 }

@@ -1,4 +1,4 @@
-"""``rcp-ndcg docs api``: one API page per public module, generated from the pinned surface snapshot."""
+"""``rcp docs api``: one API page per public module, generated from the pinned surface snapshot."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from rcp_ndcg.cli.docs import docs_group
-from rcp_ndcg.support.api_docs import PUBLIC_MODULES, page_name
+from rcp.cli.docs import docs_group
+from rcp.support.api_docs import PUBLIC_MODULES, page_name
 
 
 def _invoke(*args: str) -> dict:
@@ -21,8 +21,8 @@ def test_docs_api_writes_one_page_per_public_module(tmp_path: Path) -> None:
     assert payload["exit_code"] == 0, payload
     written = sorted(Path(path).name for path in payload["data"]["written"])
     assert written == sorted(page_name(module) for module in PUBLIC_MODULES)
-    page = (tmp_path / page_name("rcp_ndcg_core.metric")).read_text(encoding="utf-8")
-    assert page.startswith("# `rcp_ndcg_core.metric`")
+    page = (tmp_path / page_name("rcp_core.metric")).read_text(encoding="utf-8")
+    assert page.startswith("# `rcp_core.metric`")
     assert "## `ndcg`" in page
 
 

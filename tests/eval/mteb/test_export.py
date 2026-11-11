@@ -9,10 +9,10 @@ from typing import Any
 
 import pytest
 
-from rcp_ndcg.data.dataset import Dataset
-from rcp_ndcg.data.io import available_writers, get_writer
-from rcp_ndcg.data.io.mteb import MtebWriter
-from rcp_ndcg.errors import ConfigError, DataError
+from rcp.data.dataset import Dataset
+from rcp.data.io import available_writers, get_writer
+from rcp.data.io.mteb import MtebWriter
+from rcp.errors import ConfigError, DataError
 
 MTEB = pytest.importorskip("mteb")
 
@@ -55,9 +55,9 @@ def a_png() -> bytes:
 
 def a_media_dataset(tmp_path: Path, kind: str, payload: bytes) -> Dataset:
     """One document whose content is its text plus one media part of *kind*."""
-    from rcp_ndcg_core.content import Content, ImagePart, TextPart, VideoPart
+    from rcp_core.content import Content, ImagePart, TextPart, VideoPart
 
-    from rcp_ndcg.data.media import store_media
+    from rcp.data.media import store_media
 
     if kind == "image":
         ref = store_media(payload, ".png", root=str(tmp_path / "media"))
@@ -131,7 +131,7 @@ def test_a_named_subset_prefixes_every_config(tmp_path: Path) -> None:
 def test_a_shared_corpus_is_written_once_and_counted_once(tmp_path: Path) -> None:
     """`corpus_group` writes a group's rows once (the return counts them once), and every part's `-corpus`
     README entry points at the shared files."""
-    from rcp_ndcg.data.dataset import Dataset
+    from rcp.data.dataset import Dataset
 
     def part(name: str, text: str) -> Dataset:
         return Dataset.from_records(
@@ -155,7 +155,7 @@ def test_a_shared_corpus_is_written_once_and_counted_once(tmp_path: Path) -> Non
 
 def test_a_shared_corpus_that_differs_is_refused(tmp_path: Path) -> None:
     """A later part of a group whose rows differ is refused, not silently dropped."""
-    from rcp_ndcg.data.dataset import Dataset
+    from rcp.data.dataset import Dataset
 
     def part(name: str, text: str) -> Dataset:
         return Dataset.from_records(
@@ -355,9 +355,9 @@ def test_a_video_corpus_writes_mteb_s_video_column(tmp_path: Path) -> None:
 
 
 def test_two_images_in_one_document_are_refused_by_name(tmp_path: Path) -> None:
-    from rcp_ndcg_core.content import Content, ImagePart, TextPart
+    from rcp_core.content import Content, ImagePart, TextPart
 
-    from rcp_ndcg.data.media import store_media
+    from rcp.data.media import store_media
 
     ref = store_media(a_png(), ".png", root=str(tmp_path / "media"))
     content = Content.from_parts([TextPart(text="p"), ImagePart(ref=ref), ImagePart(ref=ref)])
@@ -375,9 +375,9 @@ def test_two_images_in_one_document_are_refused_by_name(tmp_path: Path) -> None:
 def test_a_video_of_frames_is_refused_with_or_without_a_container(tmp_path: Path) -> None:
     """mteb's Video column holds a container; a part whose frames are extracted (with a container too -- the
     model allows both) is refused by name rather than silently dropping the frames."""
-    from rcp_ndcg_core.content import Content, TextPart, VideoPart
+    from rcp_core.content import Content, TextPart, VideoPart
 
-    from rcp_ndcg.data.media import store_media
+    from rcp.data.media import store_media
 
     frame = store_media(a_png(), ".png", root=str(tmp_path / "media"))
     container = store_media(
@@ -488,7 +488,7 @@ def test_data_convert_writes_the_layout(tmp_path: Path) -> None:
     """The advertised command: `data convert --to mteb` writes a layout load_dataset reads back."""
     from click.testing import CliRunner
 
-    from rcp_ndcg.cli.data import data_group
+    from rcp.cli.data import data_group
 
     source = tmp_path / "rows"
     source.mkdir()

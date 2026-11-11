@@ -12,10 +12,10 @@ A checkpoint's smaller sizes come from one of exactly two mechanisms, and the re
 * **truncation** -- the checkpoint was trained so that the first `k` components of the full-width vector are
   a valid `k`-dimensional embedding (the Matryoshka property). The head slices the vector to `k` and
   renormalises it. The slice is taken before the L2 normalisation of the cut: cutting a normalised vector
-  and not renormalising would ship non-unit vectors, so the head always renormalises (`rcp_ndcg.data.mrl.mrl_cut`).
+  and not renormalising would ship non-unit vectors, so the head always renormalises (`rcp.data.mrl.mrl_cut`).
 * **projection** -- the checkpoint's smaller sizes are computed by its own learned matrices (a
   `*.safetensors` file at the pinned revision), so a slice of the full-width vector is *not* the right
-  input. The head loads the file (through `rcp_ndcg.storage`, so a Hub path
+  input. The head loads the file (through `rcp.storage`, so a Hub path
   `hf://org/model@revision/projections.safetensors` or a local file both work), applies the chain of
   matrices and renormalises the result. One naming convention: **the file's tensor names are their target
   widths**, and the declared `mrl_dims` are the projected sizes (the full width is served without a head
@@ -32,7 +32,7 @@ card's prose range, e.g. `[32, 1024]`; every `k` in the closed interval is selec
 enforces the floor). A run selects `k` from that declaration, and anything else is refused at load:
 
 ```python
-from rcp_ndcg.inference.config import EmbeddingEndpoint
+from rcp.inference.config import EmbeddingEndpoint
 
 config = EmbeddingEndpoint(
     base_url="http://127.0.0.1:8000/v1",
@@ -76,7 +76,7 @@ client-side head is the one cut.
 
 ## The order
 
-A client applies the declared kind to the reply through the one head home (`rcp_ndcg.data.mrl.MrlHead`):
+A client applies the declared kind to the reply through the one head home (`rcp.data.mrl.MrlHead`):
 
 1. the declared `normalize` (the full-width embedding is L2-normalised when the config says so);
 2. the head: truncation slices then renormalises, projection applies the learned chain then renormalises.
@@ -100,8 +100,8 @@ selections are mutually exclusive on one config; one cut, one home.
 
 ## The full-width store
 
-Evaluating several `k` values from one forward pass needs the full-width vectors, not a cut. `rcp-ndcg
-retrieval store` (`rcp_ndcg.retrieval.build_store`) encodes a dataset's corpus **and** its queries once at
+Evaluating several `k` values from one forward pass needs the full-width vectors, not a cut. `rcp
+retrieval store` (`rcp.retrieval.build_store`) encodes a dataset's corpus **and** its queries once at
 the checkpoint's full width (the configured selection is stripped for that pass) and writes an
 `EmbeddingStore`:
 
@@ -113,7 +113,7 @@ the checkpoint's full width (the configured selection is stripped for that pass)
 <store>/queries_offsets.npy   (query_count + 1,) for a late-interaction store
 ```
 
-The record carries the schema (`rcp-ndcg.embedding-store.v1`), the model, its revision, the recipe, the
+The record carries the schema (`rcp.embedding-store.v1`), the model, its revision, the recipe, the
 digest of the request-shaping fields (prompts, template, budget, shapes), the dataset's document- and
 query-side task instructions when it declares them (the corpus and query vectors were encoded with them,
 the same inputs `retrieval index`/`search` use), the tokenizer and its digest, the
@@ -127,14 +127,14 @@ narrower than the record's `full_width`.
 
 ## The sweep
 
-`rcp-ndcg retrieval sweep` (`rcp_ndcg.retrieval.sweep`) applies the declared head per `k` to the stored
+`rcp retrieval sweep` (`rcp.retrieval.sweep`) applies the declared head per `k` to the stored
 vectors, scores each cut with the retrieval scorer (dense inner product or MaxSim), and writes one rankings
 file per `k` whose system is `<model>@<k>`. With `--dataset`, it also runs `evaluate` and `compare` across
 the `k` systems, so one store yields the whole width/quality curve:
 
 ```
-rcp-ndcg retrieval store  --dataset beir:data/nfcorpus --retriever encoder.yaml --out store/
-rcp-ndcg retrieval sweep  --store store/ --dims 64 --dims 128 --dims 256 \
+rcp retrieval store  --dataset beir:data/nfcorpus --retriever encoder.yaml --out store/
+rcp retrieval sweep  --store store/ --dims 64 --dims 128 --dims 256 \
                           --dataset beir:data/nfcorpus --out-dir sweep/
 ```
 
@@ -152,13 +152,13 @@ qrel-nDCG alone unless `--metrics rcp_ndcg` is passed with a gains source.
 
 ## Gating every declared k
 
-The equivalence harness (`rcp-ndcg-test`) gates every declared dimension from one full-width run: stage 2
+The equivalence harness (`rcp-test`) gates every declared dimension from one full-width run: stage 2
 builds the recipe's client with its selection stripped (`dimensions`/`mrl_dim`), so the served engine and the
 reference subprocess both answer at full width, and then applies the declared head to both sides per `k`
 before the ordinary per-vector (or per-token) cosine gate -- one gate row per `k` in `equivalence.json` and
 the report, beside the full-width row. `k` never enters the engine request: the one pass is full width, and
 the head derives every `k` ex-post, so the head's derivation semantics are versioned by the gating code
-(`rcp_ndcg_test.equivalence.MRL_GATE_VERSION`). A recipe that declares only `mrl_range` gates its two
+(`rcp_test.equivalence.MRL_GATE_VERSION`). A recipe that declares only `mrl_range` gates its two
 endpoints and the run's selection: a range cannot be enumerated, and the interior is not silently claimed.
 The observation request set records the engine's own side of each declared `k` (a bare `dimensions=k` probe:
 one per set member, or one per range endpoint and the run's selection) so the fake engines replay it.

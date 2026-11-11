@@ -1,7 +1,7 @@
 {
   "$defs": {
     "CliError": {
-      "description": "Why a command failed and what to do next (the exit-code table of rcp_ndcg.errors).",
+      "description": "Why a command failed and what to do next (the exit-code table of rcp.errors).",
       "properties": {
         "code": {
           "enum": [
@@ -93,7 +93,7 @@
       "type": "object"
     },
     "CliWarning": {
-      "description": "A typed warning: ``code`` is from the closed list rcp_ndcg.errors.WarningCode.",
+      "description": "A typed warning: ``code`` is from the closed list rcp.errors.WarningCode.",
       "properties": {
         "code": {
           "enum": [
@@ -134,7 +134,7 @@
     },
     "data": {
       "default": null,
-      "description": "The result, present when ok; a command with a result model tags it with its 'schema' id (a free-form one, `schema show <name>`, names it in 'x-rcp-ndcg-schema' of its exported schema).",
+      "description": "The result, present when ok; a command with a result model tags it with its 'schema' id (a free-form one, `schema show <name>`, names it in 'x-rcp-schema' of its exported schema).",
       "title": "Data"
     },
     "error": {
@@ -157,8 +157,11 @@
       "type": "boolean"
     },
     "schema": {
-      "const": "rcp-ndcg.cli.v1",
-      "default": "rcp-ndcg.cli.v1",
+      "default": "rcp.cli.v1",
+      "enum": [
+        "rcp.cli.v1",
+        "rcp-ndcg.cli.v1"
+      ],
       "title": "Schema",
       "type": "string"
     },
@@ -177,5 +180,5 @@
   ],
   "title": "CliEnvelope",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.cli.v1"
+  "x-rcp-schema": "rcp.cli.v1"
 }

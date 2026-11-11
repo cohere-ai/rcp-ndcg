@@ -46,8 +46,11 @@
           "type": "integer"
         },
         "schema": {
-          "const": "rcp-ndcg.cost-estimate.v1",
-          "default": "rcp-ndcg.cost-estimate.v1",
+          "default": "rcp.cost-estimate.v1",
+          "enum": [
+            "rcp.cost-estimate.v1",
+            "rcp-ndcg.cost-estimate.v1"
+          ],
           "title": "Schema",
           "type": "string"
         },
@@ -104,7 +107,8 @@
       "type": "object"
     },
     "Usage": {
-      "description": "Requests and tokens accumulated by a transport or a role client; merge instances with\nmerged_with.\n\nOne type for every role: a role client's ``usage`` property is this shape, the run manifest serialises it\nper step and per run, and the transport accumulates it. Tokens and requests only -- the wire reports\nnothing else (an endpoint's cached-input detail is not tracked and stays 0).",
+      "additionalProperties": false,
+      "description": "Requests and tokens accumulated by a transport or a role client; merge instances with\nmerged_with.\n\nOne type for every role: a role client's ``usage`` property is this shape, the run manifest serialises it\nper step and per run, and the transport accumulates it. Tokens and requests only -- the wire reports\nnothing else (an endpoint's cached-input detail is not tracked and stays 0).\n\nA closed record (``extra=\"forbid\"``), like every record the run manifest carries: the shipped reader\nrefuses a field it does not know wherever the field sits, so a manifest needs a reader at least as new as\nits writer.",
       "properties": {
         "cached_input_tokens": {
           "default": 0,
@@ -204,7 +208,7 @@
       "type": "integer"
     },
     "schema": {
-      "const": "rcp-ndcg.judge-report.v1",
+      "const": "rcp.judge-report.v1",
       "type": "string"
     },
     "stage": {
@@ -258,5 +262,5 @@
   ],
   "title": "JudgeReport",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.judge-report.v1"
+  "x-rcp-schema": "rcp.judge-report.v1"
 }

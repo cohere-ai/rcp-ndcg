@@ -9,10 +9,10 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from rcp_ndcg.cli.main import cli
-from rcp_ndcg.errors import MissingInputError
-from rcp_ndcg.runs import Pipeline
-from rcp_ndcg.runs import inspect as inspect_runs
+from rcp.cli.main import cli
+from rcp.errors import MissingInputError
+from rcp.runs import Pipeline
+from rcp.runs import inspect as inspect_runs
 from tests.runs.conftest import tiny_config
 
 
@@ -34,7 +34,7 @@ class TestListAndShow:
     def test_get_run_reports_which_artifacts_exist(self, finished: Path) -> None:
         """run show once had its own artifact map ('metrics' where Run.artifacts says 'report', and no config,
         log or jobs)."""
-        from rcp_ndcg.runs.run import Run
+        from rcp.runs.run import Run
 
         payload = inspect_runs.get_run(finished)
         assert payload["manifest"]["run_id"] == finished.name
@@ -87,9 +87,9 @@ class TestCompareAndExplain:
 class TestStatus:
     def test_every_planned_step_is_listed_with_judge_progress(self, finished: Path, tmp_path: Path) -> None:
         """A poller sees 1/4 steps, not 1/1: steps not started are pending, and judging steps count windows."""
-        from rcp_ndcg.runs import RunManifest, RunStatus
-        from rcp_ndcg.runs.layout import RunLayout
-        from rcp_ndcg.runs.run import Run
+        from rcp.runs import RunManifest, RunStatus
+        from rcp.runs.layout import RunLayout
+        from rcp.runs.run import Run
 
         run_dir = tmp_path / finished.name
         shutil.copytree(finished, run_dir)
@@ -119,9 +119,9 @@ class TestStatus:
     def test_text_mode_shows_the_note_and_the_mirror_state(self) -> None:
         """The note is the only place a derived failure or a mirror fallback explains itself, and the mirror's
         error was only ever in ``--json``: a human polling ``run status`` saw neither."""
-        from rcp_ndcg.cli.run import _state_text
-        from rcp_ndcg.runs.mirror import MirrorState
-        from rcp_ndcg.runs.run import RunState
+        from rcp.cli.run import _state_text
+        from rcp.runs.mirror import MirrorState
+        from rcp.runs.run import RunState
 
         state = RunState(
             run_id="20260101-000000-tiny",

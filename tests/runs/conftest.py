@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg.runs import Pipeline, RunConfig
-from rcp_ndcg.testing import TINY_RUBRIC, TINY_TOURNAMENT, tiny_rows
+from rcp.runs import Pipeline, RunConfig
+from rcp.testing import TINY_RUBRIC, TINY_TOURNAMENT, tiny_rows
 
 STEPS = ["tournament", "rubric", "calibrate", "evaluate"]
 

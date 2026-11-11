@@ -4,10 +4,10 @@
 For every published repository (``rcp-ndcg-nanobeir``, ``rcp-ndcg-bright``, ``rcp-ndcg-trecdl``,
 ``rcp-ndcg-vidore-v3``) this re-writes every subset its published task definitions read -- all 48 ViDoRe v3
 language subsets, not only the eight native-language ones the paper scores -- with
-:class:`rcp_ndcg.data.io.mteb.MtebWriter`, each at the split its task definition pins (NanoBEIR ``train``,
+:class:`rcp.data.io.mteb.MtebWriter`, each at the split its task definition pins (NanoBEIR ``train``,
 BRIGHT ``standard``, ViDoRe v3 ``test``; the PR's split names; decision 40 dropped the earlier
 re-lay-everything-to-``test`` rule), and validates each written directory by loading it back with mteb's own
-``RetrievalDatasetLoader`` and comparing against the loaded :class:`~rcp_ndcg.data.Dataset`: the qrels as
+``RetrievalDatasetLoader`` and comparing against the loaded :class:`~rcp.data.Dataset`: the qrels as
 integers, the queries, the corpus (media included), and the pool mteb reads (``top_ranked``, exclusions folded
 out). A corpus shared by several subsets (ViDoRe v3's language subsets read their domain's page images, and
 TREC-DL 2019 and 2020 read the same corpus) is written once, as the published repository stores it.
@@ -43,9 +43,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from rcp_ndcg.data.dataset import Dataset, load_dataset
-from rcp_ndcg.data.io.mteb import MtebWriter
-from rcp_ndcg.errors import DataError
+from rcp.data.dataset import Dataset, load_dataset
+from rcp.data.io.mteb import MtebWriter
+from rcp.errors import DataError
 
 OWNER = "fabianschmidt-cohere"
 """The owner the published repositories live under today; the push moves them to an organisation."""
@@ -135,7 +135,7 @@ def _load(uri: str, revision: str | None) -> Dataset:
 
 def _repo_subsets(repo: str, revision: str | None) -> tuple[str, ...]:
     """The subsets the published repository's card declares (mteb's config-name prefixes)."""
-    from rcp_ndcg.data.io.hub import hub_subsets
+    from rcp.data.io.hub import hub_subsets
 
     return hub_subsets(repo, revision)
 
@@ -143,9 +143,9 @@ def _repo_subsets(repo: str, revision: str | None) -> tuple[str, ...]:
 def _corpus_entries(repo: str, revision: str | None) -> dict[str, tuple[tuple[str | None, str], ...]]:
     """``{subset: the card's corpus (split, pattern) entries}``; subsets with identical entries share one corpus.
 
-    The card is the product's own parsing (``rcp_ndcg.data.io.hub``); a repository without a card yields none.
+    The card is the product's own parsing (``rcp.data.io.hub``); a repository without a card yields none.
     """
-    from rcp_ndcg.data.io.hub import _card_configs
+    from rcp.data.io.hub import _card_configs
 
     entries: dict[str, tuple[tuple[str | None, str], ...]] = {}
     for name, config in _card_configs(repo, revision).items():
@@ -158,7 +158,7 @@ def _corpus_entries(repo: str, revision: str | None) -> dict[str, tuple[tuple[st
 def _task_source(repo: str, owner: str, revision: str | None) -> str:
     """The text of the repository's published ``rcp_ndcg_tasks.py`` at the owner and revision the data is
     read at (the task definitions, read as data, never executed)."""
-    from rcp_ndcg.eval.mteb import _hub_text
+    from rcp.eval.mteb import _hub_text
 
     return _hub_text(f"{owner}/{repo}", TASK_FILE, revision)
 
@@ -172,7 +172,7 @@ def _definitions(source: str, subset: str) -> list[dict[str, Any]]:
     languages do not spell out. ViDoRe v3 maps a subset to two tasks (the page-image one and its OCR view), so
     every match is returned and every one's split is checked.
     """
-    from rcp_ndcg.eval.mteb import task_metadata, task_subsets
+    from rcp.eval.mteb import task_metadata, task_subsets
 
     _, table = task_metadata(source)
     aliases = task_subsets(source)
@@ -193,7 +193,7 @@ def _data_subsets(source: str) -> list[str]:
     native-language subsets the paper scores. An older file whose ``eval_langs`` is a language list falls back
     to the table and alias keys.
     """
-    from rcp_ndcg.eval.mteb import task_metadata, task_subsets
+    from rcp.eval.mteb import task_metadata, task_subsets
 
     _, table = task_metadata(source)
     aliases = task_subsets(source)
@@ -286,7 +286,7 @@ def _unique_layout(target: Path) -> Iterator[Path]:
     mtime are not in the key), so validating from ``out/<repo>`` twice could read the first run's build -- a
     false pass or a false failure. The unique view gives every validation run its own cache key.
     """
-    view = Path(tempfile.mkdtemp(prefix="rcp-ndcg-validate-"))
+    view = Path(tempfile.mkdtemp(prefix="rcp-validate-"))
     try:
         for child in target.resolve().iterdir():
             (view / child.name).symlink_to(child)
@@ -390,7 +390,7 @@ def _validate_written_extras(part: Dataset, target: Path) -> None:
     """
     import pyarrow.parquet as pq
 
-    from rcp_ndcg.data.io.mteb import SHARD, _config_prefix
+    from rcp.data.io.mteb import SHARD, _config_prefix
 
     prefix = _config_prefix(part.name)
     rows = pq.read_table(target / f"{prefix}qrels" / SHARD.format(split=part.split)).to_pylist()
@@ -430,9 +430,9 @@ def _written_media(loaded: dict[str, Any], column: str) -> dict[str, bytes]:
 
 def _expected_media(part: Dataset, column: str) -> dict[str, bytes]:
     """``{doc_id: bytes}`` of one media column, from the dataset's content parts (what the writer resolves)."""
-    from rcp_ndcg_core.content import ImagePart, VideoPart
+    from rcp_core.content import ImagePart, VideoPart
 
-    from rcp_ndcg.data.media import default_resolver
+    from rcp.data.media import default_resolver
 
     part_type = ImagePart if column == "image" else VideoPart
     expected: dict[str, bytes] = {}

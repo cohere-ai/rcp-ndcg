@@ -87,8 +87,11 @@
           "description": "Queries per stage, and those calibrated."
         },
         "schema": {
-          "const": "rcp-ndcg.calibration-coverage.v1",
-          "default": "rcp-ndcg.calibration-coverage.v1",
+          "default": "rcp.calibration-coverage.v1",
+          "enum": [
+            "rcp.calibration-coverage.v1",
+            "rcp-ndcg.calibration-coverage.v1"
+          ],
           "title": "Schema",
           "type": "string"
         },
@@ -217,7 +220,7 @@
     },
     "Diagnostics": {
       "additionalProperties": false,
-      "description": "``diagnostics.json``: what a calibration's fit reports about itself\n(``rcp-ndcg.calibration-diagnostics.v1``).",
+      "description": "``diagnostics.json``: what a calibration's fit reports about itself\n(``rcp.calibration-diagnostics.v1``).",
       "properties": {
         "fit": {
           "$ref": "#/$defs/FitDiagnostics",
@@ -228,8 +231,11 @@
           "description": "Predicted against observed verdicts."
         },
         "schema": {
-          "const": "rcp-ndcg.calibration-diagnostics.v1",
-          "default": "rcp-ndcg.calibration-diagnostics.v1",
+          "default": "rcp.calibration-diagnostics.v1",
+          "enum": [
+            "rcp.calibration-diagnostics.v1",
+            "rcp-ndcg.calibration-diagnostics.v1"
+          ],
           "title": "Schema",
           "type": "string"
         },
@@ -994,7 +1000,7 @@
       "type": "integer"
     },
     "schema": {
-      "const": "rcp-ndcg.calibration-summary.v1",
+      "const": "rcp.calibration-summary.v1",
       "type": "string"
     },
     "sources": {
@@ -1034,5 +1040,5 @@
   ],
   "title": "CalibrationSummary",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.calibration-summary.v1"
+  "x-rcp-schema": "rcp.calibration-summary.v1"
 }

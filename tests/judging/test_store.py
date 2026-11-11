@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import json
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core.schemas import Judgement, JudgementFamily, Placement
+from rcp_core.schemas import Judgement, JudgementFamily, Placement
 
-from rcp_ndcg.errors import DataError
-from rcp_ndcg.judging import JudgementStore
+from rcp.errors import DataError
+from rcp.judging import JudgementStore
 
 RECORDED_AT = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -46,7 +48,7 @@ def test_the_store_identity_is_replaced_never_rewritten(tmp_path: Path) -> None:
 def test_a_store_read_by_another_parser_points_at_reparse_not_at_force(tmp_path: Path) -> None:
     """A pass resumed after a parser upgrade differs from its store in the parse version alone: its answers are the
     judge's and are re-read with reparse, so the refusal says so instead of offering force, which re-asks them."""
-    from rcp_ndcg.errors import IdentityError
+    from rcp.errors import IdentityError
 
     store = JudgementStore(tmp_path)
     old = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="p", parse_version=3)
@@ -105,7 +107,7 @@ def test_a_tombstone_retires_a_record_whose_clock_ran_ahead(tmp_path: Path) -> N
     cannot leave a retired record valid, and a later valid re-ask of the window wins again."""
     from datetime import timedelta
 
-    from rcp_ndcg.judging.store import records_stored
+    from rcp.judging.store import records_stored
 
     store = JudgementStore(tmp_path)
     ahead = _window("r1").model_copy(update={"recorded_at": datetime.now(UTC) + timedelta(days=1)})
@@ -145,7 +147,7 @@ def test_the_store_and_merge_keep_the_same_copy_of_a_window(tmp_path: Path) -> N
     """One rule: a later recorded_at wins among valid copies, whatever order the file holds them in."""
     from datetime import timedelta
 
-    from rcp_ndcg_core.schemas import JudgementFamily, JudgementSet
+    from rcp_core.schemas import JudgementFamily, JudgementSet
 
     store = JudgementStore(tmp_path)
     later = _window("r1", response="later answer").model_copy(update={"recorded_at": RECORDED_AT + timedelta(hours=1)})
@@ -198,3 +200,45 @@ def test_a_zero_byte_identity_file_is_absent_not_a_crash(tmp_path: Path) -> None
     assert store.identities() == {}, "the empty file is treated as the store's torn tail"
     store.claim("tournament", {"a": 2}, family)
     assert store.identities()["tournament"]["identity"] == {"a": 2}
+
+
+def test_a_resumed_pre_rename_store_keeps_the_tag_it_was_created_with(tmp_path: Path) -> None:
+    """A store written before the rename carries ``rcp-ndcg.judgement-store.v1``, and the pre-rename code reads
+    that tag alone (an equality check): a pass resumed into the store writes its identity back under the tag it
+    read, so resuming rewrites nothing the store's own code would then refuse."""
+    store = JudgementStore(tmp_path)
+    family = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
+    store.claim("tournament", {"a": 1}, family)
+    path = store.identity_path
+    path.write_text(re.sub(r'"rcp\.', '"rcp-ndcg.', path.read_text(encoding="utf-8")), encoding="utf-8")
+    assert json.loads(path.read_text(encoding="utf-8"))["schema"] == "rcp-ndcg.judgement-store.v1"
+
+    JudgementStore(tmp_path).claim("rubric", {"a": 1}, family.model_copy(update={"stage": "rubric"}))
+
+    written = json.loads(path.read_text(encoding="utf-8"))
+    assert written["schema"] == "rcp-ndcg.judgement-store.v1", "a resumed pass migrated the tag in place"
+    assert set(JudgementStore(tmp_path).identities()) == {"tournament", "rubric"}
+
+
+def test_a_new_store_writes_the_current_tag(tmp_path: Path) -> None:
+    """The other direction: a store created now carries ``rcp.judgement-store.v1``."""
+    from rcp.judging.store import STORE_SCHEMA
+
+    store = JudgementStore(tmp_path)
+    family = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
+    store.claim("tournament", {"a": 1}, family)
+    assert json.loads(store.identity_path.read_text(encoding="utf-8"))["schema"] == STORE_SCHEMA
+
+
+@pytest.mark.parametrize("prefix", ["rcp", "rcp-ndcg"])
+def test_a_store_reads_under_either_spelling_of_its_schema_id(tmp_path: Path, prefix: str) -> None:
+    """A store written before the rename carries ``rcp-ndcg.*`` ids and one written after carries ``rcp.*``:
+    the reader accepts both, so an existing store still reads."""
+    store = JudgementStore(tmp_path)
+    family = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
+    store.claim("tournament", {"family": family.model_dump(mode="json")}, family)
+    store.append(_window("r1").model_copy(update={"family_key": family.key}))
+    for path in (store.identity_path, store.path("tournament")):
+        text = path.read_text(encoding="utf-8")
+        path.write_text(re.sub(r'"rcp(?:-ndcg)?\.', f'"{prefix}.', text), encoding="utf-8")
+    assert [judgement.record_id for judgement in JudgementStore(tmp_path).read().judgements] == ["r1"]

@@ -3,13 +3,13 @@
 Every released dataset carries the calibrated RCP gains of its judged pools, and under `provenance/runs/` the
 stored rankings of the 14 rerankers the paper compares. This example scores those rankings on one NanoBEIR task
 with the paper's NanoBEIR protocol. Your own system works the same way: a Parquet, CSV, TREC or JSONL file with
-query ids, document ids and scores (`rcp.load_rankings`), or `rcp-ndcg eval score --rankings FILE --suite nanobeir`.
+query ids, document ids and scores (`rcp.load_rankings`), or `rcp eval score --rankings FILE --suite nanobeir`.
 
-    pip install "rcp-ndcg[hf]"
+    pip install "rcp[hf]"
     python examples/01_score_released_suite.py
 """
 
-import rcp_ndcg as rcp
+import rcp
 
 REPO = "fabianschmidt-cohere/rcp-ndcg-nanobeir"
 TASK = "NanoFiQA2018Retrieval"

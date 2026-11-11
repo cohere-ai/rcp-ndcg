@@ -1,4 +1,4 @@
-"""``rcp-ndcg retrieval``: a dataset URI in, rankings files out, over the retrieval API."""
+"""``rcp retrieval``: a dataset URI in, rankings files out, over the retrieval API."""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from rcp_ndcg.cli.retrieval import retrieval_group as retrieval
-from rcp_ndcg.data import Rankings, load_rankings
-from rcp_ndcg.errors import ExitCode
+from rcp.cli.retrieval import retrieval_group as retrieval
+from rcp.data import Rankings, load_rankings
+from rcp.errors import ExitCode
 
 
 def _invoke(*args: str) -> dict:
@@ -46,7 +46,7 @@ def test_search_retrieves_into_a_rankings_file(dataset: str, bm25: str, tmp_path
 
     assert document["exit_code"] == 0, document
     assert document["data"] == {
-        "schema": "rcp-ndcg.rankings-file.v1",
+        "schema": "rcp.rankings-file.v1",
         "out": str(out),
         "systems": ["bm25"],
         "queries": 2,
@@ -114,10 +114,10 @@ def test_a_retriever_yamls_relative_recipe_path_resolves_against_the_file(
     against the working directory instead of the file that names it."""
     import shutil
 
-    from rcp_ndcg_vllm.recipe import default_recipes_root
+    from rcp_vllm.recipe import default_recipes_root
 
-    from rcp_ndcg.cli._args import load_yaml_config
-    from rcp_ndcg.retrieval import validate_retriever
+    from rcp.cli._args import load_yaml_config
+    from rcp.retrieval import validate_retriever
 
     configs = tmp_path / "configs"
     configs.mkdir()
@@ -140,7 +140,7 @@ def test_a_retriever_yamls_relative_recipe_path_resolves_against_the_file(
 def test_rerank_rescores_the_top_candidates(dataset: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     def stub_rerank_many(self, examples, *, instruction=None, checkpoint=None):
         """The stub endpoint scores each document by its text length."""
-        from rcp_ndcg.inference.types import RerankResult
+        from rcp.inference.types import RerankResult
 
         results = []
         for example in examples:
@@ -150,7 +150,7 @@ def test_rerank_rescores_the_top_candidates(dataset: str, tmp_path: Path, monkey
             results.append(RerankResult(scores=scores))
         return results
 
-    monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", stub_rerank_many)
+    monkeypatch.setattr("rcp.retrieval._api.RerankClient.rerank_many", stub_rerank_many)
     first = tmp_path / "first.parquet"
     Rankings.from_orders({"q1": ["d2", "d3", "d1"]}, system="first").save(first)
     reranker = tmp_path / "reranker.yaml"
@@ -186,7 +186,7 @@ def test_rerank_checkpoints_each_scored_query(dataset: str, tmp_path: Path, monk
     calls: list[int] = []
 
     def stub_rerank_many(self, examples, *, instruction=None, checkpoint=None):
-        from rcp_ndcg.inference.types import RerankResult
+        from rcp.inference.types import RerankResult
 
         calls.append(len(examples))
         results = []
@@ -197,7 +197,7 @@ def test_rerank_checkpoints_each_scored_query(dataset: str, tmp_path: Path, monk
             results.append(RerankResult(scores=scores))
         return results
 
-    monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", stub_rerank_many)
+    monkeypatch.setattr("rcp.retrieval._api.RerankClient.rerank_many", stub_rerank_many)
     first = tmp_path / "first.parquet"
     Rankings.from_orders({"q1": ["d2", "d3"]}, system="first").save(first)
     reranker = tmp_path / "reranker.yaml"
@@ -263,7 +263,7 @@ def test_each_commands_set_help_names_the_yaml_it_overrides() -> None:
     """index and search said 'the retriever or reranker YAML'; neither takes a reranker."""
     from click.testing import CliRunner
 
-    from rcp_ndcg.cli.main import cli
+    from rcp.cli.main import cli
 
     for command, kind in (("index", "retriever"), ("search", "retriever"), ("rerank", "reranker")):
         help_text = " ".join(CliRunner().invoke(cli, ["retrieval", command, "--help"]).output.split())

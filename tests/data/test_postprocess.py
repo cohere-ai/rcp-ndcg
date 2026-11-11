@@ -1,12 +1,12 @@
 """The postprocess home's guards: the skip keep-mask and L2 normalisation (the MRL head moved to
-:mod:`rcp_ndcg.data.mrl`, and its tests with it)."""
+:mod:`rcp.data.mrl`, and its tests with it)."""
 
 from __future__ import annotations
 
 import numpy as np
 import pytest
 
-from rcp_ndcg.data.postprocess import kept_vector_count, l2_normalize, skip_keep_mask
+from rcp.data.postprocess import kept_vector_count, l2_normalize, skip_keep_mask
 
 
 class TestKeptVectorCount:
@@ -25,7 +25,7 @@ class TestKeptVectorCount:
         assert kept_vector_count([], [], media_tokens=42) == 42
 
     def test_nothing_to_count_is_refused(self) -> None:
-        from rcp_ndcg.errors import DataError
+        from rcp.errors import DataError
 
         with pytest.raises(DataError, match="count") as caught:
             kept_vector_count([], [])
@@ -48,7 +48,7 @@ class TestSkipKeepMask:
         assert skip_keep_mask([5, 6], []) == [0, 1]
 
     def test_empty_token_ids_are_refused(self) -> None:
-        from rcp_ndcg.errors import DataError
+        from rcp.errors import DataError
 
         with pytest.raises(DataError, match="token ids") as caught:
             skip_keep_mask([], [1])

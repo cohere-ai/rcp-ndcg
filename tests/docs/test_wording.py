@@ -16,7 +16,7 @@ FORBIDDEN = [
     (re.compile(r"binary nDCG", re.I), "the metrics are RCP-nDCG, qrel-nDCG and Count-nDCG"),
     (re.compile(r"θ-?n?DCG|theta[-_ ]n?dcg", re.I), "the product is RCP-nDCG"),
     # The pattern is split in two so that the repository's own name scanners do not match this line.
-    (re.compile(r"import rcp_ndcg as t" r"n\b"), "the package alias is rcp"),
+    (re.compile(r"import rcp as t" r"n\b"), "the package alias is rcp"),
     (re.compile(r"\b(RFC|JC)[- ]?\d{3,4}\b"), "no internal design or lane ids"),
     # The open interval, in the maths spelling the pages use: the gain is in $[0, 1]$ and the sigmoid
     # saturates to exactly 0.0 and 1.0. (A bare ``\(0, 1\)`` would also match the normal prior

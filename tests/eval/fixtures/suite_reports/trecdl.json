@@ -1,0 +1,79 @@
+{
+  "schema": "rcp.eval-report.v1",
+  "protocol": {
+    "name": "trecdl",
+    "ties": "group_mean",
+    "qrel_gain": "linear",
+    "restrict_to_candidates": true,
+    "drop_identical_ids": false,
+    "round_digits": null
+  },
+  "gains_source": "dataset",
+  "metrics": [
+    "rcp_ndcg",
+    "qrel_ndcg"
+  ],
+  "k": [
+    10
+  ],
+  "per_query": [
+    {
+      "system": "system",
+      "dataset": "trecdl",
+      "query_id": "359349",
+      "metric": "rcp_ndcg",
+      "k": 10,
+      "value": 0.983275128858023
+    },
+    {
+      "system": "system",
+      "dataset": "trecdl",
+      "query_id": "359349",
+      "metric": "qrel_ndcg",
+      "k": 10,
+      "value": 0.9561788297018217
+    }
+  ],
+  "per_dataset": [
+    {
+      "system": "system",
+      "dataset": "trecdl",
+      "metric": "rcp_ndcg",
+      "k": 10,
+      "value": 0.983275128858023,
+      "num_queries": 1
+    },
+    {
+      "system": "system",
+      "dataset": "trecdl",
+      "metric": "qrel_ndcg",
+      "k": 10,
+      "value": 0.9561788297018217,
+      "num_queries": 1
+    }
+  ],
+  "summary": [
+    {
+      "system": "system",
+      "metric": "rcp_ndcg",
+      "k": 10,
+      "value": 0.983275128858023,
+      "ci_low": null,
+      "ci_high": null,
+      "num_queries": 1,
+      "num_datasets": 1
+    },
+    {
+      "system": "system",
+      "metric": "qrel_ndcg",
+      "k": 10,
+      "value": 0.9561788297018217,
+      "ci_low": null,
+      "ci_high": null,
+      "num_queries": 1,
+      "num_datasets": 1
+    }
+  ],
+  "warnings": [],
+  "inputs": null
+}

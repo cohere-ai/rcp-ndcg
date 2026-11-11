@@ -13,15 +13,15 @@ import sys
 from typing import Any, ClassVar
 
 import pytest
-from rcp_ndcg_core.content import Content
+from rcp_core.content import Content
 
-from rcp_ndcg.errors import ConfigError, CredentialsError, RequestRejectedError
-from rcp_ndcg.inference import EncodeRole
-from rcp_ndcg.inference.clients import EmbeddingClient, PoolingClient, RerankClient
-from rcp_ndcg.inference.clients._base import RoleClient
-from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
-from rcp_ndcg.inference.endpoint import Endpoint
-from rcp_ndcg.inference.types import Call, Reply, Usage
+from rcp.errors import ConfigError, CredentialsError, RequestRejectedError
+from rcp.inference import EncodeRole
+from rcp.inference.clients import EmbeddingClient, PoolingClient, RerankClient
+from rcp.inference.clients._base import RoleClient
+from rcp.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+from rcp.inference.endpoint import Endpoint
+from rcp.inference.types import Call, Reply, Usage
 
 
 class RecordingSender:
@@ -71,7 +71,7 @@ class TestSyncBridge:
             )
 
     def test_a_transport_sender_is_accepted(self, tokenizer_json: str) -> None:
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.transport import Transport
 
         config = EmbeddingEndpoint(
             base_url="http://127.0.0.1:9000/v1", model="m", tokenizer=tokenizer_json, max_tokens=8192
@@ -102,7 +102,7 @@ class TestLifecycle:
         assert sender.closed == 3
 
     def test_close_closes_the_transport_the_client_built(self, tokenizer_json: str) -> None:
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.transport import Transport
 
         config = EmbeddingEndpoint(
             base_url="http://127.0.0.1:9000/v1", model="m", tokenizer=tokenizer_json, max_tokens=8192
@@ -116,7 +116,7 @@ class TestLifecycle:
 
 class TestAdapterLookup:
     def test_the_adapter_is_looked_up_within_the_client_s_role(self, tokenizer_json: str) -> None:
-        from rcp_ndcg.inference.adapters import get_adapter
+        from rcp.inference.adapters import get_adapter
 
         client = EmbeddingClient(
             EmbeddingEndpoint(
@@ -149,8 +149,8 @@ class TestHostedBaseUrl:
 
     def test_a_profile_without_a_default_url_refuses_a_base_url_less_config(self, tokenizer_json: str) -> None:
         """A served engine has no public root: an adapter that declares none refuses a config without one."""
-        from rcp_ndcg.inference import adapters as registry
-        from rcp_ndcg.inference.adapters.base import AdapterRole, register_adapter
+        from rcp.inference import adapters as registry
+        from rcp.inference.adapters.base import AdapterRole, register_adapter
 
         class _NoDefaultEmbed:
             name = "probe_nodefault"
@@ -244,7 +244,7 @@ class TestNoSiblingLeftRunning:
     """A failing request cancels its siblings (R7): TaskGroup semantics in every client's fan-out."""
 
     def _embed(self, sender: Any, tokenizer_json: str) -> EmbeddingClient:
-        from rcp_ndcg_core.content import Content
+        from rcp_core.content import Content
 
         return EmbeddingClient(
             EmbeddingEndpoint(
@@ -259,7 +259,7 @@ class TestNoSiblingLeftRunning:
         ), [Content.from_text(f"doc {index}") for index in range(10)]
 
     def test_embed_cancels_its_sibling_requests(self, tokenizer_json: str) -> None:
-        from rcp_ndcg.inference import EncodeRole
+        from rcp.inference import EncodeRole
 
         sender = _FailingFanOut()
         client, contents = self._embed(sender, tokenizer_json)
@@ -275,7 +275,7 @@ class TestNoSiblingLeftRunning:
     def test_rerank_many_cancels_its_sibling_queries_and_checkpoints_nothing_after_the_failure(
         self, tokenizer_json: str
     ) -> None:
-        from rcp_ndcg_core.records import RankingExample
+        from rcp_core.records import RankingExample
 
         sender = _FailingFanOut()
         client = RerankClient(
@@ -303,7 +303,7 @@ class TestNoSiblingLeftRunning:
         asyncio.run(run())
 
     def test_pool_cancels_its_sibling_requests(self, tokenizer_json: str) -> None:
-        from rcp_ndcg_core.content import Content
+        from rcp_core.content import Content
 
         sender = _FailingFanOut()
         client = PoolingClient(
@@ -334,7 +334,7 @@ class TestEngineAdapterRoles:
     ``api`` selects an adapter of a different engine role is refused where the runners resolve engines."""
 
     def test_the_mapping_is_written_once(self) -> None:
-        from rcp_ndcg.inference.adapters.base import ENGINE_ADAPTER_ROLES
+        from rcp.inference.adapters.base import ENGINE_ADAPTER_ROLES
 
         assert set(ENGINE_ADAPTER_ROLES) == {"judge", "encoder", "reranker"}
         assert ENGINE_ADAPTER_ROLES["judge"] == frozenset({"judge"})
@@ -342,12 +342,12 @@ class TestEngineAdapterRoles:
         assert ENGINE_ADAPTER_ROLES["reranker"] == frozenset({"rerank"})
 
     def test_adapter_roles_of_returns_the_mapping_s_values(self) -> None:
-        from rcp_ndcg.inference.adapters.base import adapter_roles_of
+        from rcp.inference.adapters.base import adapter_roles_of
 
         assert adapter_roles_of("encoder") == frozenset({"embed", "multi_vector"})
 
     def test_an_api_of_another_role_is_refused_by_the_engine_check(self) -> None:
-        from rcp_ndcg.inference.adapters.base import check_engine_api
+        from rcp.inference.adapters.base import check_engine_api
 
         check_engine_api("openai_embeddings", engine_role="encoder", where="serve.encoder")
         check_engine_api("vllm_pooling", engine_role="encoder", where="serve.encoder")
@@ -358,7 +358,7 @@ class TestEngineAdapterRoles:
             check_engine_api("rerank", engine_role="judge", where="serve.judge")
 
     def test_a_config_without_an_api_is_not_checked(self) -> None:
-        from rcp_ndcg.inference.adapters.base import check_engine_api
+        from rcp.inference.adapters.base import check_engine_api
 
         check_engine_api(None, engine_role="judge", where="serve.judge")
 
@@ -371,7 +371,7 @@ class TestEngineAdapterRoles:
         up in the registry only, ignoring the module's own ``_ALIASES`` table ("A judge recipe declares
         client.api: chat", decision 15).
         """
-        from rcp_ndcg.inference.adapters.base import check_engine_api, get_adapter, known_adapters
+        from rcp.inference.adapters.base import check_engine_api, get_adapter, known_adapters
 
         assert "chat" in known_adapters("judge")
         assert get_adapter("chat", role="judge").name == "openai_chat"
@@ -380,7 +380,7 @@ class TestEngineAdapterRoles:
             check_engine_api("chat", engine_role="encoder", where="serve.encoder")
 
     def test_an_unknown_api_names_where_the_name_does_live(self) -> None:
-        from rcp_ndcg.inference.adapters.base import check_engine_api
+        from rcp.inference.adapters.base import check_engine_api
 
         with pytest.raises(ConfigError) as caught:
             check_engine_api("vllm_pooling", engine_role="reranker", where="serve.reranker")
@@ -396,7 +396,7 @@ class TestANamedKeyStaysOnTheConfigsUrls:
     def _run(config: Any, transport_url: str, monkeypatch: pytest.MonkeyPatch) -> list[Any]:
         import httpx
 
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.transport import Transport
 
         monkeypatch.setenv("RCP_NDCG_NAMED_KEY", "fake-secret-named")
         seen: list[httpx.Request] = []
@@ -454,7 +454,7 @@ class TestInjectedTransportCredentials:
     def test_a_config_named_variable_is_resolved_through_a_foreign_transport(
         self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.transport import Transport
 
         monkeypatch.delenv("RCP_NDCG_CLIENT_KEY", raising=False)
         config = EmbeddingEndpoint(
@@ -478,7 +478,7 @@ class TestInjectedTransportCredentials:
         """A cohere client over a transport built on a bare config, aimed at a gateway URL: the profile's
         variables stay home (they name the vendor's own host), so a key reaches this request only through
         the config's own ``api_key_env`` -- never by falling back to the vendor's variables."""
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.transport import Transport
 
         monkeypatch.setenv("CO_API_KEY", "co-secret-key")
         monkeypatch.setenv("COHERE_API_KEY", "cohere-secret-key")
@@ -513,8 +513,8 @@ def test_every_role_builds_its_adapter_with_the_role_config(
     """The constructor convention is uniform: a role client instantiates its adapter with the config it
     serves (the resolved endpoint), so an adapter whose requests depend on a config field can read it -- an
     adapter built bare would raise at construction, or silently never see the config."""
-    from rcp_ndcg.inference.adapters.embeddings import OpenAIEmbeddings
-    from rcp_ndcg.inference.adapters.pooling import VllmPooling
+    from rcp.inference.adapters.embeddings import OpenAIEmbeddings
+    from rcp.inference.adapters.pooling import VllmPooling
 
     adapter = OpenAIEmbeddings if role == "embed" else VllmPooling
     seen: list[Any] = []
@@ -544,7 +544,7 @@ class TestKeysStayOnTheProfileHost:
         self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """An ``openai_embeddings`` engine at a local URL is sent no OpenAI key, however the variable is set."""
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.transport import Transport
 
         monkeypatch.setenv("OPENAI_API_KEY", "sk-secret-openai-key")
         config = EmbeddingEndpoint(
@@ -567,7 +567,7 @@ class TestKeysStayOnTheProfileHost:
     ) -> None:
         """Cohere's variables behind a gateway URL: the gateway injects its own credential, so the vendor's
         key stays home; an explicitly named variable is the one exception."""
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.transport import Transport
 
         monkeypatch.setenv("CO_API_KEY", "co-secret-key")
         config = EmbeddingEndpoint(
@@ -582,7 +582,7 @@ class TestKeysStayOnTheProfileHost:
 
     def test_a_named_api_key_env_travels_to_any_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The one exception is explicit: ``api_key_env`` names the variable, wherever the request goes."""
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.transport import Transport
 
         monkeypatch.setenv("GATEWAY_COHERE_KEY", "gw-secret-key")
         config = EmbeddingEndpoint(
@@ -601,7 +601,7 @@ class TestKeysStayOnTheProfileHost:
 
     def test_the_profile_keys_apply_on_the_profile_s_own_default_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """At the vendor's own root the profile's variables resolve as before -- that is what they are for."""
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.transport import Transport
 
         monkeypatch.setenv("CO_API_KEY", "co-secret-key")
         monkeypatch.delenv("COHERE_API_KEY", raising=False)
@@ -630,8 +630,8 @@ def test_a_hosted_rerank_profile_s_key_stays_on_its_own_host(
     vendor's own root and nothing else -- behind a gateway URL the request goes out with no key."""
     import httpx
 
-    from rcp_ndcg.inference.adapters.base import get_adapter
-    from rcp_ndcg.inference.transport import Transport
+    from rcp.inference.adapters.base import get_adapter
+    from rcp.inference.transport import Transport
 
     monkeypatch.setattr(get_adapter(api, role="rerank"), "PAUSE_S", 0.0)  # Voyage's rate-limit pause, not under test
     monkeypatch.setenv(variable, "vendor-secret-key")
@@ -708,7 +708,7 @@ class TestKeysFollowTheReplicaNotTheConfig:
     def test_an_embed_transport_injected_on_another_url_gets_no_vendor_key(
         self, api: str, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.transport import Transport
 
         for name, value in self.VENDOR_KEYS.items():
             monkeypatch.setenv(name, value)
@@ -728,8 +728,8 @@ class TestKeysFollowTheReplicaNotTheConfig:
     def test_a_rerank_transport_injected_on_another_url_gets_no_vendor_key(
         self, api: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from rcp_ndcg.inference.adapters.base import get_adapter
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.adapters.base import get_adapter
+        from rcp.inference.transport import Transport
 
         for name, value in self.VENDOR_KEYS.items():
             monkeypatch.setenv(name, value)
@@ -746,7 +746,7 @@ class TestKeysFollowTheReplicaNotTheConfig:
     def test_a_pool_transport_injected_on_another_url_gets_no_vendor_key(
         self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.transport import Transport
 
         for name, value in self.VENDOR_KEYS.items():
             monkeypatch.setenv(name, value)
@@ -763,8 +763,8 @@ class TestKeysFollowTheReplicaNotTheConfig:
     def test_a_judge_config_swapped_to_another_url_gets_no_vendor_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import asyncio as _asyncio
 
-        from rcp_ndcg.inference.types import CompletionInput
-        from rcp_ndcg.judging import JudgeClient, JudgeConfig
+        from rcp.inference.types import CompletionInput
+        from rcp.judging import JudgeClient, JudgeConfig
 
         for name, value in self.VENDOR_KEYS.items():
             monkeypatch.setenv(name, value)
@@ -782,7 +782,7 @@ class TestKeysFollowTheReplicaNotTheConfig:
         """One endpoint, two replicas -- the vendor's root and a stranger: the transport decides per replica."""
         import asyncio as _asyncio
 
-        from rcp_ndcg.inference.transport import AuthProfile, Transport
+        from rcp.inference.transport import AuthProfile, Transport
 
         monkeypatch.setenv("CO_API_KEY", "fake-secret-co")
         mock, seen = self._capture()
@@ -824,7 +824,7 @@ class TestKeysFollowTheReplicaNotTheConfig:
         with the vendor's root, a query, a fragment or userinfo on it, is somewhere else."""
         import asyncio as _asyncio
 
-        from rcp_ndcg.inference.transport import AuthProfile, Transport
+        from rcp.inference.transport import AuthProfile, Transport
 
         monkeypatch.setenv("OPENAI_API_KEY", "fake-secret-openai")
         profile = AuthProfile(variables=("OPENAI_API_KEY",), required=True, homes=(self.HOME,))
@@ -837,7 +837,7 @@ class TestKeysFollowTheReplicaNotTheConfig:
 
     @pytest.mark.parametrize("url", ["https://api.openai.com/v1", "https://api.openai.com/v1/"])
     def test_the_home_itself_gets_the_key(self, url: str) -> None:
-        from rcp_ndcg.inference.transport import AuthProfile
+        from rcp.inference.transport import AuthProfile
 
         assert AuthProfile(variables=("OPENAI_API_KEY",), homes=(self.HOME,)).applies_to(url)
 
@@ -846,7 +846,7 @@ class TestKeysFollowTheReplicaNotTheConfig:
         variable travels to any host)."""
         import asyncio as _asyncio
 
-        from rcp_ndcg.inference.transport import AuthProfile, Transport
+        from rcp.inference.transport import AuthProfile, Transport
 
         monkeypatch.setenv("CO_API_KEY", "fake-secret-co")
         mock, seen = self._capture()
@@ -869,8 +869,8 @@ class TestUseActivationOnTheAdapter:
     rerank wire also needs an explicit ``use_activation``; hosted profiles keep ``None``."""
 
     def test_a_served_third_party_rerank_adapter_refuses_an_unset_use_activation(self) -> None:
-        from rcp_ndcg.inference import adapters as registry
-        from rcp_ndcg.inference.adapters.base import AdapterRole, register_adapter
+        from rcp.inference import adapters as registry
+        from rcp.inference.adapters.base import AdapterRole, register_adapter
         from tests.conftest import SESSION_TOKENIZER
 
         class _ServedThirdParty:
@@ -910,8 +910,8 @@ class TestUseActivationOnTheAdapter:
             registry.base._BUILTINS.update(saved)
 
     def test_a_hosted_third_party_rerank_adapter_keeps_none(self) -> None:
-        from rcp_ndcg.inference import adapters as registry
-        from rcp_ndcg.inference.adapters.base import AdapterRole, register_adapter
+        from rcp.inference import adapters as registry
+        from rcp.inference.adapters.base import AdapterRole, register_adapter
 
         class _HostedThirdParty:
             name = "hosted_third_party_rerank"
@@ -975,7 +975,7 @@ class TestUsageAccounting:
     def test_the_embed_client_folds_reply_tokens_into_the_transport(
         self, tokenizer_json: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.transport import Transport
 
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         config = EmbeddingEndpoint(
@@ -994,7 +994,7 @@ class TestUsageAccounting:
         assert client.usage.input_tokens == 7
 
     def test_the_rerank_client_folds_reply_tokens_into_the_transport(self, tokenizer_json: str) -> None:
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.transport import Transport
 
         config = RerankEndpoint(
             base_url="http://127.0.0.1:9000/v1",
@@ -1014,8 +1014,8 @@ class TestUsageAccounting:
     def test_a_paused_profile_s_replies_land_in_the_usage(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Voyage's calls go one at a time with a pause between them (a separate send path): its replies'
         token reports are folded in too."""
-        from rcp_ndcg.inference.adapters.rerank import VoyageRerankAdapter
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.adapters.rerank import VoyageRerankAdapter
+        from rcp.inference.transport import Transport
 
         monkeypatch.setenv("VOYAGE_API_KEY", "fake-secret-voyage")
         monkeypatch.setattr(VoyageRerankAdapter, "PAUSE_S", 0.001)  # > 0: the paused path, kept short
@@ -1029,7 +1029,7 @@ class TestUsageAccounting:
         assert client.usage.input_tokens == 11
 
     def test_the_pool_client_folds_reply_tokens_into_the_transport(self, tokenizer_json: str) -> None:
-        from rcp_ndcg.inference.transport import Transport
+        from rcp.inference.transport import Transport
 
         config = PoolingEndpoint(
             base_url="http://127.0.0.1:9000/v1",
@@ -1112,7 +1112,7 @@ class TestRequestGroupMediaCaps:
         """The grouping counts what the wire lowers -- a frame-sampled video as one image block per frame
         (``adapters.chat.media_counts``'s rule) -- so two 8-frame videos with ``max_images: 8`` split into
         two requests instead of one the media gate refuses with ``CapabilityError``."""
-        from rcp_ndcg_core.content import MediaRef, TextPart, VideoPart
+        from rcp_core.content import MediaRef, TextPart, VideoPart
 
         client = EmbeddingClient(
             EmbeddingEndpoint(

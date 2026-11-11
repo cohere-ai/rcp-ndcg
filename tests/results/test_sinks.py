@@ -1,6 +1,6 @@
-"""The built-in result sinks and the ``rcp_ndcg.results`` registry.
+"""The built-in result sinks and the ``rcp.results`` registry.
 
-A sink consumes one :class:`~rcp_ndcg.results.ResultRecord` at a time: the ``jsonl`` sink writes one record per
+A sink consumes one :class:`~rcp.results.ResultRecord` at a time: the ``jsonl`` sink writes one record per
 line, the ``parquet`` sink one row per (system, dataset, metric, cutoff), and ``null`` discards (for a dry run
 and for the conformance suite). The registry resolves a name through the entry-point group, and every failure
 names the installed sinks.
@@ -15,10 +15,10 @@ from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
-from rcp_ndcg_core.protocol import Protocol
+from rcp_core.protocol import Protocol
 
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.results import (
+from rcp.errors import ConfigError
+from rcp.results import (
     RESULT_SCHEMA,
     JsonlResultSink,
     NullResultSink,
@@ -52,8 +52,8 @@ def _record(metrics: list[ResultMetric] | None = None) -> ResultRecord:
 
 
 def test_the_manifest_declares_the_builtin_sinks() -> None:
-    data = tomllib.loads((REPO / "rcp-ndcg" / "pyproject.toml").read_text(encoding="utf-8"))
-    assert data["project"]["entry-points"]["rcp_ndcg.results"] == DECLARED_SINKS
+    data = tomllib.loads((REPO / "rcp" / "pyproject.toml").read_text(encoding="utf-8"))
+    assert data["project"]["entry-points"]["rcp.results"] == DECLARED_SINKS
 
 
 def test_the_registry_lists_the_installed_sinks_sorted(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -76,18 +76,18 @@ def test_an_unknown_sink_is_a_config_error_naming_the_installed(monkeypatch: pyt
     with pytest.raises(ConfigError, match="unknown result sink 'nope'") as caught:
         result_sink_class("nope")
     assert "jsonl" in str(caught.value)
-    assert "rcp_ndcg.results" in (caught.value.hint or "")
+    assert "rcp.results" in (caught.value.hint or "")
 
 
 def test_a_sink_that_fails_to_import_is_a_config_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    inject_sinks(monkeypatch, EntryPoint(name="broken", value="rcp_ndcg.results:NoSuchSink", group="rcp_ndcg.results"))
+    inject_sinks(monkeypatch, EntryPoint(name="broken", value="rcp.results:NoSuchSink", group="rcp.results"))
 
     with pytest.raises(ConfigError, match="'broken' entry point .* could not be loaded"):
         result_sink_class("broken")
 
 
 def test_an_entry_point_that_is_not_a_sink_is_a_config_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    inject_sinks(monkeypatch, EntryPoint(name="wrong", value="rcp_ndcg.results:ResultRecord", group="rcp_ndcg.results"))
+    inject_sinks(monkeypatch, EntryPoint(name="wrong", value="rcp.results:ResultRecord", group="rcp.results"))
 
     with pytest.raises(ConfigError, match="not a ResultsSink"):
         result_sink_class("wrong")

@@ -15,8 +15,8 @@ import asyncio
 from collections.abc import Callable
 from typing import Any
 
-from rcp_ndcg.inference.config import SELF_HOSTED_APIS, EmbeddingEndpoint
-from rcp_ndcg.inference.types import Call, Reply, Usage
+from rcp.inference.config import SELF_HOSTED_APIS, EmbeddingEndpoint
+from rcp.inference.types import Call, Reply, Usage
 from tests.inference import _budget
 
 
@@ -38,7 +38,7 @@ def embeddings_data(vectors: list[list[float]], *, indices: list[int] | None = N
 
 
 class FakeSender:
-    """A :class:`~rcp_ndcg.inference.transport.Sender` for offline tests: records what it sent, replies from a
+    """A :class:`~rcp.inference.transport.Sender` for offline tests: records what it sent, replies from a
     handler, and counts the requests in flight (with an optional per-call delay to force overlap)."""
 
     def __init__(

@@ -11,7 +11,7 @@ paper's leaderboards, the human contest study and the comparisons with external 
 and no credentials.
 
 ```bash
-pip install ./rcp-ndcg-core ./rcp-ndcg     # or: uv sync
+pip install ./rcp-core ./rcp     # or: uv sync
 pip install -r experiments/requirements.txt
 python experiments/fetch_data.py                 # the public datasets, at pinned revisions (about 150 MB)
 python experiments/run_all.py
@@ -39,7 +39,7 @@ revisions are the datasets' release 2, which carries the numbers of arXiv v2 (se
 Each benchmark dataset holds the judged candidate pools, the human qrels and the calibrated RCP gains
 ([docs/data.md](docs/data.md)). Two routes score a system on them:
 
-- this package: `rcp-ndcg eval score --rankings <file> --suite <suite>`, or `rcp_ndcg.eval.evaluate`, with the
+- this package: `rcp eval score --rankings <file> --suite <suite>`, or `rcp.eval.evaluate`, with the
   paper's per-suite scoring protocol ([scoring protocols](docs/concepts/protocols.md));
 - stock [mteb](https://github.com/embeddings-benchmark/mteb): `ndcg_float_at_10` through the `rcp_ndcg_tasks.py`
   shipped with each dataset ([MTEB integration](docs/how-to/mteb-integration.md)).
@@ -56,15 +56,15 @@ judge model and the benchmark corpora. The paper's primary judges were Qwen3.5-3
 v3; text only) and Qwen3.6-27B (TREC-DL); gpt-oss-120b was the second judge on NanoBEIR, BRIGHT and TREC-DL.
 
 - The first-stage retrievers and rerankers of the paper's runs are served from the shipped recipes:
-  `rcp-ndcg-vllm serve <recipe-id>` builds the engine command for the stock `vllm/vllm-openai:v0.33.0` image,
+  `rcp-vllm serve <recipe-id>` builds the engine command for the stock `vllm/vllm-openai:v0.33.0` image,
   and a run config's `recipe: <id>` reads the recipe's client block. The release ships 44 recipes in 24 families.
   On the vLLM 0.33 pin the tree records 42 verified end to end on GPU in their waves, and the `topk-embed-v1`
   variants (small and xsmall), the ones the owner's disposition names, are the 2 shipped with status failed;
   no recipe reads `status: unverified`: a row is only ever the wave that ran, so a recipe whose wave has not
   landed claims nothing rather than borrowing another image's evidence; see the
-  [`rcp-ndcg-vllm` README](rcp-ndcg-vllm/README.md).
+  [`rcp-vllm` README](rcp-vllm/README.md).
 - The paper's judges ship the same way: `--judge recipe:<id>` (or `judge: recipe:<id>` in a run config) reads
-  the recipe's client block, and `rcp-ndcg-vllm serve <id>` builds its engine command; the package itself keeps
+  the recipe's client block, and `rcp-vllm serve <id>` builds its engine command; the package itself keeps
   only the hosted `gpt5_hosted` vendor profile. The paper's
   judges ran on SGLang: the paper's submission code is the record of those engine commands, which this
   repository does not ship; this release serves the same checkpoints on vLLM v0.33.0
@@ -196,7 +196,7 @@ scores and the 2PL calibration of every suite and judge, and recomputes every nu
 tables credit tied scores with their group's mean gain on every suite, where arXiv v1 broke ties by document id or
 by judge-pool order. The decoder of this release (parse version 4) makes the cut at the last reasoning tag itself,
 so on the stored paper-era answers it decodes the same JSON object as arXiv v2's rule in every window (checked on
-the stored NanoBEIR and TREC-DL answers of both stages, 577,449 windows). For Stage A, `rcp-ndcg judge reparse` of
+the stored NanoBEIR and TREC-DL answers of both stages, 577,449 windows). For Stage A, `rcp judge reparse` of
 those answers therefore reads the same observations as arXiv v2. For Stage B it does not: the paper's rubric prompt
 also asked a sixth criterion (C6), which the paper never fitted and arXiv v2 dropped before requiring C1..C5 of
 every document, while the rubric parser refuses a criterion the prompt did not ask (`schema`). The released
@@ -246,7 +246,7 @@ keeps every case.
 - Judges configured with `decoding: json_schema` receive each stage's answer schema as `response_format`, and the
   judgement family records the decoding.
 - An answer that still fails is stored as an invalid window with a category (`truncated`, `no_json`,
-  `invalid_json`, `schema`, `incomplete`, `refused`), and its raw text is kept. `rcp-ndcg judge reparse` re-reads
+  `invalid_json`, `schema`, `incomplete`, `refused`), and its raw text is kept. `rcp judge reparse` re-reads
   stored answers with the current parser without calling the judge.
 - Calibration reports invalid windows per query. It warns when a query loses more than 5% of a stage or any
   adaptive window, and refuses under `--strict`.
@@ -265,4 +265,4 @@ uv sync --extra dev
 uv run pytest tests/ -n 4
 ```
 
-Conformance and the fake-engine replays live in `rcp-ndcg-test` (unpublished) and run per its README.
+Conformance and the fake-engine replays live in `rcp-test` (unpublished) and run per its README.

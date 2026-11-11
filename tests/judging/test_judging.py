@@ -9,19 +9,19 @@ from pathlib import Path
 
 import httpx
 import pytest
-from rcp_ndcg_core.records import RankingExample
-from rcp_ndcg_core.schemas import JudgementSet
+from rcp_core.records import RankingExample
+from rcp_core.schemas import JudgementSet
 
-from rcp_ndcg.data.preprocess import ChunkPolicy, Preprocessing, TextPolicy, chunk_ranking_example
-from rcp_ndcg.data.tokenizer import load_tokenizer
-from rcp_ndcg.errors import CapabilityError, ConfigError, DataError, IdentityError
-from rcp_ndcg.judging import JudgeClient, JudgeConfig, JudgementStore, RubricSchedule, TournamentSchedule, judge
-from rcp_ndcg.judging._fake import _DOC_BLOCK, _answer_text
-from rcp_ndcg.judging._parsing.schema import response_format
-from rcp_ndcg.judging.client import BackendUnavailableError, Completion, CompletionInput
-from rcp_ndcg.judging.judging import CHAT_TEMPLATE_TOKENS, MAX_ATTEMPTS, prompt_overhead_tokens, window_tokens
-from rcp_ndcg.judging.prompts import load_prompt
-from rcp_ndcg.testing import TINY_RUBRIC, TINY_TOURNAMENT, FakeJudge, tiny_rows
+from rcp.data.preprocess import ChunkPolicy, Preprocessing, TextPolicy, chunk_ranking_example
+from rcp.data.tokenizer import load_tokenizer
+from rcp.errors import CapabilityError, ConfigError, DataError, IdentityError
+from rcp.judging import JudgeClient, JudgeConfig, JudgementStore, RubricSchedule, TournamentSchedule, judge
+from rcp.judging._fake import _DOC_BLOCK, _answer_text
+from rcp.judging._parsing.schema import response_format
+from rcp.judging.client import BackendUnavailableError, Completion, CompletionInput
+from rcp.judging.judging import CHAT_TEMPLATE_TOKENS, MAX_ATTEMPTS, prompt_overhead_tokens, window_tokens
+from rcp.judging.prompts import load_prompt
+from rcp.testing import TINY_RUBRIC, TINY_TOURNAMENT, FakeJudge, tiny_rows
 
 ROWS, ABILITY = tiny_rows()
 
@@ -135,7 +135,7 @@ class TestResume:
         """A pass that re-asks a refused window refits under the new answer, so the later-phase windows of
         the first fit are superseded: the store holds one generation, one window per sequence, and the refit
         reads a clean pass's window set."""
-        from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
+        from rcp.judging.schedule import _balanced_groups, query_rng
 
         docs = [f"d{index:02d}" for index in range(20)]
         rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {doc}" for doc in docs])]
@@ -186,7 +186,7 @@ class TestResume:
 
         # The coverage report reads the generation, not the retired windows: a resumed store must look like a
         # clean one to the calibration's strict gate (the tombstones are not invalid windows).
-        from rcp_ndcg.calibration.coverage import window_coverage
+        from rcp.calibration.coverage import window_coverage
 
         resumed = JudgementStore(tmp_path).read("rubric").judgements
         fresh = JudgementStore(tmp_path / "clean").read("rubric").judgements
@@ -196,8 +196,8 @@ class TestResume:
         """The tournament numbers a window sequence per call (each random and stratified window is asked with
         its mirror), so a resumed refusal must retire the first fit's stratified and adaptive windows too: the
         refit reads one generation and the resumed store's window set equals a clean pass's."""
-        from rcp_ndcg.judging import TournamentSchedule
-        from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
+        from rcp.judging import TournamentSchedule
+        from rcp.judging.schedule import _balanced_groups, query_rng
 
         docs = [f"d{index:02d}" for index in range(20)]
         rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {doc}" for doc in docs])]
@@ -237,8 +237,8 @@ class TestResume:
     def test_a_full_tournament_resume_leaves_a_subset_passs_windows_alone(self, tmp_path: Path) -> None:
         """A `docs=` subset runs the tournament on its own pool, so its windows hold the subset's effective
         window: a full pass resuming a refusal retires its own generation only, never the subset's."""
-        from rcp_ndcg.judging import TournamentSchedule
-        from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
+        from rcp.judging import TournamentSchedule
+        from rcp.judging.schedule import _balanced_groups, query_rng
 
         docs = [f"d{index:02d}" for index in range(6)]
         rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {doc}" for doc in docs])]
@@ -278,7 +278,7 @@ class TestResume:
     def test_a_docs_subset_resume_retires_its_own_first_generation(self, tmp_path: Path) -> None:
         """A `docs=` pass runs the schedule on its own subset: resuming it re-asks its refused window and
         retires the subset's own later-phase windows, so its refit reads one generation."""
-        from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
+        from rcp.judging.schedule import _balanced_groups, query_rng
 
         docs = [f"d{index:02d}" for index in range(20)]
         rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {d}" for d in docs])]
@@ -311,7 +311,7 @@ class TestResume:
     def test_a_subset_or_planned_pass_leaves_the_scheduled_generation_alone(self, tmp_path: Path) -> None:
         """A `docs=` subset or a `windows=` plan asks its own windows, so it must not retire the scheduled
         generation of a store that holds a refused window (the B1 retirement is a full pass's)."""
-        from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
+        from rcp.judging.schedule import _balanced_groups, query_rng
 
         docs = [f"d{index:02d}" for index in range(6)]
         rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {d}" for d in docs])]
@@ -355,7 +355,7 @@ class TestResume:
     def test_a_refusal_that_stays_refused_does_not_retire_the_later_phases_again(self, tmp_path: Path) -> None:
         """A refusal the endpoint repeats changes nothing about the fit, so each resume re-asks only that
         window: the later phases keep their records and no further tombstone is appended."""
-        from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
+        from rcp.judging.schedule import _balanced_groups, query_rng
 
         docs = [f"d{index:02d}" for index in range(20)]
         rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {doc}" for doc in docs])]
@@ -387,7 +387,7 @@ class TestResume:
     def test_a_docs_subset_resume_never_retires_the_full_passs_generation(self, tmp_path: Path) -> None:
         """A full pass's stratified window whose documents happen to lie in a later `docs=` subset is still
         the full pass's generation: the subset pass's resume retires its own windows only."""
-        from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
+        from rcp.judging.schedule import _balanced_groups, query_rng
 
         docs = [f"d{index:03d}" for index in range(150)]
         rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {doc}" for doc in docs])]
@@ -426,7 +426,7 @@ class TestResume:
 class TestSubsets:
     def test_a_tournament_subset_gets_the_windows_its_size_gives(self, tmp_path: Path) -> None:
         """Two documents re-judged on the paper's tournament: their placements' windows, not a whole query's."""
-        from rcp_ndcg.judging import TournamentSchedule, estimate
+        from rcp.judging import TournamentSchedule, estimate
 
         schedule = TournamentSchedule()
         subset = {"q1": ["q1-d02", "q1-d07"]}
@@ -443,8 +443,8 @@ class TestSubsets:
     @pytest.mark.parametrize("stage", ["tournament", "rubric"])
     def test_the_estimate_is_the_windows_asked_for_any_pool(self, tmp_path: Path, stage: str, size: int) -> None:
         """The shipped schedules on pools below, at and above a window: the estimate counts every call made."""
-        from rcp_ndcg.judging import estimate
-        from rcp_ndcg.judging.schedule import schedule_for
+        from rcp.judging import estimate
+        from rcp.judging.schedule import schedule_for
 
         schedule = schedule_for(stage, "text")
         subset = {"q1": ROWS[0].doc_ids[:size]}
@@ -463,7 +463,7 @@ class TestSubsets:
     def test_a_tiny_pool_asks_one_adaptive_window_not_one_per_batch(self, tmp_path: Path) -> None:
         """A pool no larger than the adaptive window: every batch would ask the whole pool again, whose
         comparisons the first window's answers already cover -- so the schedule asks it once."""
-        from rcp_ndcg.judging import TournamentSchedule
+        from rcp.judging import TournamentSchedule
 
         schedule = TournamentSchedule()
         subset = {"q1": ROWS[0].doc_ids[:4]}
@@ -629,7 +629,7 @@ class TestFailures:
 def test_a_rubric_pass_whose_settings_cannot_show_every_document_is_refused(tmp_path: Path) -> None:
     """The coverage precondition ``n_random * w >= n_units``: below it the tier windows may repeat
     documents and leave units unseen, so the pass (and its estimate) refuse before a call."""
-    from rcp_ndcg.judging import estimate
+    from rcp.judging import estimate
 
     docs = [f"d{index:02d}" for index in range(100)]
     rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {doc}" for doc in docs])]
@@ -650,7 +650,7 @@ def test_a_dropped_stratified_phase_is_warned_and_recorded(tmp_path: Path, caplo
     drop is warned and recorded in the store's census, never silent."""
     schedule = RubricSchedule(window=2, placements_per_doc=2.0)
     pools = {"q1": ["q1-d00", "q1-d01"]}
-    with caplog.at_level(logging.WARNING, logger="rcp_ndcg"):
+    with caplog.at_level(logging.WARNING, logger="rcp"):
         result = judge(ROWS[:1], pools, _Refuses(), stage="rubric", out=tmp_path, schedule=schedule)
     assert len(result.judgements) == 1  # the random window; the stratified one was dropped
     assert any("stratified phase" in message for message in caplog.messages)
@@ -705,7 +705,7 @@ def test_the_rubric_asks_enough_windows_to_show_every_chunk(tmp_path: Path, word
 def test_the_tournament_ranges_count_the_units_a_chunked_pass_asks(word_tokenizer_file: Path) -> None:
     """The tournament sizes and numbers its windows from the units the pass asks, so a chunked pass's phase
     ranges count chunks: a resume then recognises its own windows instead of leaving two generations."""
-    from rcp_ndcg.judging.judging import _phase_ranges, _queries
+    from rcp.judging.judging import _phase_ranges, _queries
 
     long = RankingExample(
         query_id="q",
@@ -738,7 +738,7 @@ def test_growing_a_pool_redraws_the_whole_schedule(tmp_path: Path) -> None:
     """judges.md: growing a pool through ``candidates=`` gives every scheduled window a new record id (the
     schedule's counts and balanced draws depend on the pool size), not only the windows that show the new
     document; the fit then reads the old pool's windows beside the new one's."""
-    from rcp_ndcg.data import load_dataset
+    from rcp.data import load_dataset
 
     docs = [f"d{index:02d}" for index in range(7)]
     row = RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {d}" for d in docs])
@@ -917,7 +917,7 @@ class TestTheTokenizer:
     def test_the_same_prompt_and_dataset_under_other_spellings_resume_the_store(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from rcp_ndcg.data import load_dataset
+        from rcp.data import load_dataset
 
         (tmp_path / "world").mkdir()
         (tmp_path / "world" / "dataset.jsonl").write_text(
@@ -979,7 +979,7 @@ def test_a_torn_last_census_line_does_not_poison_the_store(
     record = store / "preprocessing.jsonl"
     record.write_text(record.read_text(encoding="utf-8") + '{"mechanism": "doc_pol', encoding="utf-8")
 
-    with caplog.at_level(logging.WARNING, logger="rcp_ndcg"):
+    with caplog.at_level(logging.WARNING, logger="rcp"):
         _rubric(store, _tokenized(FakeJudge(lambda text: 0.0), word_tokenizer_file), preprocessing=policy)
     assert any("torn" in message for message in caplog.messages)
 
@@ -1096,9 +1096,9 @@ class TestStructuredOutput:
 
 
 def test_a_remote_store_is_refused_before_the_judge_is_asked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from rcp_ndcg.errors import ConfigError
-    from rcp_ndcg.judging import judge as judge_pass
-    from rcp_ndcg.testing import FakeJudge
+    from rcp.errors import ConfigError
+    from rcp.judging import judge as judge_pass
+    from rcp.testing import FakeJudge
 
     monkeypatch.chdir(tmp_path)  # a regression must not write a store into the checkout
     with pytest.raises(ConfigError, match="local") as refused:
@@ -1108,7 +1108,7 @@ def test_a_remote_store_is_refused_before_the_judge_is_asked(tmp_path: Path, mon
 
 class TestThePrompt:
     def test_a_prompt_without_the_passages_placeholder_is_refused_before_any_call(self, tmp_path: Path) -> None:
-        from rcp_ndcg.judging.prompts import load_prompt
+        from rcp.judging.prompts import load_prompt
 
         prompt = tmp_path / "rubric.txt"
         prompt.write_text(load_prompt("rubric").text.replace("{passages_placeholder}", ""), encoding="utf-8")
@@ -1146,7 +1146,7 @@ class TestThePrompt:
             judge((named,), None, _fake(), stage="tournament", out=tmp_path / "ranked", schedule=schedule)
 
     def test_the_store_keeps_each_prompts_text_by_its_hash(self, tmp_path: Path) -> None:
-        from rcp_ndcg.judging.prompts import load_prompt
+        from rcp.judging.prompts import load_prompt
 
         tournament, rubric = _tournament(tmp_path), _rubric(tmp_path)
         for judged, name in ((tournament, "tournament"), (rubric, "rubric")):
@@ -1181,7 +1181,7 @@ class TestPlannedWindows:
     def test_a_planned_rubric_pass_is_not_refused_for_the_schedules_coverage(self, tmp_path: Path) -> None:
         """With ``windows=`` the plan decides what is shown: a low-placement schedule must not refuse a plan
         that covers every document (the schedule's phases are not run)."""
-        from rcp_ndcg.judging import estimate
+        from rcp.judging import estimate
 
         docs = [f"d{index:02d}" for index in range(20)]
         rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {d}" for d in docs])]
@@ -1307,7 +1307,7 @@ class TestIdentities:
         reusing answers the judge gave on the old texts."""
         import PIL.Image
 
-        from rcp_ndcg.data import load_dataset
+        from rcp.data import load_dataset
 
         root = tmp_path / "corpus"
         images = root / "images"
@@ -1341,7 +1341,7 @@ class TestIdentities:
         """A local source has no revision to pin it: the digest of the file its reader reads enters the store
         identity, so editing ``rows.jsonl`` in place is another dataset -- refused, never reused (the same
         bytes still resume)."""
-        from rcp_ndcg.data import load_dataset
+        from rcp.data import load_dataset
 
         rows = tmp_path / "rows.jsonl"
         rows.write_text(_rows_jsonl(ROWS), encoding="utf-8")
@@ -1373,9 +1373,9 @@ class TestIdentities:
     ) -> None:
         """The text-formatting rule is code: a bump of ``TEXT_FORMATTING_VERSION`` re-keys the family and
         every record id, so judgements built from the old strings never pool with the new ones."""
-        from rcp_ndcg_core.records import TEXT_FORMATTING_VERSION
+        from rcp_core.records import TEXT_FORMATTING_VERSION
 
-        from rcp_ndcg.judging import judging as judging_module
+        from rcp.judging import judging as judging_module
 
         first = _rubric(tmp_path / "a")
         (first_family,) = first.families.values()

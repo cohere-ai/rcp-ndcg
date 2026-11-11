@@ -1,13 +1,15 @@
 # Add a model: serving recipes for vLLM
 
-A recipe is one declarative description of how a model is served with vLLM and how `rcp-ndcg` reads it back.
+A recipe is one declarative description of how a model is served with vLLM and how `rcp` reads it back.
 Recipes are grouped into **families**: one directory per model family holds the shared
 serving contract and a `variants` table with only the per-size facts, so adding a size is adding a variant row,
 while every size stays its own tested recipe id (served, contract-tested, stage-1-tested and GPU-validated on
 its own; a family id is never served). This guide shows the format, how to check a served recipe against its
-reference implementation, and how a wave of recipes is submitted to the GPU host. The package lives at
-`rcp-ndcg-vllm/` (installed into the engine image, which carries its own vLLM and torch). A family directory of
-your own needs none of that packaging to be *used*: `rcp-ndcg-vllm serve ./my-family/ [--variant <id>]` and
+reference implementation, and how a wave of recipes is submitted to the GPU host — and, when the engine must
+run code it does not ship, how a model becomes a plugin
+([the contribution path](#when-a-model-needs-a-plugin-the-contribution-path)). The package lives at
+`rcp-vllm/` (installed into the engine image, which carries its own vLLM and torch). A family directory of
+your own needs none of that packaging to be *used*: `rcp-vllm serve ./my-family/ [--variant <id>]` and
 `recipe:./my-family/` load it through this same schema, marked unshipped and `unverified`
 ([serve a retrieval model](serve-a-model.md)). The class-specific doctrine — what parity means for an
 embedding, a reranker, a late-interaction model and a judge, and what to look out for — is
@@ -15,7 +17,7 @@ embedding, a reranker, a late-interaction model and a judge, and what to look ou
 
 ## The family directory
 
-One directory per model family, `rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<family>/` (package data, shipped
+One directory per model family, `rcp-vllm/src/rcp_vllm/recipes/<family>/` (package data, shipped
 inside the wheel), with these four files (a family may also ship a vendored card script that its reference runs
 verbatim, byte-identical to the Hub file and hash-pinned by the family's test):
 
@@ -32,7 +34,7 @@ recipes/<family>/
 
 `family.id` equals the directory name, matches `^[a-z0-9][a-z0-9.-]*$`, and is never served. Each row of the
 `variants` table is a full recipe id (`^[a-z0-9][a-z0-9.-]*$`, the lowercased canonical Hub repo name), the
-`--served-model-name` the engine serves, and what `recipe: <variant id>` in `rcp-ndcg` resolves. A single-size
+`--served-model-name` the engine serves, and what `recipe: <variant id>` in `rcp` resolves. A single-size
 model is a family with one variant (one loader path for both). The schema is closed (`extra="forbid"`) and
 role-aware: a field that only makes sense for one role is refused for the others, so a typo cannot silently
 change what is served.
@@ -56,7 +58,7 @@ change what is served.
 2. Pin the variant's fields in the family's test module (one module per family, parametrized over its
    variants; every field pinned per variant, two mutants red per family) and run the family's stage-1 network
    tests for the new variant.
-3. Add the variant's golden: `uv run --no-sync pytest rcp-ndcg-test/tests/recipes/test_family_goldens.py
+3. Add the variant's golden: `uv run --no-sync pytest rcp-test/tests/recipes/test_family_goldens.py
    --update-goldens` rewrites `tests/recipes/golden/` from the current tree (review the diff, then commit; the
    guard compares every variant's resolved contract and fingerprint against its golden in every CI job).
 4. A new family needs its `family.yaml` (below), its reference, its template when it needs one, its family
@@ -65,7 +67,7 @@ change what is served.
 Validate a family/variant without an engine:
 
 ```bash
-python -m rcp_ndcg_test.equivalence --recipe <variant-id> --pairs pairs.jsonl --out /tmp/equiv --stages 1
+python -m rcp_test.equivalence --recipe <variant-id> --pairs pairs.jsonl --out /tmp/equiv --stages 1
 ```
 
 ## The template block, the anchors and the explicit budget
@@ -251,10 +253,10 @@ its code does not carry (a paper batch size, a dimension) reads it from there, n
   Generate or regenerate the lock (from the checkout; the tool needs the index only here, never on the node):
 
   ```bash
-  uv run --no-sync python -m rcp_ndcg_test.jobs.reference_lock build --family <family> \
-      --in rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<family>/reference.in \
-      --out rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/<family>/reference.lock \
-      --image-freeze rcp-ndcg-vllm/reference-image-v0.33.0.txt \
+  uv run --no-sync python -m rcp_test.jobs.reference_lock build --family <family> \
+      --in rcp-vllm/src/rcp_vllm/recipes/<family>/reference.in \
+      --out rcp-vllm/src/rcp_vllm/recipes/<family>/reference.lock \
+      --image-freeze rcp-vllm/reference-image-v0.33.0.txt \
       --image <the family's engine.image from family.yaml>
   ```
 
@@ -265,7 +267,7 @@ its code does not carry (a paper batch size, a dimension) reads it from there, n
 
   `... check --family <family> --in ... --lock ... --image-freeze ...` validates a committed lock offline
   (the header hashes, every pin, the own-torch declaration);
-  `rcp-ndcg-test/tests/test_reference_lock.py` runs the check over every family. A family pin with no index
+  `rcp-test/tests/test_reference_lock.py` runs the check over every family. A family pin with no index
   wheel (e.g. `flash-attn`, a GitHub-release wheel) must be staged in an `EXTRA_DIRS` wheelhouse, which the
   node's install searches. The harness documents the files and installs neither.
 
@@ -277,8 +279,9 @@ renders verbatim into `vllm serve` argv, and `serve.plugin` is reserved for a `v
 no flag can express the model's scoring. The wheel's folded models register every shipped plugin on the stock
 image: `topk-embed-v1-small`/`-xsmall` (`TopkEmbedModel`), pplx-embed-v1's config-only `PplxV1Config`, the
 pplx-embed-v2-context-9b-preview per-chunk pooling head (`PplxContextualModel`) and its late-interaction
-sibling pplx-embed-v2-late-0.6b (`Qwen3_5Model`), and embeddinggemma-2's
-`EmbeddingGemma2Config`/`EmbeddingGemma2Model` backport; the README carries the client contracts. A recipe that names a
+sibling pplx-embed-v2-late-0.6b (`Qwen3_5Model`), and embeddinggemma-2's patch-only carrier (its recipe's
+`torch-sdpa-attention` patch registers the backend, so the package declares no architecture); the README
+carries the client contracts. A recipe that names a
 plugin also declares `plugin_architectures` — the architectures its engine registers (empty for a
 patch-only carrier, whose patch modules are keyed anyway) — because the behaviour
 fingerprint keys the plugin code by hashing exactly those modules (`plugin_sha256.<module>`, plus the shared
@@ -286,12 +289,131 @@ entry modules); `patches` opts into an engine patch by name and is rendered into
 `RCP_NDCG_VLLM_PATCHES`, and the fingerprint hashes every opted-in patch's module too. A plugin spec whose
 modules the harness cannot resolve (a third party's wheel) is refused at fingerprint time, by name.
 
+## When a model needs a plugin: the contribution path
+
+A recipe is enough while `vllm serve` can express the model — flags, a chat template, `pooler_config`,
+`hf_overrides`. A **plugin** is the answer when the engine must run code it does not ship: a model class the
+pinned vLLM's registry does not carry, a config class a checkpoint's `auto_map` would otherwise execute from
+the Hub, a pooler or a weight mapping the stock class cannot produce. The wheel registers every plugin through
+one `vllm.general_plugins` entry point (`rcp-vllm` → `rcp_vllm.models:register`), so a plugin reaches an engine
+by installing the wheel and naming it in the recipe (`serve.plugin: rcp-vllm`, with `serve.plugin_architectures`
+naming the architectures that recipe's engine registers; a patch-only carrier leaves the list empty and is keyed
+by its `serve.patches` names). Everything below is what `tests/contract/test_model_plugin_shape.py` checks for
+every subpackage of `rcp-vllm/src/rcp_vllm/models/`, so a contribution that deviates fails CI rather than
+review.
+
+### The five files
+
+One directory per architecture family, `rcp-vllm/src/rcp_vllm/models/<family>/`:
+
+```text
+models/<family>/
+  config.py     the config surface the engine reads before a model class exists: the restated transformers
+                config class `AutoConfig` is registered for (so a checkpoint whose `auto_map` points at
+                remote code is parsed locally), and/or the per-architecture handler `MODELS_CONFIG_MAP`
+                carries
+  model.py      the class the registry resolves: the forward, the weight mapping, the pooler wiring
+  plugin.py     `register_<family>()`: the version guard, the config registrations, then
+                `ModelRegistry.register_model(ARCHITECTURE, "<module>:<Class>")`
+  pooling.py    the pooler the model class builds, when vLLM's own token pooler is not it
+  weights.py    the checkpoint-name mapping, when the stock mapper is wrong
+```
+
+`pooling.py` and `weights.py` exist only where the model needs them. Two more shapes ship and follow the same
+rules: a package with several architectures keeps their classes beside each other and may keep
+`register_<family>()` in its `__init__.py` (pplx: `PplxContextualModel` in `model.py`, `Qwen3_5Model` in
+`late.py`, `register_pplx` in `__init__.py`, the transformers configs in `hf_config.py` beside the vLLM config
+handler in `config.py`), and a patch-only carrier has no model class and registers nothing
+(embeddinggemma-2: `attention.py`, the backend its recipe's `torch-sdpa-attention` patch installs). A shared
+pure-Python helper (`keep_rule.py`, `keep_pooler.py`, `token_pooler.py`) sits one level up and is keyed by the
+rows of the architectures that import it; a model module may import it, never the other way round.
+
+### The rules
+
+1. **The package import is engine-free.** `import rcp_vllm.models.<family>` imports no torch, no vLLM and no
+   transformers: the recipe loader, the harness and the CPU tests run where the engine is absent, and the
+   plugin is loaded only inside an engine process. Everything the engine needs is imported inside
+   `register_<family>()` or by the model module, which the registry imports lazily.
+2. **A model registers lazily, as a `"module:Class"` string.** `ModelRegistry.register_model(ARCHITECTURE,
+   "<module>:<Class>")` never receives a class object, and the call runs inside `register_<family>()`, never
+   at module scope: the registry resolves the string only when a request for that architecture arrives, so a
+   process that never serves the model never imports its CUDA-touching code. Keep the architecture name and the
+   qualname in module constants (`ARCHITECTURE`, `QUALNAME`), as `topk/plugin.py` does.
+3. **The class lives in the family's own subpackage.** The string's module is a file under `models/<family>/`
+   and the class is defined there, so the row below can key it and a reader finds it where the family is.
+4. **The registry rows.** `rcp_vllm.models` declares the architecture's row: `ARCHITECTURE_MODULES[ARCH]` is the
+   tuple of engine-side modules that implement it, and it must name the module the qualname resolves. Two
+   readers depend on it: the recipe loader refuses `serve.plugin_architectures` naming an architecture the
+   mapping does not carry for the shipped plugin (`serve.plugin: rcp-vllm`), by name, and the behaviour
+   fingerprint hashes exactly a row's modules
+   (`plugin_sha256.<module>`), so a row that omitted the model module would let a change to the model class
+   leave every recipe's fingerprint where it was. A row module that imports vLLM or torch at module scope also
+   joins `LAZY_MODEL_MODULES` — the no-torch scan imports everything else — and the registration callable
+   joins the one entry point: `register()` in `rcp_vllm/models/__init__.py` imports and calls
+   `register_<family>()` after the version guard and the opted-in patches, so every engine process runs it
+   whatever architecture its recipe serves. Both lists are pinned by
+   `rcp-vllm/tests/test_plugin_modules.py`.
+5. **The recipe names the plugin.** `serve.plugin: rcp-vllm` with `serve.plugin_architectures:
+   [<Architecture>]` (empty for a patch-only carrier); the rest of the family is a recipe as usual — the
+   template block, the explicit budget, the reference, the stage-1/stage-2 tests and the variant goldens.
+
+### The shape test
+
+`tests/contract/test_model_plugin_shape.py` runs these rules over every shipped subpackage and over a synthetic
+tree per broken rule: a package that imports torch at package import, registers a class object, registers at
+module scope, omits its row, keys a row that omits the model module, declares no `__all__`, is never called by
+the entry point, or names a class its module does not define. The snippet below is the executable form of the
+steps: it writes the skeleton for a new family into the current directory and checks it with the test's own
+checker, so what a contributor copies is what CI accepts.
+
+```python
+import textwrap
+from pathlib import Path
+
+from tests.contract.test_model_plugin_shape import import_violation, shape_violations
+
+root = Path("my_models")  # stands in for rcp_vllm/models: the entry point plus one subpackage per family
+files = {
+    "__init__.py": """
+        def register() -> None:
+            from .my_first.plugin import register_my_first
+
+            register_my_first()
+    """,
+    "my_first/__init__.py": '__all__ = ["register_my_first"]\n',
+    "my_first/config.py": 'class MyFirstConfig:\n    """The config class AutoConfig is registered for."""\n',
+    "my_first/model.py": 'class MyFirstModel:\n    """The class the registry resolves."""\n',
+    "my_first/plugin.py": """
+        ARCHITECTURE = "MyFirstModel"
+        QUALNAME = "my_models.my_first.model:MyFirstModel"
+
+
+        def register_my_first() -> None:
+            from vllm.model_executor.models import ModelRegistry
+
+            ModelRegistry.register_model(ARCHITECTURE, QUALNAME)
+    """,
+}
+for relative, source in files.items():
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(textwrap.dedent(source).lstrip(), encoding="utf-8")
+
+rows = {"MyFirstModel": ("my_models.my_first.model",)}  # the ARCHITECTURE_MODULES row the contribution adds
+assert shape_violations(root, package_prefix="my_models", registry=rows) == []
+assert import_violation("my_models.my_first", pythonpath=Path.cwd()) is None
+
+# Without its row the same package is refused, by name: the shape test's failure mode.
+missing = shape_violations(root, package_prefix="my_models", registry={})
+assert len(missing) == 1 and "no row in ARCHITECTURE_MODULES" in missing[0]
+```
+
 ## Worked example: a last-token-pooling embedder (CPU)
 
 A last-token-pooling embedder's anchor is its trailing end token: the wrapper renders `prefix + text + suffix`
 and the naive fix — truncating the whole string on the right — drops the token the model was trained to read
 out of. The correct cut reserves the suffix, cuts only the text, and re-attaches the template. The mechanism in
-ten dependency-free lines (the real implementation is the product's `fit` in `rcp_ndcg.data.preprocess` — the
+ten dependency-free lines (the real implementation is the product's `fit` in `rcp.data.preprocess` — the
 same call the role clients make, with the recipe's real budget — audited against the captured wire in stage 1):
 
 ```python
@@ -379,11 +501,11 @@ a declared over-cap deviation, the inputs the client changed (decided on the cli
 their `cause`; a reranker's query settlement changes every pair of its call) are reported in a separate,
 non-gating table — in stage 2 for every role — and the gates run on the inputs sent uncut only.
 
-Stage 3 (optional) scores rankings per subset with `rcp-ndcg eval score` as a subprocess (the package depends
-on `rcp-ndcg`, so the command is always available) and requires the mean |Δ nDCG@10| over subsets ≤ 2e-3.
+Stage 3 (optional) scores rankings per subset with `rcp eval score` as a subprocess (the package depends
+on `rcp`, so the command is always available) and requires the mean |Δ nDCG@10| over subsets ≤ 2e-3.
 
 ```bash
-python -m rcp_ndcg_test.equivalence --recipe <variant-id> --base-url http://127.0.0.1:8100 \
+python -m rcp_test.equivalence --recipe <variant-id> --base-url http://127.0.0.1:8100 \
     --pairs pairs.jsonl --out /tmp/equiv --reference-python <reference-venv-python>   # stages 1 and 2
 ```
 
@@ -414,7 +536,7 @@ decodes other frames and fails it the same way). The render merge is the boundar
 moves when it stands between a message's text parts: the engine's prompt is its render (the served template
 with the placeholder) minus the placeholder plus the expansion, and a tokenizer is not additive, so the word
 after the placeholder can lose the token that carried the space. It is read from the served template's own
-render (`rcp_ndcg_test.equivalence.stages.engine_render_merge`), never guessed, so a genuine engine
+render (`rcp_test.equivalence.stages.engine_render_merge`), never guessed, so a genuine engine
 difference still fails. On CPU the test stub engine resizes with the product's own
 `smart_resize` and counts a container through the product's own `content_media_tokens`, so there the engine
 count catches a pin that is missing or different, never a bug in the product's resize or video accounting
@@ -426,7 +548,7 @@ media recipe whose
 pairs carry no media row fails. The pairs generator plans the media rows (one image per size bucket, a
 captioned page, a batch mixing a text-only and an image document, a query image where the recipe allows query
 media, interleaved and several-image documents where its `max_images` admits them, and an MJPEG AVI clip per
-size, alone and with text, at the recipe's declared video sampling — `rcp_ndcg_test.observe.media_set`).
+size, alone and with text, at the recipe's declared video sampling — `rcp_test.observe.media_set`).
 
 The exit code is 0 only when every gate passes; `equivalence.json` carries every number with its referent
 (per document, per query, per subset) and `EQUIVALENCE.md` is the short section for the recipe's report.
@@ -441,7 +563,7 @@ that stage, and the node's `bootstrap.sh` builds the three environments and runs
 export RCP_JOBS_CONFIG=/path/to/jobs-config.yaml     # the job CLI's -f config (required, no default)
 export RCP_GCS_AUTH_FILE=/path/to/gcs_auth.sh        # mounted at /etc/rcp/gcs_auth.sh; named, never read
 export RCP_HF_TOKEN_FILE=/path/to/token              # mounted into the job and read there, never passed in an argv
-rcp-ndcg-test/src/rcp_ndcg_test/jobs/submit.sh gs://YOUR-BUCKET/stage/rc0 gs://YOUR-BUCKET/waves <wave-name>
+rcp-test/src/rcp_test/jobs/submit.sh gs://YOUR-BUCKET/stage/rc0 gs://YOUR-BUCKET/waves <wave-name>
 ```
 
 The three variables are required — the script refuses to run without them, because no tracked file may name a
@@ -456,13 +578,13 @@ evicts each model's weights after its last use, runs smoke, equivalence and the 
 
 ## Reference cases and the conformance suite
 
-A recipe's behaviour is pinned by reference cases in the unpublished `rcp-ndcg-test` package
-(`rcp-ndcg-test/`, a workspace member; never on PyPI): one case per file under
-`rcp-ndcg-test/cases/<recipe-id>/`, each carrying the card's verbatim example or a generated
+A recipe's behaviour is pinned by reference cases in the unpublished `rcp-test` package
+(`rcp-test/`, a workspace member; never on PyPI): one case per file under
+`rcp-test/cases/<recipe-id>/`, each carrying the card's verbatim example or a generated
 stratum, an `expected` block with its tolerance, and the strata cell it covers. The cases are validated on
 every push (a malformed case or an incomplete strata grid fails CI), and the conformance runner sends each
 case through the product's role clients — against a live engine (`target="engine"`, the engine's
 `base_url` passed to `run_suite`) or a recipe-level fake engine (`target="fake"`, resolved through the
 registry by recipe id) — comparing with `expected` under its tolerance. `expected.values: null` (a
-generated case before its GPU wave) is a skip, never a pass. See `rcp-ndcg-test/README.md` for
+generated case before its GPU wave) is a skip, never a pass. See `rcp-test/README.md` for
 the case format, how to add a case, and the fake-engine seam the verified emulators are later built from.

@@ -1,21 +1,21 @@
 # Judges, the judgement store and estimates
 
-rcp-ndcg's contract with a judge is one OpenAI-compatible URL. Serve it with any engine and image you choose
+rcp's contract with a judge is one OpenAI-compatible URL. Serve it with any engine and image you choose
 (vLLM, a gateway in front of several workers) or use a hosted API, describe it in a judge config, and run the
 judging steps here or through a job runner on SLURM or Kubernetes ([runs and job runners](runs.md)). For your own
 engines and your own judge the package never builds an image, never pins an engine and never translates engine
-flags. For the shipped retrieval models `rcp-ndcg-vllm serve <recipe-id>` composes the engine command from the
+flags. For the shipped retrieval models `rcp-vllm serve <recipe-id>` composes the engine command from the
 GPU-validated recipe ([serve a retrieval model](../how-to/serve-a-model.md)); anything else is your command,
 verbatim.
 
 ## The judge config
 
-`rcp_ndcg.judging.JudgeConfig` describes one judge:
+`rcp.judging.JudgeConfig` describes one judge:
 
 | Field | Meaning |
 |---|---|
 | `base_url`, `model` | the OpenAI-compatible endpoint (`.../v1`), or a list of replica URLs of the same model, and the served model name |
-| `api` | the wire adapter that speaks the endpoint's protocol, resolved within the judge role's registry; unset (the default) is the judge's `openai_chat` wire (`POST {base_url}/chat/completions` over the shared transport; [the inference layer](inference.md)). A third-party adapter from the `rcp_ndcg.adapters` entry-point group (entries named `judge.<name>`) enters the identity: it decides what is computed |
+| `api` | the wire adapter that speaks the endpoint's protocol, resolved within the judge role's registry; unset (the default) is the judge's `openai_chat` wire (`POST {base_url}/chat/completions` over the shared transport; [the inference layer](inference.md)). A third-party adapter from the `rcp.adapters` entry-point group (entries named `judge.<name>`) enters the identity: it decides what is computed |
 | `revision` | the checkpoint commit; recorded in every judgement |
 | `title` | how a document's title reaches the model: `join` (the default, MTEB's `(title + " " + body).strip()`) or `separate` (the title as its own leading text part). Content: the judge reads a different string, so it enters the judgement family and the record ids |
 | `temperature` | the sampling temperature; `None` (the default) sends none, so the server's default applies |
@@ -44,26 +44,28 @@ run-level fields are the exceptions: `model` (the served model name the engine a
 with the switch.
 
 1. **A shipped judge recipe** — `--judge gpt-oss-120b`, or `--judge recipe:gpt-oss-120b`, or `judge:
-   recipe:gpt-oss-120b` in a run config. The recipes are `rcp-ndcg-vllm`'s package data: the ten judges of the
+   recipe:gpt-oss-120b` in a run config. The recipes are `rcp-vllm`'s package data: the ten judges of the
    catalog (the six paper/owner judges plus the four Gemma 4 judges), one family per model family, every
    variant its own id. The recipe's `client` block is the judge config (validated here, never a second model),
-   its `serve` block is the engine argv (`rcp-ndcg-vllm serve <id>`), and its `base_url` stays unset until the
+   its `serve` block is the engine argv (`rcp-vllm serve <id>`), and its `base_url` stays unset until the
    run supplies it (`--set judge.base_url=...`, a run's `serve:` block, or `RCP_NDCG_ENGINES`). The `recipe`
    pointer in the judgement identity is the recipe's id, so judgements record the server-side settings they
-   came from. `rcp-ndcg-vllm serve <id> --dry-run` prints the exact argv, and the recipe's notes carry the
-   memory arithmetic for one B200 and one H100 (the default serving environments).
+   came from. `rcp-vllm serve <id> --dry-run` prints the exact argv, and the recipe's notes carry the
+   memory arithmetic for one B200 and one H100 (the default serving environments). The recipes are an optional
+   extra of this package: `pip install "rcp[vllm]"` installs the sibling `rcp-vllm`, and a `recipe:` config on an
+   install without it is refused naming that install line (the import is lazy, so nothing else needs it).
 2. **Your own recipe directory** — `--judge recipe:./my-family`, `recipe:../my-family/family.yaml` or
    `recipe:/abs/path`: a family directory of your own loads through the same schema (families included),
    marked unshipped with `status: unverified` and identified by the content hash of its resolved form, so two
    runs whose files differ never share a run identity. The judge route reads a directory with exactly one
    variant (a multi-variant family is refused by name: `--variant <id>` selects a size for
-   `rcp-ndcg-vllm serve`, which the judging commands do not take); name the shipped variant id for a
+   `rcp-vllm serve`, which the judging commands do not take); name the shipped variant id for a
    multi-variant family of the catalog.
 3. **A plain judge config file, or a hosted vendor profile** — `--judge ./my-judge.yaml` for any
    OpenAI-compatible endpoint, and `--judge gpt5_hosted` for the shipped OpenAI profile. The self-hosted
    presets are gone (they became recipes); `gpt5_hosted` stays a vendor profile.
 
-The shipped recipes, as a catalog (the ids are the ones `--judge` and `rcp-ndcg-vllm serve` take):
+The shipped recipes, as a catalog (the ids are the ones `--judge` and `rcp-vllm serve` take):
 
 | Judge recipe | Weights | Reasoning parser | Context | GPUs (one B200) |
 |---|---|---|---|---|
@@ -95,7 +97,7 @@ The shipped vendor profile `gpt5_hosted` sends no temperature and constrains ans
 `response_format`; it needs `OPENAI_API_KEY` in the environment (the key is never written anywhere).
 
 ```python
-from rcp_ndcg.judging import JudgeConfig
+from rcp.judging import JudgeConfig
 
 judge_cfg = JudgeConfig(base_url="http://127.0.0.1:8000/v1", model="my-model", context_tokens=131072)
 assert judge_cfg.temperature is None  # no temperature is sent: the server's default sampling
@@ -124,13 +126,13 @@ matter to the judge:
   `max_videos`. The client sizes every image itself, so no pixel or processor flag is needed
   ([preprocessing](preprocessing.md)).
 
-For the shipped judges, with vLLM, the serve block is the recipe's own — `rcp-ndcg-vllm serve <id>` renders it,
+For the shipped judges, with vLLM, the serve block is the recipe's own — `rcp-vllm serve <id>` renders it,
 `--dry-run` prints it, and each recipe's notes state the flag citations and the memory arithmetic:
 
 ```bash
 # the recipe's exact argv (dry-run prints it; a real serve execs it)
-rcp-ndcg-vllm serve gpt-oss-120b --dry-run
-rcp-ndcg-vllm serve qwen3.8-27b-fp8 --dry-run
+rcp-vllm serve gpt-oss-120b --dry-run
+rcp-vllm serve qwen3.8-27b-fp8 --dry-run
 
 # the same engine by hand, for the second judge
 vllm serve openai/gpt-oss-120b --revision b5c939de8f754692c1647ca79fbf85e8c1e70f8a \
@@ -157,7 +159,7 @@ this release serves the same checkpoints on vLLM v0.33.0.
 
 ### Checking an endpoint before a long run
 
-`rcp-ndcg judge check --judge <recipe|config|fake>` probes an endpoint with two fixed windows (the shipped
+`rcp judge check --judge <recipe|config|fake>` probes an endpoint with two fixed windows (the shipped
 tournament and rubric prompts over one query and two documents) and reports, per stage: whether the answer schema
 was accepted, whether the answer parsed with the stage's own parser, and whether the endpoint reported a
 reasoning channel beside the answer (`separated`) or none (`absent` — with `decoding: json_schema` that can mean
@@ -165,11 +167,11 @@ the engine runs without the model's reasoning parser, or that the model does not
 calls the judge twice.
 
 ```bash
-rcp-ndcg judge check --judge recipe:gpt-oss-120b --set judge.base_url=http://127.0.0.1:8000/v1 --json
+rcp judge check --judge recipe:gpt-oss-120b --set judge.base_url=http://127.0.0.1:8000/v1 --json
 ```
 
 The report's `ok` is true when both windows were answered and parsed; a failed check prints the refusal or the
-parse failure, and the command's exit code stays 0 (like `rcp-ndcg doctor`), so a script reads the report's
+parse failure, and the command's exit code stays 0 (like `rcp doctor`), so a script reads the report's
 `ok` -- under `--json` that is `data.ok` (the envelope's own `ok` says the command ran, not that the probe
 passed). A `--set`
 of anything but `judge.<field>` is refused.
@@ -233,7 +235,7 @@ the judge is one of its roles.
 
 ## The judgement store
 
-`rcp_ndcg.judging.judge` writes one append-only store per judging pass: `tournament.jsonl` and `rubric.jsonl`, one
+`rcp.judging.judge` writes one append-only store per judging pass: `tournament.jsonl` and `rubric.jsonl`, one
 `Judgement` record per window, plus `identity.json`, `preprocessing.jsonl` and `prompts/<sha256>.txt`, the text of
 every prompt the store was judged with under the hash its judgement family records. A custom prompt thus stays
 reproducible from the store after its file moves or changes.
@@ -256,14 +258,17 @@ reproducible from the store after its file moves or changes.
   one identity -- the same bytes copied under another directory are not; the names the pass
   was given are kept beside it (`sources`). Judging into a store of another identity raises `IdentityError` and names
   the differing fields.
-  `force=True` moves the old records aside instead. Beside the identity, each stage's entry lists what the judge's
+  `force=True` moves the old records aside instead. The file's tag is `rcp.judgement-store.v1`, or the older
+  `rcp-ndcg.judgement-store.v1` in a store written before the id moved: a store keeps the tag it was created with,
+  so a resumed pass writes the identity back under that tag and the code that wrote the store still opens it.
+  Beside the identity, each stage's entry lists what the judge's
   endpoints said they serve (`engines`: the served model id, `max_model_len`, `owned_by`, the `server` and any
   version header, and the first answer's `system_fingerprint`). This is runtime information: it never enters the
   identity, so a store resumed against another engine version adds a report instead of being refused. The dataset
   enters the identity by its name and URI and, for a Hub dataset, by the commit its revision resolved to, so a moved
   upstream is refused. A local source has no commit, so it enters by the digest of the files its reader reads
   (a file's bytes; a directory's sorted listing of names, sizes and mtimes --
-  `rcp_ndcg.data.revisions.dataset_content_digest`, the same digest the run steps' identity carries), so editing
+  `rcp.data.revisions.dataset_content_digest`, the same digest the run steps' identity carries), so editing
   the documents of a local dataset after judging it is refused as another dataset instead of pairing the stored
   answers with texts the judge never saw. Adding documents to a local source is therefore a new dataset too (its
   bytes changed). Growing a pool through `candidates=` instead redraws the whole schedule: `windows_for` and the
@@ -274,7 +279,7 @@ reproducible from the store after its file moves or changes.
 - **Concurrent writers.** The store is reader-safe by design and safe to overlap: two passes claiming two
   stages, or appending records of the same stage, serialize on an advisory lock on the store directory, and the
   identity file and each prompt's text are published through the one atomic temp-file-and-rename helper
-  (`rcp_ndcg.storage.publish`), so a killed writer leaves no torn file a later pass cannot read (a torn last record
+  (`rcp.storage.publish`), so a killed writer leaves no torn file a later pass cannot read (a torn last record
   or census row is skipped with a warning and asked or recorded again). A resumed pass that re-asks a refused
   window refits under the new answer: when the answer arrives, the later-phase windows its first fit selected
   are retired with an appended ``superseded`` tombstone and asked again, so the fit never reads two generations
@@ -286,18 +291,72 @@ reproducible from the store after its file moves or changes.
   retires a subset pass's windows and a subset pass never retires the full pass's; a planned pass with
   `windows=` runs no schedule and retires nothing. The calibration's coverage does not count a tombstone as an
   invalid window, and `run status` counts the live records.
-- **Reparse.** Every record keeps the judge's raw answer. `rcp_ndcg.judging.reparse(store, out)`, or
-  `rcp-ndcg judge reparse --judgements DIR --out DIR`, reads the stored answers again with the current parser and
+- **Reparse.** Every record keeps the judge's raw answer. `rcp.judging.reparse(store, out)`, or
+  `rcp judge reparse --judgements DIR --out DIR`, reads the stored answers again with the current parser and
   writes a new store under the current parse version, with its own family key and record ids. It never calls the
   judge and never writes into the source store. A source already at the current parse version has nothing to
   re-parse, and a source written by a newer checkout cannot be downgraded: both are refused before anything is
   written. The command reports per stage how many windows were recovered, stayed
-  invalid (by category), were unchanged or changed (`rcp_ndcg.judging.reparse` itself returns the new store's
-  :class:`~rcp_ndcg_core.schemas.JudgementSet`).
+  invalid (by category), were unchanged or changed (`rcp.judging.reparse` itself returns the new store's
+  :class:`~rcp_core.schemas.JudgementSet`).
+
+### A store of your own: `CacheStore`
+
+The judgement store is this package's resumable per-example store. A downstream that needs the same
+resumption for artifacts of its own -- write example 4,001, resume at 4,002 after a crash -- implements
+`rcp.storage.cache.CacheStore` rather than writing a store beside the package: four methods over an opaque
+string key.
+
+| Method | The contract |
+|---|---|
+| `get(key)` | the bytes stored under the key, or `None` for a key the store does not hold. A miss is an answer, never an exception. |
+| `put(key, value)` | store the value under the key, replacing what the key held. |
+| `keys(prefix)` | every key that starts with `prefix` (`""` lists all of them). The order is not part of the contract. |
+| `delete(key)` | remove the key: a later `get` never returns it, and deleting a key that is not there is not an error. |
+
+Two implementations ship, and a downstream's own store is the third. `MemoryCacheStore` is a dictionary:
+nothing is persisted and nothing is validated. `UriCacheStore` is the URI cache itself as a store -- the same
+entry files `cache()` populates, under the same publication lock and the same freshness rule -- so a reader's
+downloads are listable (`keys("gs://YOUR-BUCKET/run-1/rows/")`) and deletable:
+
+- a **hit** is an entry whose recorded identity still equals the source's: `get` returns its bytes.
+- a **miss** is a key the cache does not hold, or one whose source has moved. `get` never fetches: a miss means
+  the caller reads through `cache()`, which downloads and publishes the entry the next `get` hits.
+- `put` writes the value into the entry and records the source's identity as it is now, so the value is served
+  until the source moves. The source object is never written, and a key whose source does not exist is a
+  `MissingInputError`: an entry with no identity to be fresh for would never be served.
+- `delete` removes the payload and both sidecars under the publication lock, so the invalidated bytes are
+  never served again; `cache()` re-fetches them from the source.
+
+A key that carries a credential -- a presigned URL's query string -- is served but never listed: the digest
+names that entry, and the cache directory is shared.
+
+`lookup(store, key)` reads any store defensively. A store that raises -- a backend outage, an expired
+credential -- is a miss, logged with the store's class and the key (redacted: a key may be a presigned URL),
+never a failed run.
+
+```python
+from rcp.storage.cache import MemoryCacheStore, cache_key, lookup
+
+store = MemoryCacheStore()
+row = cache_key("run-1", "rows", "004001")  # "run-1/rows/004001"
+store.put(row, b'{"query_id": "q1"}')
+assert lookup(store, row) == b'{"query_id": "q1"}'  # a hit
+assert lookup(store, cache_key("run-1", "rows", "004002")) is None  # a miss
+store.delete(row)
+assert lookup(store, row) is None  # an invalidated entry is never returned
+assert store.keys("run-1/rows/") == []  # ... and it is gone from the prefix
+```
+
+A key is opaque; `cache_key` is the package's convention -- `/`-separated segments, none of them empty or
+holding a `/` -- so a prefix scan names exactly one namespace: `keys(cache_key("run-1", "rows") + "/")`
+lists the run's rows and not `run-1/rows-2/1`. The conformance test is `assert_cache_store_contract` in
+`tests/storage/test_cache_store.py`: one contract, run against both shipped implementations, so a downstream's
+own store has a model to check itself against with its own keys.
 
 ## Estimating a pass
 
-`rcp_ndcg.judging.estimate(dataset, candidates, judge, stages=...)`, and `--estimate` on the command line, report the
+`rcp.judging.estimate(dataset, candidates, judge, stages=...)`, and `--estimate` on the command line, report the
 calls, input and output tokens and wall time of a judging pass before the judge is called. The estimate counts the
 same query text the pass sends: the judge's `title` rule and the dataset's query-side task instruction included.
 Input tokens are

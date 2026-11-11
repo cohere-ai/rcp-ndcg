@@ -15,8 +15,8 @@ from typing import Any
 import pytest
 import yaml
 
-from rcp_ndcg.retrieval import validate_reranker, validate_retriever
-from rcp_ndcg.retrieval.config import (
+from rcp.retrieval import validate_reranker, validate_retriever
+from rcp.retrieval.config import (
     BM25Config,
     CohereReranker,
     DenseConfig,
@@ -71,7 +71,7 @@ def test_each_served_paper_reranker_names_its_recipe_tokenizer_and_budgets(path:
 )
 def test_each_served_paper_reranker_names_the_recipe_its_header_points_at(path: Path) -> None:
     """A config without a ``recipe:`` pointer copies the served name: ``model`` is the
-    ``--served-model-name``, and ``rcp-ndcg-vllm serve <id>`` hard-codes it to the recipe id
+    ``--served-model-name``, and ``rcp-vllm serve <id>`` hard-codes it to the recipe id
     (``zerank-1-reranker``, not the short Hub redirect ``zerank-1``). The header comment names the
     recipe; a config that keeps the pointer takes the recipe's whole client block and copies nothing."""
     text = path.read_text(encoding="utf-8")
@@ -90,7 +90,7 @@ def test_every_recipe_id_is_the_lowercased_hub_repo_name_of_its_tokenizer() -> N
     every shipped recipe is checked here, raw (no validation: a recipe's template refusal must not hide the
     canon), and every paper config that keeps a pointer names its shipped recipe."""
     import yaml as yaml_module
-    from rcp_ndcg_vllm.recipe import default_recipes_root
+    from rcp_vllm.recipe import default_recipes_root
 
     checked = 0
     for directory in sorted(default_recipes_root().iterdir()):
@@ -153,7 +153,7 @@ def test_every_served_paper_config_builds_its_client(tokenizer_json: str) -> Non
     The configs carry their real Hub tokenizers (the recipe serves the checkpoint); the client only loads
     the tokenizer *file* to count the budget, so the build test runs against the saved offline test
     tokenizer -- same field, different file, the paper config itself untouched."""
-    from rcp_ndcg.inference.clients import RerankClient
+    from rcp.inference.clients import RerankClient
     from tests.retrieval.test_api import _recording_sender
 
     for data_path, data in _configs(PAPER / "rerankers"):
@@ -201,14 +201,14 @@ def paper_wire(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
             200, json={"data": [{"index": i, "embedding": vector} for i, vector in enumerate(vectors)]}
         )
 
-    from rcp_ndcg.inference import transport as transport_module
+    from rcp.inference import transport as transport_module
 
     real = transport_module.Transport
 
     def patched(endpoint: Any, *, auth: Any = None, httpx_transport: Any = None) -> Any:
         return real(endpoint, auth=auth, httpx_transport=httpx.MockTransport(handler))
 
-    monkeypatch.setattr("rcp_ndcg.inference.clients._base.Transport", patched)
+    monkeypatch.setattr("rcp.inference.clients._base.Transport", patched)
     monkeypatch.setenv("CO_API_KEY", "test-key")
     return sent
 
@@ -220,8 +220,8 @@ def test_the_paper_dense_configs_run_on_an_instructed_dataset(
     the declared policy means the instruction is dropped by declaration, never refused (the paper's numbers did
     not read one). The configs' real Hub tokenizers are swapped for the saved offline one (the client only
     loads the tokenizer file to count the budget; the paper config itself is untouched)."""
-    from rcp_ndcg.data import Dataset
-    from rcp_ndcg.retrieval import index, search
+    from rcp.data import Dataset
+    from rcp.retrieval import index, search
 
     dataset = Dataset.from_records(
         name="bright-like",

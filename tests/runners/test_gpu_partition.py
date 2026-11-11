@@ -4,7 +4,7 @@ A vLLM-class engine pre-allocates most of each device it sees (`--gpu-memory-uti
 engines that both see every GPU fail with out-of-memory. Per phase and per node the requested GPUs are therefore
 the **sum** over the engines (x replicas) placed there — the job asks for the maximum of that over the phases,
 plus the coordinator's own GPUs — and every co-located engine process gets a disjoint `CUDA_VISIBLE_DEVICES`
-slice (:func:`~rcp_ndcg.runners.script.device_slices`), with the coordinator's devices reserved first. An engine
+slice (:func:`~rcp.runners.script.device_slices`), with the coordinator's devices reserved first. An engine
 that declares no GPUs gets the empty slice, never all of them.
 
 The two runners partition differently, per the SLURM docs:
@@ -24,15 +24,15 @@ from __future__ import annotations
 
 import yaml
 
-from rcp_ndcg.runners import KubernetesRunner, SlurmRunner
-from rcp_ndcg.runners.base import JobPhase, JobSpec
-from rcp_ndcg.runners.script import device_slices
-from rcp_ndcg.support.serve import ServeConfig
+from rcp.runners import KubernetesRunner, SlurmRunner
+from rcp.runners.base import JobPhase, JobSpec
+from rcp.runners.script import device_slices
+from rcp.support.serve import ServeConfig
 from tests.runners.shell import heredoc_body
 
 
 def _resources(gpus: int):
-    from rcp_ndcg.runners import Resources
+    from rcp.runners import Resources
 
     return Resources(gpus=gpus)
 
@@ -126,7 +126,7 @@ def test_two_engines_of_two_gpus_each_slice_one_container() -> None:
 
 def test_kubernetes_partitions_among_replicas_of_one_engine() -> None:
     """Two replicas of one 2-GPU engine, placed on one node by a direct job spec: disjoint slices and ports."""
-    from rcp_ndcg.runners import KubernetesRunner
+    from rcp.runners import KubernetesRunner
 
     a = ServeConfig(image="i:1", command=["x", "--port", "8000"], resources=_resources(2), replicas=2, port=8000)
     phases = (JobPhase(engines={"judge": a}, argv=("a",)),)
@@ -192,7 +192,7 @@ def test_a_gpu_less_slurm_engine_sees_no_device() -> None:
 
 def test_an_engine_free_phase_still_carries_the_coordinators_gpus() -> None:
     """The coordinator runs in every phase: an engine-free phase's node requests its GPUs alone."""
-    from rcp_ndcg.runners import Resources
+    from rcp.runners import Resources
 
     phases = (JobPhase(argv=("a",)),)
     job = JobSpec(name="j", resources=Resources(gpus=2), phases=phases)

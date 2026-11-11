@@ -8,8 +8,8 @@ import shlex
 import pytest
 import yaml
 
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.runners import (
+from rcp.errors import ConfigError
+from rcp.runners import (
     COORDINATOR_IMAGE,
     JobSpec,
     JobStatus,
@@ -20,15 +20,15 @@ from rcp_ndcg.runners import (
     get_runner,
     install_argv,
 )
-from rcp_ndcg.runners.base import JobPhase
-from rcp_ndcg.runners.kubernetes import k8s_name
-from rcp_ndcg.runners.script import EngineStep, engines_env_value, supervise, worker_script
+from rcp.runners.base import JobPhase
+from rcp.runners.kubernetes import k8s_name
+from rcp.runners.script import EngineStep, engines_env_value, supervise, worker_script
 from tests.runners.k8s_schema import check_objects
 from tests.runners.shell import assert_shellcheck_clean, heredoc_body
 
 JUDGE = JobSpec(
     name="exp-judge",
-    argv=("rcp-ndcg", "run", "start", "run.yaml"),
+    argv=("rcp", "run", "start", "run.yaml"),
     resources=Resources(gpus=8, cpus=16, memory_gb=512, time_limit_s=3600),
     env={"HF_HOME": "/cache/hf"},
 )
@@ -37,7 +37,7 @@ JUDGE = JobSpec(
 def test_manifest_golden() -> None:
     runner = KubernetesRunner(image="ghcr.io/you/uv:py3.12", namespace="eval", secrets=["hf-token"])
     (manifest,) = yaml.safe_load_all(runner.render([JUDGE])["exp-judge"])
-    labels = {"app.kubernetes.io/name": "rcp-ndcg", "rcp-ndcg/job": "exp-judge"}
+    labels = {"app.kubernetes.io/name": "rcp", "rcp/job": "exp-judge"}
     assert manifest == {
         "apiVersion": "batch/v1",
         "kind": "Job",
@@ -70,8 +70,8 @@ def test_manifest_golden() -> None:
                                 "export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7\n"
                                 'mkdir -p "$TMPDIR"\n'
                                 "if ! command -v uvx >/dev/null; then\n"
-                                '  python3 -m pip install --quiet --target "${TMPDIR:-/tmp}/rcp-ndcg-uv" uv\n'
-                                '  export PATH="${TMPDIR:-/tmp}/rcp-ndcg-uv/bin:$PATH"\n'
+                                '  python3 -m pip install --quiet --target "${TMPDIR:-/tmp}/rcp-uv" uv\n'
+                                '  export PATH="${TMPDIR:-/tmp}/rcp-uv/bin:$PATH"\n'
                                 "fi\n"
                                 f"exec {shlex.join(install_argv(JUDGE.argv))}\n",
                             ],
@@ -155,20 +155,20 @@ class _FakeKubectl:
     ],
 )
 def test_status_from_job_conditions(monkeypatch, status: dict, expected: JobStatus) -> None:
-    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", _FakeKubectl({"j": status}))
+    monkeypatch.setattr("rcp.runners.kubernetes.run_cli", _FakeKubectl({"j": status}))
     assert KubernetesRunner(image="i").status("ns/j") is expected
 
 
 def test_an_active_job_with_an_empty_pod_list_is_pending_not_running(monkeypatch) -> None:
     """An active Job whose pod listing reads successfully but is empty has no Running pod: it must read
     ``pending``, not a ``running`` that may never resolve (an eventual-consistency window, or pods that do
-    not carry the runner's ``rcp-ndcg/job`` label)."""
-    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", _FakeKubectl({"j": {"active": 2}}, pods={"j": []}))
+    not carry the runner's ``rcp/job`` label)."""
+    monkeypatch.setattr("rcp.runners.kubernetes.run_cli", _FakeKubectl({"j": {"active": 2}}, pods={"j": []}))
     assert KubernetesRunner(image="i").status("ns/j") is JobStatus.PENDING
 
 
 def test_status_of_a_deleted_job_is_unknown(monkeypatch) -> None:
-    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", _FakeKubectl())
+    monkeypatch.setattr("rcp.runners.kubernetes.run_cli", _FakeKubectl())
     assert KubernetesRunner(image="i").status("ns/gone") is JobStatus.UNKNOWN
 
 
@@ -187,7 +187,7 @@ def test_a_pod_that_cannot_be_scheduled_is_pending_and_says_why(monkeypatch) -> 
     """`active` counts a Pending pod; an unsatisfiable GPU request must not read as RUNNING forever."""
     shortfall = "0/8 nodes are available: 8 Insufficient nvidia.com/gpu."
     fake = _FakeKubectl({"j": {"active": 1}}, pods={"j": [_pending_pod(message=shortfall)]})
-    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    monkeypatch.setattr("rcp.runners.kubernetes.run_cli", fake)
     runner = KubernetesRunner(image="i")
     assert runner.status("ns/j") is JobStatus.PENDING
     assert shortfall in (runner.note("ns/j") or "")
@@ -195,7 +195,7 @@ def test_a_pod_that_cannot_be_scheduled_is_pending_and_says_why(monkeypatch) -> 
 
 def test_a_running_pod_keeps_the_job_running(monkeypatch) -> None:
     fake = _FakeKubectl({"j": {"active": 2}}, pods={"j": [_pending_pod(phase="Running"), _pending_pod()]})
-    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    monkeypatch.setattr("rcp.runners.kubernetes.run_cli", fake)
     runner = KubernetesRunner(image="i")
     assert runner.status("ns/j") is JobStatus.RUNNING
     assert runner.note("ns/j") is None
@@ -210,7 +210,7 @@ def test_a_job_whose_pods_cannot_be_listed_is_unknown_not_running(monkeypatch) -
                 raise RunnerError("Error from server (Forbidden): pods is forbidden")
             return super().__call__(argv, input_text=input_text)
 
-    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", _NoPods({"j": {"active": 1}}))
+    monkeypatch.setattr("rcp.runners.kubernetes.run_cli", _NoPods({"j": {"active": 1}}))
     runner = KubernetesRunner(image="i")
     assert runner.status("ns/j") is JobStatus.UNKNOWN
     assert "could not be listed" in (runner.note("ns/j") or "")
@@ -223,16 +223,16 @@ def test_an_unschedulable_engine_pod_is_pending_and_named(monkeypatch) -> None:
     running = _pending_pod(phase="Running")
     engine = _pending_pod(message=shortfall)
     fake = _FakeKubectl({"run": {"active": 2}}, pods={"run": [running, engine]})
-    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    monkeypatch.setattr("rcp.runners.kubernetes.run_cli", fake)
     runner = KubernetesRunner(image="i")
     assert runner.status("ns/run") is JobStatus.PENDING
     assert shortfall in (runner.note("ns/run") or "")
-    assert "rcp-ndcg/job=run" in [argv[argv.index("-l") + 1] for argv, _ in fake.calls if "pods" in argv]
+    assert "rcp/job=run" in [argv[argv.index("-l") + 1] for argv, _ in fake.calls if "pods" in argv]
 
 
 def test_the_pod_label_is_the_capped_job_name_so_long_names_do_not_collide() -> None:
     """Two long direct-JobSpec names sharing their first 63 sanitized characters must not share a label."""
-    from rcp_ndcg.runners.kubernetes import _label_value
+    from rcp.runners.kubernetes import _label_value
 
     first = _label_value("a" * 70)
     second = _label_value("a" * 69 + "b")
@@ -241,7 +241,7 @@ def test_the_pod_label_is_the_capped_job_name_so_long_names_do_not_collide() -> 
 
 def test_an_image_pull_failure_is_the_note(monkeypatch) -> None:
     fake = _FakeKubectl({"j": {"active": 1}}, pods={"j": [_pending_pod(container="ImagePullBackOff")]})
-    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    monkeypatch.setattr("rcp.runners.kubernetes.run_cli", fake)
     assert "ImagePullBackOff" in (KubernetesRunner(image="i").note("ns/j") or "")
 
 
@@ -256,7 +256,7 @@ def test_a_failed_compensating_delete_names_the_orphan(monkeypatch) -> None:
             return super().__call__(argv, input_text=input_text)
 
     fake = _NoDelete()
-    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    monkeypatch.setattr("rcp.runners.kubernetes.run_cli", fake)
     phases = (JobPhase(engines={"reranker": RERANKER}, argv=("a",)),)
     with pytest.raises(RunnerError, match="could not be deleted") as refused:
         KubernetesRunner(namespace="eval").submit([JobSpec(name="run", phases=phases)])
@@ -266,7 +266,7 @@ def test_a_failed_compensating_delete_names_the_orphan(monkeypatch) -> None:
 
 def test_submit_applies_in_order(monkeypatch) -> None:
     fake = _FakeKubectl()
-    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    monkeypatch.setattr("rcp.runners.kubernetes.run_cli", fake)
     runner = KubernetesRunner(image="i", namespace="eval", context="ctx")
     jobs = [JobSpec(name="first", argv=("true",)), JobSpec(name="second", argv=("true",))]
     assert runner.submit(jobs) == ["eval/first", "eval/second"]
@@ -288,7 +288,7 @@ class _FailingEngines(_FakeKubectl):
 def test_a_partially_failed_submission_deletes_the_job_it_applied(monkeypatch) -> None:
     """The Job is applied before its engines; an engine-apply failure left a GPU job no CLI could see."""
     fake = _FailingEngines()
-    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    monkeypatch.setattr("rcp.runners.kubernetes.run_cli", fake)
     phases = (JobPhase(engines={"reranker": RERANKER}, argv=("a",)),)
     with pytest.raises(RunnerError, match="forbidden"):
         KubernetesRunner(namespace="eval").submit([JobSpec(name="run", phases=phases)])
@@ -401,7 +401,7 @@ def test_submit_refuses_an_existing_job(monkeypatch) -> None:
     """``kubectl apply`` on an existing Job is a no-op, and the Job name is deterministic: a resubmission once
     recorded ``submitted`` and ran nothing while the stale Job's condition was read back as this run's status."""
     fake = _FakeKubectl({"run": {"conditions": [{"type": "Failed", "status": "True"}]}})
-    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    monkeypatch.setattr("rcp.runners.kubernetes.run_cli", fake)
     with pytest.raises(RunnerError, match="already exists") as refused:
         KubernetesRunner(namespace="eval").submit([JobSpec(name="run", argv=("true",))])
     assert "kubectl delete job run -n eval" in (refused.value.hint or "")
@@ -410,10 +410,10 @@ def test_submit_refuses_an_existing_job(monkeypatch) -> None:
 
 
 def test_logs_and_cancel(monkeypatch) -> None:
-    """The run-scoped engine pods carry the Job's ``rcp-ndcg/job`` label, not ``job-name``: selecting on
+    """The run-scoped engine pods carry the Job's ``rcp/job`` label, not ``job-name``: selecting on
     ``job-name`` left every engine's log out, though the docstring promises every container of the Job's pods."""
     fake = _FakeKubectl()
-    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+    monkeypatch.setattr("rcp.runners.kubernetes.run_cli", fake)
     runner = KubernetesRunner(image="i")
     assert runner.logs("eval/j", tail=1) == "pod-1 b\n"
     runner.cancel("eval/j")
@@ -424,7 +424,7 @@ def test_logs_and_cancel(monkeypatch) -> None:
         "-n",
         "eval",
         "-l",
-        "rcp-ndcg/job=j",
+        "rcp/job=j",
         "--all-containers",
         "--prefix",
         "--tail=-1",
@@ -459,14 +459,14 @@ def _phase(step: int, engines: dict[str, ServeConfig]) -> JobPhase:
     steps = ("retrieve", "rerank", "tournament", "rubric", "calibrate", "evaluate")
     return JobPhase(
         engines=engines,
-        argv=("rcp-ndcg", "run", "resume", "--run", "/scratch/runs/x", "--only", steps[step - 1]),
+        argv=("rcp", "run", "resume", "--run", "/scratch/runs/x", "--only", steps[step - 1]),
     )
 
 
 class TestPhases:
     def test_one_phase_is_one_container_in_the_engines_image_running_the_supervision_script(self) -> None:
         """Any launcher that takes an image and a command runs it: no init container, no sidecar, no probes."""
-        phase = JobPhase(engines={"judge": SERVE}, argv=("rcp-ndcg", "run", "resume", "--run", "/scratch/runs/x"))
+        phase = JobPhase(engines={"judge": SERVE}, argv=("rcp", "run", "resume", "--run", "/scratch/runs/x"))
         job = JobSpec(name="run", phases=(phase,))
         (job_obj,) = yaml.safe_load_all(KubernetesRunner(namespace="eval", secrets=["hf-token"]).render([job])["run"])
         pod = job_obj["spec"]["template"]["spec"]
@@ -652,7 +652,7 @@ class TestPhases:
 
     def test_submit_owns_the_engines_by_the_applied_jobs_uid(self, monkeypatch) -> None:
         fake = _FakeKubectl()
-        monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", fake)
+        monkeypatch.setattr("rcp.runners.kubernetes.run_cli", fake)
         phases = (JobPhase(engines={"reranker": RERANKER}, argv=("a",)),)
         job = JobSpec(name="run", phases=phases)
         assert KubernetesRunner(namespace="eval").submit([job]) == ["eval/run"]
@@ -702,7 +702,7 @@ def test_the_runners_resources_and_env_are_every_jobs_defaults() -> None:
 
 def test_the_engine_statefulset_of_a_long_run_label_leaves_room_for_its_pod_names() -> None:
     """A 63-character StatefulSet name gave pod names and revision labels over 63: no engine pod was ever created."""
-    from rcp_ndcg.runs.layout import new_run_id, slugify
+    from rcp.runs.layout import new_run_id, slugify
 
     run_id = new_run_id("nano-nfcorpus-gpt-oss-120b-with-a-very-long-label")
     phases = (JobPhase(engines={"judge": SERVE.model_copy(update={"replicas": 3})}, argv=("tournament",)),)

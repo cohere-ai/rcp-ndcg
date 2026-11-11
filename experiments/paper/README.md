@@ -13,7 +13,7 @@ code is the record of those engine commands, and this release serves the same ch
 | `retrieval/` | The three first-stage retrievers: BM25 (`bm25s.yaml`), Octen-Embedding-8B (`octen.yaml`), Cohere Embed v4 (`cohere_embed_v4.yaml`) | The candidate pools of the NanoBEIR, BRIGHT and ViDoRe v3 leaderboards |
 | `rerankers/` | The 14 rerankers of the leaderboards, one config each ([README](rerankers/README.md)) | The reranker rows of the leaderboards |
 
-The re-judging run configs are packaged with the library as named configs (`rcp-ndcg run start
+The re-judging run configs are packaged with the library as named configs (`rcp run start
 rejudge_nfcorpus`), and the tables themselves are recomputed from the public data by the scripts one level up
 ([experiments/README.md](../README.md)), with no LLM call.
 
@@ -25,7 +25,7 @@ ship them. This release serves the same checkpoints on vLLM v0.33.0: the flags a
 [serving a judge](../../docs/concepts/judges.md). The re-judging command is unchanged:
 
 ```bash
-rcp-ndcg judge tournament --dataset <uri> --judge recipe:qwen3.5-397b-a17b-nvfp4 --out store/
+rcp judge tournament --dataset <uri> --judge recipe:qwen3.5-397b-a17b-nvfp4 --out store/
 ```
 
 For a job runner, put the engine image and its command into a run config's `serve:` section under the judge role
@@ -38,7 +38,7 @@ served name and reasoning parser: `vllm serve Qwen/Qwen3.6-27B-FP8 --served-mode
 ## Retrievers and rerankers
 
 ```bash
-rcp-ndcg retrieval index --dataset <uri> --retriever experiments/paper/retrieval/bm25s.yaml --out index/
-rcp-ndcg retrieval rerank --dataset <uri> --rankings fused.parquet \
+rcp retrieval index --dataset <uri> --retriever experiments/paper/retrieval/bm25s.yaml --out index/
+rcp retrieval rerank --dataset <uri> --rankings fused.parquet \
   --reranker experiments/paper/rerankers/qwen3_reranker_8b.yaml --out reranked.parquet
 ```

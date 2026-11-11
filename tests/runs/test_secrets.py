@@ -16,11 +16,11 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from rcp_ndcg.runners import JobOptions, ServeConfig
-from rcp_ndcg.runs import Pipeline, RunConfig
-from rcp_ndcg.runs.execution import _write_record
-from rcp_ndcg.runs.layout import RunLayout
-from rcp_ndcg.runs.mirror import Mirror, read_state, restore
+from rcp.runners import JobOptions, ServeConfig
+from rcp.runs import Pipeline, RunConfig
+from rcp.runs.execution import _write_record
+from rcp.runs.layout import RunLayout
+from rcp.runs.mirror import Mirror, read_state, restore
 from tests.runs.conftest import STEPS, tiny_config
 
 SECRET = "hf_SUPERSECRET_0123456789"
@@ -185,7 +185,7 @@ def test_a_credentialed_encoder_proxy_base_url_is_recorded_redacted() -> None:
 def test_the_candidates_and_rerank_endpoint_urls_are_redacted() -> None:
     """The redactor covers the retriever's encoder and the reranker endpoint (the reranker's own config needs
     an explicit budget, so the payload is exercised directly)."""
-    from rcp_ndcg.runs.config import redact_candidates_payload
+    from rcp.runs.config import redact_candidates_payload
 
     payload = {
         "rankings": "s3://key:secret@bucket/rank.jsonl",
@@ -225,9 +225,9 @@ def test_a_credentialed_dataset_reader_option_is_recorded_redacted() -> None:
 def test_the_job_record_redacts_a_credentialed_install_source(data: Path, tmp_path: Path) -> None:
     """``logs/jobs.json`` is host-local (never mirrored) but ``run status`` prints it: the runner options it
     records must not publish the wheelhouse URL."""
-    from rcp_ndcg.runs.config import redact_runner_options
-    from rcp_ndcg.runs.execution import job_for
-    from rcp_ndcg.runs.run import prepare
+    from rcp.runs.config import redact_runner_options
+    from rcp.runs.execution import job_for
+    from rcp.runs.run import prepare
 
     config = tiny_config(
         data,
@@ -248,7 +248,7 @@ def test_the_manifest_revision_key_is_recorded_redacted(
     """The revisions map is keyed by the dataset URI, so it leaked the same credentials the config redacts."""
     from types import SimpleNamespace
 
-    from rcp_ndcg.data import revisions
+    from rcp.data import revisions
 
     monkeypatch.setattr(
         revisions, "dataset_uri_revision", lambda *args, **kwargs: {"repo": "org/name", "commit": "abc"}
@@ -269,7 +269,7 @@ def test_the_manifest_revision_key_is_recorded_redacted(
 def test_a_step_identity_is_credential_free_and_stable(tmp_path: Path) -> None:
     """The step identities (hashed and recorded in the manifest, and the judging store's own) used to keep the
     live URIs: the manifest and ``judgements/identity.json`` are mirrored, and a resume must hash the same."""
-    from rcp_ndcg.runs.pipeline import Pipeline
+    from rcp.runs.pipeline import Pipeline
 
     live = RunConfig.model_validate(
         {
@@ -301,7 +301,7 @@ def test_the_judging_store_identity_is_credential_free() -> None:
     """``judgements/identity.json`` is mirrored too: the store's dataset key must not publish the URI's userinfo."""
     from types import SimpleNamespace
 
-    from rcp_ndcg.judging.judging import _dataset_identity
+    from rcp.judging.judging import _dataset_identity
 
     source = SimpleNamespace(uri="s3://key:secret@bucket/data", revision=None, task_instruction=None)
     assert _dataset_identity("ds", source)["uri"] == "s3://bucket/data"
@@ -309,8 +309,8 @@ def test_the_judging_store_identity_is_credential_free() -> None:
 
 def test_the_job_argv_keeps_the_full_mirror_uri(data: Path, tmp_path: Path) -> None:
     """The live pipeline and the job's argv carry the credential; only the recorded copy redacts it."""
-    from rcp_ndcg.runs.execution import job_for
-    from rcp_ndcg.runs.run import prepare
+    from rcp.runs.execution import job_for
+    from rcp.runs.run import prepare
 
     config = tiny_config(data, mirror="memory://key:secret@bucket/runs/x")
     pipeline = prepare(config, runs_dir=str(tmp_path / "runs"))
@@ -345,8 +345,8 @@ def test_the_restore_log_redacts_credentials(tmp_path: Path, caplog: pytest.LogC
 def test_the_foreign_run_refusal_redacts_the_mirror_uri(tmp_path: Path) -> None:
     """security-5 (folded into cli-3): the foreign-run error printed the raw mirror URI, which may carry
     credentials; ``Mirror.__init__`` promises they never reach a log line or an exception message."""
-    from rcp_ndcg import storage
-    from rcp_ndcg.errors import DataError
+    from rcp import storage
+    from rcp.errors import DataError
 
     remote = "memory://key:secret@mirror/run"
     (tmp_path / "run").mkdir()

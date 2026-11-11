@@ -64,10 +64,10 @@ G_{\mathrm{Count}}(d_i) = \frac{\sum_c S_{ijc}}{C\, n_{ij}}.
 $$
 
 Documents with equal pass shares tie. Count-nDCG needs no tournament and no calibration: its gains come from the
-rubric windows alone. `rcp_ndcg.calibration.count_gains(judgements)` is the one derivation (the windows'
-per-criterion pass counts through `count_gain`); pass it to `rcp_ndcg.eval.evaluate(..., count_gains=...)`, or
+rubric windows alone. `rcp.calibration.count_gains(judgements)` is the one derivation (the windows'
+per-criterion pass counts through `count_gain`); pass it to `rcp.eval.evaluate(..., count_gains=...)`, or
 score it on the command line with
-`rcp-ndcg eval score --metrics count_ndcg --judgements <rubric store>`.
+`rcp eval score --metrics count_ndcg --judgements <rubric store>`.
 
 ## qrel-nDCG
 
@@ -77,10 +77,10 @@ every positive qrel of the query, including positives outside the scored candida
 
 ## In code
 
-The formulas live in the core package `rcp_ndcg_core`, which needs only numpy and pydantic:
+The formulas live in the core package `rcp_core`, which needs only numpy and pydantic:
 
 ```python
-from rcp_ndcg_core import count_gain, gain, ndcg, pass_probabilities
+from rcp_core import count_gain, gain, ndcg, pass_probabilities
 
 items = {"gamma": [1.2, 1.0, 1.1, 0.9, 0.8], "beta": [-2.0, -0.5, 0.0, 0.8, 1.7]}
 thetas = {"d1": 1.4, "d2": -0.3, "d3": 0.6}  # calibrated abilities, in logits
@@ -103,5 +103,5 @@ print(count_gain([3, 3, 2, 1, 0], placements=3))  # Count-nDCG gain of a documen
   out-of-range one is refused, not read as a share. `qrel_gain(grade, scheme="linear")` gives the qrel gain;
   `scheme="exponential"` (`2**grade - 1`) refuses a grade whose `2**grade` would overflow, i.e. grades >= 1024.
 
-To score whole runs on a benchmark, with the paper's per-suite rules, use `rcp_ndcg.eval.evaluate`
-([scoring protocols](protocols.md) and [the evaluation API](../reference/api/rcp_ndcg.eval.md)).
+To score whole runs on a benchmark, with the paper's per-suite rules, use `rcp.eval.evaluate`
+([scoring protocols](protocols.md) and [the evaluation API](../reference/api/rcp.eval.md)).

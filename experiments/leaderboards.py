@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 from checks import Checker, KnownDeviation, paper_values
 from fetch_data import BRIGHT_SUBSETS, NANOBEIR_SUBSETS, TRECDL_SUBSETS, VIDORE_NATIVE, fetch_group, local_path
-from rcp_ndcg_core.protocol import candidate_docs, score_query
+from rcp_core.protocol import candidate_docs, score_query
 from scipy.stats import kendalltau, ttest_rel
 
 # Hub model id -> the paper's short name.

@@ -18,7 +18,7 @@ from typing import Any
 # suite into a real cache -- and the media and runs directories are cleared for the same reason;
 # the tests that need them set them with monkeypatch.
 ROOT = Path(__file__).resolve().parent.parent
-_SESSION_SCRATCH = Path(tempfile.mkdtemp(prefix="rcp-ndcg-tests-"))
+_SESSION_SCRATCH = Path(tempfile.mkdtemp(prefix="rcp-tests-"))
 os.environ["RCP_NDCG_CACHE_DIR"] = str(_SESSION_SCRATCH / "cache")
 os.environ.pop("RCP_NDCG_MEDIA_CACHE", None)
 os.environ.pop("RCP_NDCG_RUNS_DIR", None)
@@ -33,7 +33,7 @@ if not SESSION_TOKENIZER.is_file():
     SESSION_TOKENIZER.write_text(word_tokenizer().backend.to_str(), encoding="utf-8")
 
 import pytest  # noqa: E402
-from rcp_ndcg_core.records import ID, RankingExample  # noqa: E402
+from rcp_core.records import ID, RankingExample  # noqa: E402
 
 from tests._checkout import checkout_guard as _checkout_guard  # noqa: E402
 from tests._checkout import entries as _checkout_entries  # noqa: E402
@@ -83,7 +83,7 @@ def _tests_leave_the_checkout_clean(request: pytest.FixtureRequest) -> Any:
 def _fresh_warn_once_state(monkeypatch: pytest.MonkeyPatch) -> None:
     """The preprocess warnings fire once per (mechanism, corpus) per process; each test starts unwarned, so a
     test that asserts the warning does not depend on which tests ran before it."""
-    from rcp_ndcg.data import text_budget, text_policy
+    from rcp.data import text_budget, text_policy
 
     monkeypatch.setattr(text_policy, "_WARNED", set())
     monkeypatch.setattr(text_budget, "_VENDOR_WARNED", set())
@@ -95,7 +95,7 @@ def _hub_is_offline_and_empty(
 ):
     """No test reaches the HuggingFace Hub or reads the developer's hub cache, except those marked ``network``.
 
-    Revision resolution (``rcp_ndcg.data.revisions``) runs whenever an identity
+    Revision resolution (``rcp.data.revisions``) runs whenever an identity
     names a Hub model or dataset. Offline with an empty cache it records the
     revision as unverified; tests that need a resolved commit install a fake Hub
     or write a cache ref themselves.
@@ -104,7 +104,7 @@ def _hub_is_offline_and_empty(
     already-imported flag is set too: a network test in a worker that imported the
     library offline would otherwise stay offline.
     """
-    from rcp_ndcg.data.revisions import resolve_revision
+    from rcp.data.revisions import resolve_revision
 
     offline = request.node.get_closest_marker("network") is None
     if offline:
@@ -127,7 +127,7 @@ def _no_dns(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> 
     keep resolving (the local test servers are on 127.0.0.1); the ``network``-marked tests and a run with
     ``RCP_NDCG_NETWORK_TESTS=1`` go without the watchdog.
 
-    The same guard as ``rcp-ndcg-test/tests/conftest.py``'s: the Hub-offline fixture above stops the Hub
+    The same guard as ``rcp-test/tests/conftest.py``'s: the Hub-offline fixture above stops the Hub
     client, and this stops everything else that would resolve a name (a raw ``httpx``/``requests`` URL, a
     bare ``socket.socket().connect``).  The two suites cannot share a conftest, so the guard is a second copy
     by intent.
@@ -370,7 +370,7 @@ def write_mjpeg_avi(path: Path, *, frames: int = 12, fps: int = 4, size: tuple[i
     samples frame *i* can be checked against it. Pillow is the only dependency.
     (Second writer by intent: this one serves the root distribution's data-I/O
     tests, which cannot import the serving package; the pairs generator's own
-    writer is ``rcp_ndcg_test.observe.media_set.mjpeg_avi`` -- keep both headers
+    writer is ``rcp_test.observe.media_set.mjpeg_avi`` -- keep both headers
     BITMAPINFOHEADER-exact (strf's 40 bytes) when changing either.)
     """
     import io

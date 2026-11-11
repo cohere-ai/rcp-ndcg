@@ -273,7 +273,7 @@
       "title": "Runner"
     },
     "schema": {
-      "const": "rcp-ndcg.run-status.v1",
+      "const": "rcp.run-status.v1",
       "type": "string"
     },
     "status": {
@@ -301,5 +301,5 @@
   ],
   "title": "RunState",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.run-status.v1"
+  "x-rcp-schema": "rcp.run-status.v1"
 }

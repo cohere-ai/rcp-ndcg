@@ -1,7 +1,7 @@
 """Adding a field to a config that feeds an identity must force a decision.
 
 Every model that feeds a key declares a role per field, and
-:func:`rcp_ndcg.support.identity.check_declarations` refuses both an undeclared
+:func:`rcp.support.identity.check_declarations` refuses both an undeclared
 field and a declaration whose field is gone. The roots are enumerated through
 their fields, so a nested model added to one of them is covered the moment it is
 added.
@@ -14,9 +14,9 @@ from typing import Any, ClassVar, get_args, get_origin
 import pytest
 from pydantic import BaseModel, ConfigDict, Field
 
-from rcp_ndcg.judging import JudgeConfig
-from rcp_ndcg.runs.config import CandidatesConfig
-from rcp_ndcg.support.identity import (
+from rcp.judging import JudgeConfig
+from rcp.runs.config import CandidatesConfig
+from rcp.support.identity import (
     FieldRole,
     IdentityDeclarationError,
     check_declarations,

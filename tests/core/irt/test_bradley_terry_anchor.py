@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator
+from rcp_core.irt._bradley_terry import BradleyTerryEstimator
 from scipy.optimize import minimize
 
 DOCS = ("a", "b", "c", "d")

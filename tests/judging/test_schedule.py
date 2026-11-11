@@ -12,8 +12,8 @@ import pytest
 from pydantic import ValidationError
 from pytest import MonkeyPatch
 
-from rcp_ndcg.judging import schedule as sched
-from rcp_ndcg.judging.schedule import RubricSchedule, TournamentSchedule
+from rcp.judging import schedule as sched
+from rcp.judging.schedule import RubricSchedule, TournamentSchedule
 
 #: The fingerprint :func:`_numerics_digest` pins; the second assertion of the reference test re-derives it with
 #: every boundary value one ulp off, so the pin's tolerance is demonstrated inside the suite.

@@ -1,4 +1,4 @@
-"""Scoring one document with the item parameters frozen (:func:`rcp_ndcg_core.irt.score_document`).
+"""Scoring one document with the item parameters frozen (:func:`rcp_core.irt.score_document`).
 
 The operation scores a document from its own criterion responses with
 ``(gamma, beta)`` frozen, EAP with a prior (41.83% of real judged items have no
@@ -17,9 +17,9 @@ import math
 
 import numpy as np
 import pytest
-from rcp_ndcg_core.irt import score_document
-from rcp_ndcg_core.irt._criteria_2pl import QUAD, Criteria2PL
-from rcp_ndcg_core.schemas import DocumentEstimate, ItemParams
+from rcp_core.irt import score_document
+from rcp_core.irt._criteria_2pl import QUAD, Criteria2PL
+from rcp_core.schemas import DocumentEstimate, ItemParams
 
 #: Two-judge consensus item parameters of TREC DL -- the items the SE curve above was
 #: measured on -- committed inline. Copied verbatim (``repr`` of the parsed floats,
@@ -263,7 +263,7 @@ class TestStandardisedIntegration:
     """
 
     def test_scoring_reproduces_the_fit_it_came_from_at_a_wide_prior(self) -> None:
-        from rcp_ndcg_core.irt import fit_calibration
+        from rcp_core.irt import fit_calibration
 
         observations = _rubric_only_observations()
         fit = fit_calibration(observations, mode="rubric_only")

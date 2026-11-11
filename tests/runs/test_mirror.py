@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg import storage
-from rcp_ndcg.errors import DataError
-from rcp_ndcg.runs.mirror import Mirror, read_state, restore
+from rcp import storage
+from rcp.errors import DataError
+from rcp.runs.mirror import Mirror, read_state, restore
 
 REMOTE = "memory://mirror/run"
 
@@ -153,10 +153,10 @@ def test_a_run_whose_node_vanished_resumes_from_its_mirror_asking_only_the_missi
 
     from click.testing import CliRunner
 
-    import rcp_ndcg
-    from rcp_ndcg.cli.main import cli
-    from rcp_ndcg.judging import JudgeClient
-    from rcp_ndcg.judging.client import BackendUnavailableError
+    import rcp
+    from rcp.cli.main import cli
+    from rcp.judging import JudgeClient
+    from rcp.judging.client import BackendUnavailableError
     from tests.runs.conftest import tiny_config
 
     complete = JudgeClient.complete
@@ -171,10 +171,10 @@ def test_a_run_whose_node_vanished_resumes_from_its_mirror_asking_only_the_missi
     monkeypatch.setattr(JudgeClient, "complete", down_after_three)
     config = tiny_config(data, steps=["tournament"], mirror=REMOTE)
     with pytest.raises(BackendUnavailableError):  # the endpoint stops the run partway
-        rcp_ndcg.run(config, runs_dir=str(tmp_path / "runs"))
+        rcp.run(config, runs_dir=str(tmp_path / "runs"))
     monkeypatch.setattr(JudgeClient, "complete", complete)
     (run_dir,) = (tmp_path / "runs").iterdir()
-    stopped = rcp_ndcg.runs.run.Run(str(run_dir))
+    stopped = rcp.runs.run.Run(str(run_dir))
     store = Path(stopped.dir) / "judgements" / "tournament.jsonl"
     judged = len(store.read_text(encoding="utf-8").splitlines())
     assert stopped.manifest.status.value == "failed" and 0 < judged
@@ -185,7 +185,7 @@ def test_a_run_whose_node_vanished_resumes_from_its_mirror_asking_only_the_missi
     result = CliRunner().invoke(cli, args)
     assert result.exit_code == 0, result.output
 
-    resumed = rcp_ndcg.runs.run.Run(stopped.dir)
+    resumed = rcp.runs.run.Run(stopped.dir)
     total = len(store.read_text(encoding="utf-8").splitlines())
     asked = resumed.manifest.step("tournament").usage.requests
     assert resumed.manifest.status.value == "completed"
@@ -200,11 +200,11 @@ def test_a_resumed_pass_retires_the_old_generation_with_appended_tombstones(tmp_
     import json
 
     import httpx
-    from rcp_ndcg_core.records import RankingExample
+    from rcp_core.records import RankingExample
 
-    from rcp_ndcg.judging import JudgementStore, RubricSchedule, judge
-    from rcp_ndcg.judging.schedule import _balanced_groups, query_rng
-    from rcp_ndcg.testing import FakeJudge
+    from rcp.judging import JudgementStore, RubricSchedule, judge
+    from rcp.judging.schedule import _balanced_groups, query_rng
+    from rcp.testing import FakeJudge
 
     docs = [f"d{index:02d}" for index in range(20)]
     rows = [RankingExample(query_id="q", query="a query", doc_ids=docs, docs=[f"document {doc}" for doc in docs])]
@@ -241,8 +241,8 @@ def test_a_resumed_pass_retires_the_old_generation_with_appended_tombstones(tmp_
 
 
 def test_a_remote_runs_directory_is_refused(data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from rcp_ndcg.errors import ConfigError
-    from rcp_ndcg.runs import Pipeline
+    from rcp.errors import ConfigError
+    from rcp.runs import Pipeline
     from tests.runs.conftest import tiny_config
 
     monkeypatch.chdir(tmp_path)  # a regression must not write a run into the checkout
@@ -254,7 +254,7 @@ def test_a_remote_runs_directory_is_refused(data: Path, tmp_path: Path, monkeypa
 def test_judge_mirrors_its_store(data: Path, tmp_path: Path) -> None:
     from click.testing import CliRunner
 
-    from rcp_ndcg.cli.main import cli
+    from rcp.cli.main import cli
 
     out = tmp_path / "store"
     args = ["judge", "rubric", "--dataset", f"jsonl:{data}", "--judge", "fake", "--set", "schedule.window=4"]
@@ -267,7 +267,7 @@ def test_judge_mirrors_its_store(data: Path, tmp_path: Path) -> None:
 
 
 def test_a_mirror_on_an_unavailable_filesystem_names_what_is_missing(tmp_path: Path) -> None:
-    from rcp_ndcg.errors import DependencyError
+    from rcp.errors import DependencyError
 
     with pytest.raises(DependencyError, match="no fsspec filesystem is registered for nosuchstore://") as unknown:
         Mirror(tmp_path, "nosuchstore://bucket/runs")
@@ -275,7 +275,7 @@ def test_a_mirror_on_an_unavailable_filesystem_names_what_is_missing(tmp_path: P
     if importlib.util.find_spec("s3fs") is None:
         with pytest.raises(DependencyError, match="s3fs") as missing:
             Mirror(tmp_path, "s3://bucket/runs")
-        assert missing.value.hint == 'pip install "rcp-ndcg[s3]"'
+        assert missing.value.hint == 'pip install "rcp[s3]"'
 
 
 def test_a_custom_filesystem_registered_with_fsspec_is_a_mirror(tmp_path: Path) -> None:
@@ -312,7 +312,7 @@ def test_a_custom_filesystem_registered_with_fsspec_is_a_mirror(tmp_path: Path) 
 
 
 def test_a_hub_mirror_warns_that_it_is_for_publishing(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
-    from rcp_ndcg.errors import DependencyError
+    from rcp.errors import DependencyError
 
     with caplog.at_level("WARNING"), contextlib.suppress(DependencyError):  # without huggingface_hub installed
         Mirror(tmp_path, "hf://datasets/someone/runs")
@@ -324,11 +324,11 @@ def test_a_local_or_shared_path_is_a_mirror_and_restores(data: Path, tmp_path: P
     """A file:// or plain-path mirror failed: its parent directories were never created."""
     import shutil
 
-    import rcp_ndcg
+    import rcp
     from tests.runs.conftest import tiny_config
 
     remote = f"{scheme}{tmp_path / 'shared' / 'mirror'}"
-    run = rcp_ndcg.run(tiny_config(data, mirror=remote), runs_dir=str(tmp_path / "runs"))
+    run = rcp.run(tiny_config(data, mirror=remote), runs_dir=str(tmp_path / "runs"))
     assert run.manifest.status.value == "completed"
     assert (tmp_path / "shared" / "mirror" / "calibration" / "coverage.json").is_file()
     state = run.status().mirror
@@ -370,7 +370,7 @@ def test_a_local_directory_behind_its_mirror_takes_the_mirrors_newer_files(tmp_p
 
 def test_a_final_flush_that_fails_is_recorded_for_run_status(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The job failed on its last upload while run status showed a completed run with no mirror state at all."""
-    from rcp_ndcg.runs.mirror import mirrored
+    from rcp.runs.mirror import mirrored
 
     state_file = tmp_path / "logs" / "mirror.json"
     (tmp_path / "manifest.json").write_text("{}")
@@ -378,7 +378,7 @@ def test_a_final_flush_that_fails_is_recorded_for_run_status(tmp_path: Path, mon
     def refuse(self, relative, payload):
         raise PermissionError("the bucket refused the write")
 
-    monkeypatch.setattr("rcp_ndcg.runs.mirror._Target.write", refuse)
+    monkeypatch.setattr("rcp.runs.mirror._Target.write", refuse)
     with pytest.raises(PermissionError), mirrored(tmp_path, REMOTE, interval_s=3600, state_file=state_file):
         pass
     state = read_state(state_file)
@@ -400,7 +400,7 @@ def test_run_status_survives_a_torn_state_file(
 ) -> None:
     import shutil
 
-    from rcp_ndcg.runs.run import Run
+    from rcp.runs.run import Run
 
     run_dir = Path(shutil.copytree(finished, tmp_path / "torn"))
     (run_dir / "logs" / "mirror.json").write_text("{not json", encoding="utf-8")
@@ -469,7 +469,7 @@ def test_a_dry_run_refuses_a_mirror_the_real_run_would_refuse_and_the_run_leaves
     import yaml
     from click.testing import CliRunner
 
-    from rcp_ndcg.cli.main import cli
+    from rcp.cli.main import cli
     from tests.runs.conftest import tiny_config
 
     config = tmp_path / "run.yaml"

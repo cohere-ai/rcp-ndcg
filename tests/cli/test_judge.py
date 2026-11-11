@@ -1,4 +1,4 @@
-"""``rcp-ndcg judge tournament|rubric``: the offline judge end to end, and the estimate."""
+"""``rcp judge tournament|rubric``: the offline judge end to end, and the estimate."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from rcp_ndcg.cli.judge import judge_group
-from rcp_ndcg.testing import tiny_rows
+from rcp.cli.judge import judge_group
+from rcp.testing import tiny_rows
 
 
 @pytest.fixture
@@ -41,7 +41,7 @@ def test_the_offline_judge_fills_a_store_and_a_rerun_asks_nothing(dataset: str, 
 
     assert code == 0, first
     first_data, again_data = json.loads(first)["data"], json.loads(again)["data"]
-    assert first_data["schema"] == "rcp-ndcg.judge-report.v1" and first_data["mode"] == "judged"
+    assert first_data["schema"] == "rcp.judge-report.v1" and first_data["mode"] == "judged"
     assert first_data["judgements"] > 0 and first_data["stored"] == 0
     assert again_data["stored"] == first_data["judgements"]
     assert (store / "identity.json").is_file()
@@ -82,7 +82,7 @@ def test_a_judge_recipe_resolves_through_the_recipe_path() -> None:
         code, text = _invoke(*args)
         assert code == 0, text
         data = json.loads(text)["data"]
-        assert data["schema"] == "rcp-ndcg.judge-check-report.v1"
+        assert data["schema"] == "rcp.judge-check-report.v1"
         assert data["ok"] is True and data["recipe"] == "gpt-oss-120b"
         assert all(check["schema_sent"] and check["parsed"] for check in data["checks"])
 
@@ -138,8 +138,8 @@ def test_restating_a_default_schedule_field_reuses_the_store(dataset: str, tmp_p
 
 
 def test_an_estimate_into_a_store_of_another_identity_gives_the_judges_refusal(tmp_path: Path) -> None:
-    from rcp_ndcg.cli.main import cli
-    from rcp_ndcg.examples import tiny
+    from rcp.cli.main import cli
+    from rcp.examples import tiny
 
     rows = tiny() / "rows.jsonl"
     store = tmp_path / "store"
@@ -184,8 +184,8 @@ def test_the_mirror_interval_flag_reaches_the_mirror(
     dataset: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """``--mirror-interval`` matches the run config's ``mirror_interval_s``; the default is its constant."""
-    import rcp_ndcg.cli.judge as judge_module
-    from rcp_ndcg.runs.mirror import DEFAULT_INTERVAL_S
+    import rcp.cli.judge as judge_module
+    from rcp.runs.mirror import DEFAULT_INTERVAL_S
 
     seen: list[float] = []
     real = judge_module.mirrored
@@ -212,8 +212,8 @@ def test_candidates_pools_break_ties_toward_the_lower_document_id(dataset: str, 
     document id -- against ``Rankings.top`` and ``runs/pipeline._order``, the stack's one tie rule (score
     descending, then the lower id). On the same file and depth the CLI judged a different set than
     ``run start`` does; the pools are built through the library's rule now."""
-    from rcp_ndcg.cli.judge import TournamentRequest, _pools
-    from rcp_ndcg.data import Rankings, load_dataset
+    from rcp.cli.judge import TournamentRequest, _pools
+    from rcp.data import Rankings, load_dataset
 
     written = Rankings.from_scores({"q1": {"d1": 1.0, "d2": 1.0, "d3": 0.5}}, system="a").save(tmp_path / "run.parquet")
     request = TournamentRequest(candidates=str(written), depth=1, out=str(tmp_path / "store"), dataset=dataset)

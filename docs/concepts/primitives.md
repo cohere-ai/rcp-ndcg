@@ -18,24 +18,24 @@ published calibration without re-estimating anything already in it.
 | a new document in a tournament calibration | Stage A windows pairing it with existing documents (`select_opponents`) | `insert_documents` | conditional MAP (every existing theta frozen, the fit's ridge in the objective) |
 | a second judge, same rubric | Stage B with the second judge | `calibrate(..., judges="pooled")` | one 2PL with a severity offset per judge |
 
-All three live in `rcp_ndcg.calibration` (`score_documents` and `insert_documents`
-are also top-level functions of `rcp_ndcg`). On the command line, with the judge,
+All three live in `rcp.calibration` (`score_documents` and `insert_documents`
+are also top-level functions of `rcp`). On the command line, with the judge,
 dataset and judgement store of the calibration:
 
 ```bash
 # documents without a theta: judge them on the rubric into the same store, then score them
-rcp-ndcg judge rubric --dataset <uri> --judge <judge> --docs q2:q2-d10 --docs q2:q2-d11 --out <store>
-rcp-ndcg calibration score --calibration <calibration> --judgements <store> --out <extended-calibration>
+rcp judge rubric --dataset <uri> --judge <judge> --docs q2:q2-d10 --docs q2:q2-d11 --out <store>
+rcp calibration score --calibration <calibration> --judgements <store> --out <extended-calibration>
 
 # a new document: let the calibration plan its windows, judge exactly those, then insert
-rcp-ndcg calibration insert --calibration <calibration> --judgements <store> --dry-run --query q1 --doc q1-new \
+rcp calibration insert --calibration <calibration> --judgements <store> --dry-run --query q1 --doc q1-new \
     --n 36 --out plan.json --json
-rcp-ndcg judge tournament --dataset <uri> --judge <judge> --plan plan.json --out <store> --estimate
-rcp-ndcg judge tournament --dataset <uri> --judge <judge> --plan plan.json --out <store>
-rcp-ndcg calibration insert --calibration <calibration> --judgements <store> --out <extended-calibration>
+rcp judge tournament --dataset <uri> --judge <judge> --plan plan.json --out <store> --estimate
+rcp judge tournament --dataset <uri> --judge <judge> --plan plan.json --out <store>
+rcp calibration insert --calibration <calibration> --judgements <store> --out <extended-calibration>
 
 # a second judge: one pooled fit over both stores
-rcp-ndcg calibration fit --judgements <store> --judgements <second-store> --judges pooled --out <calibration>
+rcp calibration fit --judgements <store> --judgements <second-store> --judges pooled --out <calibration>
 ```
 
 In the second procedure, `calibration insert --dry-run` picks `--n` opponents across the query's ability range and
@@ -54,7 +54,7 @@ holds), and on such a small pool only a larger `--se-target` helps. `examples/05
 
 ## A tiny example you can run offline
 
-`rcp_ndcg.testing.build_tiny_world` builds a small world judged by a deterministic
+`rcp.testing.build_tiny_world` builds a small world judged by a deterministic
 fake judge: two queries, a tournament calibration (`tiny/calibration`), two
 documents of `q2` left out of the fit and re-judged on Stage B (appended to
 `tiny/judgements`), a new document `q1-new` judged in Stage A windows against
@@ -62,10 +62,10 @@ opponents the calibration picked (`tiny/insertion`), and a second, more lenient
 judge's rubric answers (`tiny/lenient`).
 
 ```python
-from rcp_ndcg.calibration import (
+from rcp.calibration import (
     Calibration, calibrate, insert_documents, read_judgements, score_documents, select_opponents,
 )
-from rcp_ndcg.testing import build_tiny_world
+from rcp.testing import build_tiny_world
 
 build_tiny_world("tiny")
 calibration = Calibration.load("tiny/calibration")
@@ -164,9 +164,9 @@ refused.
 ## What is written
 
 `score_documents` and `insert_documents` never modify the calibration. They return
-an `Extension` (schema `rcp-ndcg.extension.v1`); `calibration.extended(extension)`
+an `Extension` (schema `rcp.extension.v1`); `calibration.extended(extension)`
 is a new, complete calibration that `save` writes like any other
-(`rcp-ndcg eval score --calibration` reads it):
+(`rcp eval score --calibration` reads it):
 
 | File | Content |
 |---|---|

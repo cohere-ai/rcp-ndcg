@@ -1,4 +1,4 @@
-"""The metric and the gains: ``rcp_ndcg_core.metric`` and ``rcp_ndcg_core.gain``."""
+"""The metric and the gains: ``rcp_core.metric`` and ``rcp_core.gain``."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import math
 
 import numpy as np
 import pytest
-from rcp_ndcg_core import count_gain, dcg, gain, ndcg, pass_probabilities, qrel_gain
-from rcp_ndcg_core.metric import discount, ideal_dcg, rank_by_score
+from rcp_core import count_gain, dcg, gain, ndcg, pass_probabilities, qrel_gain
+from rcp_core.metric import discount, ideal_dcg, rank_by_score
 
 LOG2_3 = math.log2(3)
 ITEMS = {"gamma": [1.2, 1.0, 0.8], "beta": [-2.0, 0.0, 3.0]}
@@ -316,7 +316,7 @@ def test_an_exponential_qrel_gain_refuses_a_grade_it_cannot_represent() -> None:
 
 
 def test_tie_groups_are_the_equal_score_classes_the_group_mean_rule_credits() -> None:
-    from rcp_ndcg_core.metric import tie_groups
+    from rcp_core.metric import tie_groups
 
     scores = {"a": 0.5, "b": 0.9, "c": 0.5, "d": 0.1, "e": 0.9}
     gains = {"a": 1.0, "b": 0.0, "c": 0.0, "d": 1.0, "e": 1.0}
@@ -330,8 +330,8 @@ def test_tie_groups_are_the_equal_score_classes_the_group_mean_rule_credits() ->
 
 
 def test_item_arrays_reads_item_parameters_of_any_shape_and_refuses_bad_ones() -> None:
-    from rcp_ndcg_core.gain import item_arrays
-    from rcp_ndcg_core.schemas import ItemParams
+    from rcp_core.gain import item_arrays
+    from rcp_core.schemas import ItemParams
 
     assert item_arrays({"gamma": [1.0, 2.0], "beta": [0.0, 1.0]}) == ([1.0, 2.0], [0.0, 1.0])
     assert item_arrays(ItemParams(gamma=(1.0,), beta=(0.5,))) == ((1.0,), (0.5,))

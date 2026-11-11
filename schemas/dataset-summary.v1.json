@@ -146,7 +146,7 @@
       "title": "Revision"
     },
     "schema": {
-      "const": "rcp-ndcg.dataset-summary.v1",
+      "const": "rcp.dataset-summary.v1",
       "type": "string"
     },
     "subset": {
@@ -185,5 +185,5 @@
   ],
   "title": "DatasetSummary",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.dataset-summary.v1"
+  "x-rcp-schema": "rcp.dataset-summary.v1"
 }

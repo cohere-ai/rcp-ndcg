@@ -7,9 +7,9 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from rcp_ndcg.cli.main import cli
-from rcp_ndcg.data import Rankings
-from rcp_ndcg.examples import tiny
+from rcp.cli.main import cli
+from rcp.data import Rankings
+from rcp.examples import tiny
 
 ROWS = tiny() / "rows.jsonl"
 SCHEDULE = [
@@ -28,7 +28,7 @@ def _json(*args: str) -> dict:
 def test_the_plan_switch_is_dry_run_and_plan_is_the_plan_file() -> None:
     """`--plan` means one thing in the CLI: the plan file `judge tournament` asks exactly the windows of.
     `calibration insert` plans with `--dry-run`, like every other command's no-side-effects switch."""
-    from rcp_ndcg.cli.introspect import command_index
+    from rcp.cli.introspect import command_index
 
     commands = command_index().commands
     insert = {flag.flag: flag for flag in commands["calibration insert"].flags}
@@ -188,7 +188,7 @@ def test_two_new_documents_of_one_query_are_inserted_one_after_the_other(tmp_pat
 def test_calibration_fit_refuses_a_remote_out_uri(tmp_path: Path, monkeypatch) -> None:
     """``calibration fit --out gs://...`` created a local ``./gs:/...`` tree and reported success; a
     calibration is a local directory a mirror carries to the bucket, so the path is refused with the hint."""
-    from rcp_ndcg.testing import build_tiny_world
+    from rcp.testing import build_tiny_world
 
     world = build_tiny_world(tmp_path / "world")
     monkeypatch.chdir(tmp_path)

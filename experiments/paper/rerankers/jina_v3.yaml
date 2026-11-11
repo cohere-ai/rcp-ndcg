@@ -1,5 +1,5 @@
-# jinaai/jina-reranker-v3, served: a reranker config (rcp_ndcg.retrieval.RerankerConfig) for
-# `rcp-ndcg retrieval rerank --reranker <this file>`. Served by recipe `jina-reranker-v3`
+# jinaai/jina-reranker-v3, served: a reranker config (rcp.retrieval.RerankerConfig) for
+# `rcp retrieval rerank --reranker <this file>`. Served by recipe `jina-reranker-v3`
 # (JinaForRanking, listwise: the whole candidate set travels in one prompt; reference:
 # experiments/paper/rerankers/reference/jina.py). `base_url` is the placeholder the runner's
 # engines overlay (serve.reranker) replaces; `model` is the --served-model-name.

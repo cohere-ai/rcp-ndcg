@@ -1,4 +1,4 @@
-"""``rcp-ndcg eval score|compare|explain`` over a dataset URI, a rankings file and a calibration."""
+"""``rcp eval score|compare|explain`` over a dataset URI, a rankings file and a calibration."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ import pandas as pd
 import pytest
 from click.testing import CliRunner
 
-from rcp_ndcg.cli.eval import eval_group
-from rcp_ndcg.data import SUITES, Rankings
+from rcp.cli.eval import eval_group
+from rcp.data import SUITES, Rankings
 
 VIDORE_REPO = SUITES["vidore"].repo
 SHA = "4" * 40
@@ -115,7 +115,7 @@ def test_float_grades_are_scored_as_floats(dataset: str, tmp_path: Path) -> None
     document = _invoke("score", "--rankings", str(rankings), "--dataset", dataset, "--metrics", "qrel_ndcg", "--k", "3")
 
     assert document["exit_code"] == 0, document
-    assert document["data"]["schema"] == "rcp-ndcg.eval-score.v1"
+    assert document["data"]["schema"] == "rcp.eval-score.v1"
     dcg = 0.4 + 0.9 / math.log2(3) + 0.1 / 2.0
     ideal = 0.9 + 0.4 / math.log2(3) + 0.1 / 2.0
     assert _summary(document, "qrel_ndcg", 3, "mine") == pytest.approx(dcg / ideal)
@@ -144,8 +144,8 @@ def test_tied_scores_follow_the_protocols_tie_rule(tmp_path: Path, protocol: str
 @pytest.fixture
 def scored(tmp_path: Path) -> dict:
     """Two systems scored against the tiny world's calibration, with the full report written by --out."""
-    from rcp_ndcg.calibration import Calibration
-    from rcp_ndcg.testing import build_tiny_world, tiny_rows
+    from rcp.calibration import Calibration
+    from rcp.testing import build_tiny_world, tiny_rows
 
     world = build_tiny_world(tmp_path / "world")
     rows, _ = tiny_rows()
@@ -180,7 +180,7 @@ def test_a_calibration_gives_rcp_ndcg_and_a_report_to_compare(scored: dict) -> N
 
     assert scored["data"]["gains_source"] == "calibration"
     assert _summary(scored, "rcp_ndcg", 10, "reverse") > _summary(scored, "rcp_ndcg", 10, "forward")
-    assert compared["data"]["schema"] == "rcp-ndcg.comparison.v1"
+    assert compared["data"]["schema"] == "rcp.comparison.v1"
     (pair,) = compared["data"]["pairs"]
     assert (pair["system_a"], pair["system_b"]) == ("forward", "reverse") and pair["delta"] > 0
 
@@ -237,9 +237,9 @@ def _rubric_store(tmp_path: Path, dataset: str, windows: dict[str, list[list[tup
     """A rubric judgement store of ``dataset`` (the minimal identity entry ``read_judgements`` reads)."""
     from datetime import UTC, datetime
 
-    from rcp_ndcg_core.schemas import Judgement, JudgementFamily, Placement, criterion_labels, judgement_record_id
+    from rcp_core.schemas import Judgement, JudgementFamily, Placement, criterion_labels, judgement_record_id
 
-    from rcp_ndcg.judging.store import JudgementStore
+    from rcp.judging.store import JudgementStore
 
     family = JudgementFamily(
         stage="rubric", judge_model="m", prompt_hash="0" * 64, criteria=criterion_labels(5), parse_version=1
@@ -400,7 +400,7 @@ def test_include_reference_with_a_report_is_refused(scored: dict) -> None:
 def test_explain_report_re_scores_the_systems_the_report_scored(scored: dict) -> None:
     """`eval explain --report` defaults to the systems the report scored: a system added to the rankings file
     after scoring does not kill the explanation, and `--system` narrows the re-score."""
-    from rcp_ndcg.data import load_rankings
+    from rcp.data import load_rankings
 
     rankings = Rankings.concat(
         [
@@ -447,7 +447,7 @@ def test_score_json_is_lean_and_the_full_report_goes_to_out(scored: dict) -> Non
     assert "per_query" not in data
     assert {"summary", "per_dataset", "warnings", "protocol", "inputs", "out"} <= set(data)
     full = json.loads(scored["report"].read_text())
-    assert full["schema"] == "rcp-ndcg.eval-report.v1" and full["per_query"]
+    assert full["schema"] == "rcp.eval-report.v1" and full["per_query"]
     assert full["inputs"]["calibration"] == data["inputs"]["calibration"]
     assert full["inputs"]["split"] == "test" and full["inputs"]["task"] is None
 
@@ -554,7 +554,7 @@ def test_score_text_prints_the_per_query_values(dataset: str, tmp_path: Path, ca
     """`--per-query` promises every per-query value: the text renderer prints them too, not only --json."""
     from click.testing import CliRunner
 
-    from rcp_ndcg.cli.main import cli
+    from rcp.cli.main import cli
 
     rankings = tmp_path / "run.parquet"
     Rankings.from_orders({"q1": ["b", "a", "c"]}, system="mine").save(rankings)
@@ -601,3 +601,102 @@ def test_a_directory_where_a_report_belongs_is_a_missing_input(tmp_path: Path) -
 
     assert result.exit_code == 4, result.output + result.stderr
     assert "no report at" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# the metric seam (RFC-0002 G2): --metric lists and scores a registered plugin
+# ---------------------------------------------------------------------------
+
+
+def test_eval_score_help_lists_the_registered_metric_plugins(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``--metric``'s help is computed when it is printed, so an installed plugin is listed by name."""
+    from tests.eval._metrics import install_metrics, metric_entry
+
+    install_metrics(monkeypatch, metric_entry("map", "tests.eval._metrics:MeanAveragePrecision"))
+
+    result = CliRunner().invoke(eval_group, ["score", "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "--metric" in result.output
+    assert "Registered: rcp_ndcg, qrel_ndcg, count_ndcg, map." in " ".join(result.output.split())
+
+
+def test_metric_scores_a_plugin_alongside_the_shipped_metrics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``--metric map`` adds the plugin to ``--metrics`` and its value is in the summary."""
+    from tests.eval._metrics import install_metrics, metric_entry
+
+    install_metrics(monkeypatch, metric_entry("map", "tests.eval._metrics:MeanAveragePrecision"))
+    path = tmp_path / "rows.jsonl"
+    row = {"query_id": "q1", "query": "q", "doc_ids": ["a", "b", "c"], "docs": ["A", "B", "C"],
+           "qrels": {"a": 1.0, "b": 0.0, "c": 1.0}}  # fmt: skip
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    rankings = tmp_path / "run.jsonl"
+    Rankings.from_scores({"q1": {"a": 3.0, "c": 2.0, "b": 1.0}}, system="mine").save(rankings)
+
+    document = _invoke(
+        "score", "--rankings", str(rankings), "--dataset", f"jsonl:{path}",
+        "--metrics", "qrel_ndcg", "--metric", "map", "--k", "2",
+    )  # fmt: skip
+
+    assert document["exit_code"] == 0, document
+    assert set(document["data"]["metrics"]) == {"qrel_ndcg", "map"}
+    assert _summary(document, "map", 2, "mine") == pytest.approx(1.0)
+
+
+def test_a_metric_given_twice_is_scored_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``--metric qrel_ndcg`` alongside ``--metrics qrel_ndcg`` does not double the summary rows."""
+    from tests.eval._metrics import install_metrics
+
+    install_metrics(monkeypatch)
+    path = tmp_path / "rows.jsonl"
+    row = {"query_id": "q1", "query": "q", "doc_ids": ["a", "b"], "docs": ["A", "B"],
+           "qrels": {"a": 1.0, "b": 0.0}}  # fmt: skip
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    rankings = tmp_path / "run.jsonl"
+    Rankings.from_scores({"q1": {"a": 1.0, "b": 0.0}}, system="mine").save(rankings)
+
+    document = _invoke(
+        "score", "--rankings", str(rankings), "--dataset", f"jsonl:{path}",
+        "--metrics", "qrel_ndcg", "--metric", "qrel_ndcg", "--k", "2",
+    )  # fmt: skip
+
+    assert document["exit_code"] == 0, document
+    assert document["data"]["metrics"] == ["qrel_ndcg"]
+    assert len([r for r in document["data"]["summary"] if r["metric"] == "qrel_ndcg"]) == 1
+
+
+def test_compare_reaches_a_metric_a_plugin_scored(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``compare --metric`` names any metric the report holds, a plugin's included: ``compare()`` already takes
+    a name, so a report scored ``--metric map`` must compare on the command line too."""
+    from tests.eval._metrics import install_metrics, metric_entry
+
+    install_metrics(monkeypatch, metric_entry("map", "tests.eval._metrics:MeanAveragePrecision"))
+    path = tmp_path / "rows.jsonl"
+    row = {"query_id": "q1", "query": "q", "doc_ids": ["a", "b", "c"], "docs": ["A", "B", "C"],
+           "qrels": {"a": 1.0, "b": 0.0, "c": 1.0}}  # fmt: skip
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    rankings = tmp_path / "run.jsonl"
+    Rankings.concat(
+        [
+            Rankings.from_scores({"q1": {"a": 3.0, "c": 2.0, "b": 1.0}}, system="mine"),
+            Rankings.from_scores({"q1": {"b": 3.0, "a": 2.0, "c": 1.0}}, system="other"),
+        ]
+    ).save(rankings)
+    report = tmp_path / "report.json"
+    scored = _invoke(
+        "score", "--rankings", str(rankings), "--dataset", f"jsonl:{path}",
+        "--metrics", "qrel_ndcg", "--metric", "map", "--k", "2", "--out", str(report),
+    )  # fmt: skip
+    assert scored["exit_code"] == 0, scored
+
+    compared = _invoke("compare", "--report", str(report), "--metric", "map", "--bootstrap", "10")
+
+    assert compared["exit_code"] == 0, compared
+    assert compared["data"]["metric"] == "map"
+
+    # A name the report does not hold is a typed DATA error naming what it has, never a silent empty table.
+    unknown = _invoke("compare", "--report", str(report), "--metric", "nope")
+
+    assert unknown["exit_code"] == 12, unknown
+    assert unknown["error"]["code"] == "DATA"
+    assert "qrel_ndcg" in unknown["error"]["message"]

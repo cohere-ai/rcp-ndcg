@@ -14,9 +14,9 @@ import sys
 import numpy as np
 import pytest
 
-from rcp_ndcg.errors import ConfigError, DataError
-from rcp_ndcg.retrieval import topk
-from rcp_ndcg.retrieval.topk import numpy_topk, select_topk
+from rcp.errors import ConfigError, DataError
+from rcp.retrieval import topk
+from rcp.retrieval.topk import numpy_topk, select_topk
 
 
 def _random(rows: int, dim: int, seed: int = 0) -> np.ndarray:
@@ -95,7 +95,7 @@ class TestCorrectness:
 _IDENTICAL_DOCS_SCRIPT = """
 import json
 import numpy as np
-from rcp_ndcg.retrieval.topk import numpy_topk
+from rcp.retrieval.topk import numpy_topk
 
 rng = np.random.default_rng(0)
 docs = np.repeat(rng.normal(size=(1, 768)).astype(np.float32), 15, axis=0)

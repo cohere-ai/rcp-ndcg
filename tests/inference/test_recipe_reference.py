@@ -1,7 +1,7 @@
 """``recipe: <id>`` (docs-firstcontact Q1): the mapping form and the CLI shorthand.
 
 The refusal tests first: an explicit CONTENT field that disagrees with the recipe is refused naming both
-values, an unknown id names the shipped ids, and an absent rcp-ndcg-vllm is a typed error with the install
+values, an unknown id names the shipped ids, and an absent rcp-vllm is a typed error with the install
 line (docs-site OQ-6).
 """
 
@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
-from rcp_ndcg.inference.recipes import (
+from rcp.errors import ConfigError
+from rcp.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+from rcp.inference.recipes import (
     available_recipe_ids,
     expand_role_recipe,
     recipe_client_data,
@@ -95,11 +95,11 @@ def test_an_unknown_recipe_id_names_the_shipped_ids() -> None:
     assert RECIPE_ID in excinfo.value.hint
 
 
-def test_a_missing_rcp_ndcg_vllm_is_a_typed_error_with_the_install_line(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setitem(sys.modules, "rcp_ndcg_vllm", None)  # make the lazy import raise ModuleNotFoundError
+def test_a_missing_rcp_vllm_is_a_typed_error_with_the_install_line(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(sys.modules, "rcp_vllm", None)  # make the lazy import raise ModuleNotFoundError
     with pytest.raises(ConfigError, match="needs the serving recipes") as excinfo:
         available_recipe_ids()
-    assert "pip install rcp-ndcg-vllm" in excinfo.value.hint
+    assert "pip install rcp-vllm" in excinfo.value.hint
 
 
 def test_the_cli_shorthand_is_the_mapping_in_one_string() -> None:
@@ -155,7 +155,7 @@ def test_a_recipe_that_declares_its_own_selection_keeps_it(tmp_path: Path) -> No
     import shutil
 
     import yaml as yaml_module
-    from rcp_ndcg_vllm.recipe import default_recipes_root
+    from rcp_vllm.recipe import default_recipes_root
 
     target = tmp_path / "qwen3-embedding-pinned"
     shutil.copytree(default_recipes_root() / "qwen3-embedding", target)
@@ -185,7 +185,7 @@ def test_a_malformed_mrl_declaration_falls_through_to_a_typed_refusal(tmp_path: 
 
     import yaml as yaml_module
     from pydantic import ValidationError
-    from rcp_ndcg_vllm.recipe import default_recipes_root
+    from rcp_vllm.recipe import default_recipes_root
 
     target = tmp_path / "qwen3-embedding-malformed"
     shutil.copytree(default_recipes_root() / "qwen3-embedding", target)
@@ -238,7 +238,7 @@ def test_a_served_wire_takes_the_recipe_and_builds() -> None:
 
 def test_the_shorthand_flows_through_the_retrieval_unions() -> None:
     """The union's mapping form and the CLI shorthand land on the same validated config."""
-    from rcp_ndcg.retrieval import validate_reranker, validate_retriever
+    from rcp.retrieval import validate_reranker, validate_retriever
 
     reranker = validate_reranker(shorthand_config(f"recipe:{RECIPE_ID}")).model_dump()
     assert reranker["model"] == RECIPE_ID and reranker["api"] == "rerank"
@@ -254,7 +254,7 @@ def test_the_shorthand_flows_through_the_retrieval_unions() -> None:
     assert late.encoder.api == "vllm_pooling"
 
     with pytest.raises(ConfigError, match="the recipe is a reranker"):
-        from rcp_ndcg.cli.retrieval import _role_config
+        from rcp.cli.retrieval import _role_config
 
         _role_config(f"recipe:{RECIPE_ID}", [], which="retriever")
 
@@ -270,7 +270,7 @@ def _user_family(
     import shutil
 
     import yaml as yaml_module
-    from rcp_ndcg_vllm.recipe import default_recipes_root
+    from rcp_vllm.recipe import default_recipes_root
 
     target = tmp_path / family_id
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -328,7 +328,7 @@ def test_a_multi_variant_user_family_directory_names_its_variants(tmp_path: Path
 def test_an_expanded_configs_identity_pointer_passes_through(tmp_path: Path) -> None:
     """A recorded config carries the recipe's expanded client block and the identity pointer: re-reading it --
     a run config's resume, a retrieval index's reload -- must not resolve the hash as an id or a path."""
-    from rcp_ndcg.retrieval import validate_reranker
+    from rcp.retrieval import validate_reranker
 
     directory = _user_family(tmp_path)
     expanded = expand_role_recipe({"recipe": str(directory), "base_url": None}, classes=CLASSES)
@@ -351,7 +351,7 @@ def test_a_tilde_path_is_not_claimed() -> None:
 def test_a_user_recipe_round_trips_through_a_run_config(tmp_path: Path) -> None:
     """The whole point of the identity: the recorded config holds the expanded block and the pointer, and
     re-validating it (``run status``, a resume, a reopen) accepts the pointer as it stands."""
-    from rcp_ndcg.runs import RunConfig
+    from rcp.runs import RunConfig
 
     directory = _user_family(tmp_path)
     config = RunConfig.model_validate(
@@ -384,19 +384,19 @@ def test_a_user_recipe_of_an_unreadable_schema_version_is_refused(tmp_path: Path
     data["schema_version"] = "999"
     yaml_path.write_text(yaml_module.safe_dump(data, sort_keys=False), encoding="utf-8")
 
-    with pytest.raises(ConfigError, match="schema_version '999' is not one this rcp-ndcg reads"):
+    with pytest.raises(ConfigError, match="schema_version '999' is not one this rcp reads"):
         expand_role_recipe({"recipe": str(directory)}, classes=CLASSES)
 
 
 def test_a_recipe_of_an_unreadable_schema_version_is_refused(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Decision 18: the recipe file format is the versioned contract; a recipe whose ``schema_version`` this
-    rcp-ndcg does not read is refused naming the version and the ones it reads (a newer rcp-ndcg-vllm must
+    rcp does not read is refused naming the version and the ones it reads (a newer rcp-vllm must
     fail here, not load with a schema surprise)."""
     import shutil
 
-    import rcp_ndcg_vllm.recipe as vllm_recipe
+    import rcp_vllm.recipe as vllm_recipe
     import yaml as yaml_module
-    from rcp_ndcg_vllm.recipe import default_recipes_root
+    from rcp_vllm.recipe import default_recipes_root
 
     family_id = RECIPE_ID.rsplit("-", 1)[0]  # the variant's family directory (decision 34)
     target = tmp_path / family_id
@@ -407,6 +407,6 @@ def test_a_recipe_of_an_unreadable_schema_version_is_refused(monkeypatch: pytest
     yaml_path.write_text(yaml_module.safe_dump(data, sort_keys=False), encoding="utf-8")
     monkeypatch.setattr(vllm_recipe, "default_recipes_root", lambda: tmp_path)
 
-    with pytest.raises(ConfigError, match="schema_version '999' is not one this rcp-ndcg reads") as excinfo:
+    with pytest.raises(ConfigError, match="schema_version '999' is not one this rcp reads") as excinfo:
         expand_role_recipe({"recipe": RECIPE_ID, "base_url": None}, classes=CLASSES)
     assert "1" in excinfo.value.hint

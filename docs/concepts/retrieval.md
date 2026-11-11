@@ -6,7 +6,7 @@ outside a run, the retrieval commands write a rankings file that every scoring p
 
 A run can also fuse several systems as its first stage: `candidates: {from: fuse, fuse: {systems: {s1: <rankings
 file>, s2: <file>#<system>}, rrf_k: 60}}` makes the run's `fuse` step write the RRF of the named systems as its
-candidate pools -- the same `rcp_ndcg.retrieval.fuse` arithmetic as `rcp-ndcg retrieval fuse`, over rankings files
+candidate pools -- the same `rcp.retrieval.fuse` arithmetic as `rcp retrieval fuse`, over rankings files
 (`retrieval search` outputs, another run's rankings, ...) rather than over documents, so the fusion is
 modality-free. A system that cannot be read (a missing file, a system that was not retrieved into its file, a
 multi-system file with no `#<system>` selector) or a fusion of fewer than two systems is a typed refusal, never a
@@ -14,15 +14,15 @@ silent ranking by one system ([runs](runs.md#runs-and-job-runners)).
 
 ## What retrieval contributes
 
-`rcp-ndcg retrieval index` (`rcp_ndcg.retrieval.index`) builds an index of a dataset's corpus;
-`rcp-ndcg retrieval search` (`rcp_ndcg.retrieve`, which reuses an index whose identity matches and rebuilds one
-that differs) searches it into a `Rankings`; `rcp-ndcg retrieval rerank` (`rcp_ndcg.rerank`) re-scores each
-query's top `depth` candidates as another system; `rcp-ndcg retrieval fuse` (`rcp_ndcg.fuse`) merges several
+`rcp retrieval index` (`rcp.retrieval.index`) builds an index of a dataset's corpus;
+`rcp retrieval search` (`rcp.retrieve`, which reuses an index whose identity matches and rebuilds one
+that differs) searches it into a `Rankings`; `rcp retrieval rerank` (`rcp.rerank`) re-scores each
+query's top `depth` candidates as another system; `rcp retrieval fuse` (`rcp.fuse`) merges several
 rankings by reciprocal rank fusion. The commands take their config as a YAML file (`--retriever`,
-`--reranker`); the exact flags are in `rcp-ndcg schema show commands --json`.
+`--reranker`); the exact flags are in `rcp schema show commands --json`.
 
-For a Matryoshka model, `rcp-ndcg retrieval store` (`rcp_ndcg.retrieval.build_store`) encodes the corpus and
-its queries once at the checkpoint's full width, and `rcp-ndcg retrieval sweep` (`rcp_ndcg.retrieval.sweep`)
+For a Matryoshka model, `rcp retrieval store` (`rcp.retrieval.build_store`) encodes the corpus and
+its queries once at the checkpoint's full width, and `rcp retrieval sweep` (`rcp.retrieval.sweep`)
 applies the declared head per output dimension to the stored vectors and scores each cut -- one forward pass
 for every `k` ([matryoshka heads](matryoshka.md)).
 
@@ -54,9 +54,9 @@ form its wire speaks: the OpenAI-style embeddings wire (`api: openai_embeddings`
 pooling wire (`api: vllm_pooling`) takes the engine's root -- vLLM registers `/pooling` at the root, so a
 `.../v1` base there is refused where the config is read, never 404 at the first request.
 
-Its second stage, `rcp-ndcg retrieval rerank` and a run's `rerank` step, takes a reranker config instead: a
+Its second stage, `rcp retrieval rerank` and a run's `rerank` step, takes a reranker config instead: a
 cross-encoder's scores over `POST {base_url}/rerank`, a served engine or a hosted API. The wire and the client
-are documented as [`rcp_ndcg.inference`](../reference/api/rcp_ndcg.inference.md).
+are documented as [`rcp.inference`](../reference/api/rcp.inference.md).
 
 ## Indexes, checkpoints and identity
 
@@ -64,7 +64,7 @@ Every config declares IDENTITY_ROLES: what the model computes (the `kind`, the `
 fields -- `api`, model, revision, prompts, budgets, `normalize`, `dimensions`, the MRL kind, set and
 selection, `batch_size`, `max_images`, `max_videos`) is content and enters the step
 and the index identity; where and how fast it is asked (`base_url`, `concurrency`, the timeouts)
-is runtime and never does. `rcp_ndcg.retrieve` reuses an index of the same identity and rebuilds one that
+is runtime and never does. `rcp.retrieve` reuses an index of the same identity and rebuilds one that
 differs. The rerank checkpoint keys on every content field of the reranker and on the digest of the exact
 candidate texts it scored: changed texts or changed settings re-score, never silently reuse.
 
@@ -72,7 +72,7 @@ Three more things name an index, and each of them exists because the thing it na
 config field moving:
 
 - **A behaviour version per output-producing step** (`INDEX_BEHAVIOUR_VERSION`, `RETRIEVE_BEHAVIOUR_VERSION`,
-  `RERANK_BEHAVIOUR_VERSION` in `rcp_ndcg.retrieval`). A code change that moves an index's, a retrieve
+  `RERANK_BEHAVIOUR_VERSION` in `rcp.retrieval`). A code change that moves an index's, a retrieve
   output's or a rerank output's numbers without changing a config field still re-keys it, so a resume never
   reuses numbers another build computed. The package version is deliberately not used: every release would
   invalidate every resume and judgement pool. A judgement's identity is not versioned -- it is prompt- and
@@ -127,7 +127,7 @@ one prompt, so the summed per-document render (the frame repeats per passage) is
 
 All three roles send through one inference layer ([the inference layer](inference.md), with its role clients for
 the [embed](embeddings.md), [pooling](late-interaction.md) and
-[rerank](../reference/api/rcp_ndcg.inference.md) wires). Every request
+[rerank](../reference/api/rcp.inference.md) wires). Every request
 is fitted through one text-budget mechanism ([text budgets for served roles](text-budgets.md)): over-budget
 content is cut client-side at token boundaries, the template's anchors are reserved and re-attached around the
 cut, and every cut is recorded -- never an engine-side truncation.

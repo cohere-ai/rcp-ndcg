@@ -176,6 +176,27 @@
           "title": "Doc Prompt",
           "type": "string"
         },
+        "embedding_types": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "int8",
+                  "uint8",
+                  "binary"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The quantized representations the run consumes besides the float vectors (``int8``, ``uint8`` or ``binary``, the three rcp.data.quantize produces): the consumer applies that module to the truncated, normalised vector. ``None`` (the default) declares float only and is omitted from every identity, so a config that does not choose keeps the identity it had; declaring a type is CONTENT because it changes the vector a downstream compares. An empty list is the absence of a declaration too, so it never re-keys a run.",
+          "title": "Embedding Types"
+        },
         "empty_doc": {
           "default": "send",
           "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
@@ -319,7 +340,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions and beside ``normalize: false`` (the head renormalises its output). A ``k`` equal to the checkpoint's own width is the **identity selection**: no head is applied and no ``mrl_cut`` record is written, so the card's full-width member stays selectable; on PoolingEndpoint a ``k`` wider than PoolingEndpoint.dim is refused.",
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions and beside ``normalize: false`` (the head renormalises its output). A ``k`` equal to the checkpoint's own width is the **identity selection**: no head is applied and no ``mrl_cut`` record is written, so the card's full-width member stays selectable; on PoolingEndpoint a ``k`` wider than PoolingEndpoint.dim is refused.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {
@@ -702,6 +723,27 @@
           "title": "Doc Prompt",
           "type": "string"
         },
+        "embedding_types": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "int8",
+                  "uint8",
+                  "binary"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The quantized representations the run consumes besides the float vectors (``int8``, ``uint8`` or ``binary``, the three rcp.data.quantize produces): the consumer applies that module to the truncated, normalised vector. ``None`` (the default) declares float only and is omitted from every identity, so a config that does not choose keeps the identity it had; declaring a type is CONTENT because it changes the vector a downstream compares. An empty list is the absence of a declaration too, so it never re-keys a run.",
+          "title": "Embedding Types"
+        },
         "empty_doc": {
           "default": "send",
           "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
@@ -845,7 +887,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions and beside ``normalize: false`` (the head renormalises its output). A ``k`` equal to the checkpoint's own width is the **identity selection**: no head is applied and no ``mrl_cut`` record is written, so the card's full-width member stays selectable; on PoolingEndpoint a ``k`` wider than PoolingEndpoint.dim is refused.",
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions and beside ``normalize: false`` (the head renormalises its output). A ``k`` equal to the checkpoint's own width is the **identity selection**: no head is applied and no ``mrl_cut`` record is written, so the card's full-width member stays selectable; on PoolingEndpoint a ``k`` wider than PoolingEndpoint.dim is refused.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {
@@ -1317,6 +1359,27 @@
           "title": "Doc Prompt",
           "type": "string"
         },
+        "embedding_types": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "int8",
+                  "uint8",
+                  "binary"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The quantized representations the run consumes besides the float vectors (``int8``, ``uint8`` or ``binary``, the three rcp.data.quantize produces): the consumer applies that module to the truncated, normalised vector. ``None`` (the default) declares float only and is omitted from every identity, so a config that does not choose keeps the identity it had; declaring a type is CONTENT because it changes the vector a downstream compares. An empty list is the absence of a declaration too, so it never re-keys a run.",
+          "title": "Embedding Types"
+        },
         "empty_doc": {
           "default": "send",
           "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
@@ -1460,7 +1523,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions and beside ``normalize: false`` (the head renormalises its output). A ``k`` equal to the checkpoint's own width is the **identity selection**: no head is applied and no ``mrl_cut`` record is written, so the card's full-width member stays selectable; on PoolingEndpoint a ``k`` wider than PoolingEndpoint.dim is refused.",
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions and beside ``normalize: false`` (the head renormalises its output). A ``k`` equal to the checkpoint's own width is the **identity selection**: no head is applied and no ``mrl_cut`` record is written, so the card's full-width member stays selectable; on PoolingEndpoint a ``k`` wider than PoolingEndpoint.dim is refused.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {
@@ -1856,6 +1919,27 @@
           ],
           "title": "Embed Dtype",
           "type": "string"
+        },
+        "embedding_types": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "int8",
+                  "uint8",
+                  "binary"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The quantized representations the run consumes besides the float vectors (``int8``, ``uint8`` or ``binary``, the three rcp.data.quantize produces): the consumer applies that module to the truncated, normalised vector. ``None`` (the default) declares float only and is omitted from every identity, so a config that does not choose keeps the identity it had; declaring a type is CONTENT because it changes the vector a downstream compares. An empty list is the absence of a declaration too, so it never re-keys a run.",
+          "title": "Embedding Types"
         },
         "empty_doc": {
           "default": "send",
@@ -2424,6 +2508,27 @@
           "title": "Doc Prompt",
           "type": "string"
         },
+        "embedding_types": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "int8",
+                  "uint8",
+                  "binary"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The quantized representations the run consumes besides the float vectors (``int8``, ``uint8`` or ``binary``, the three rcp.data.quantize produces): the consumer applies that module to the truncated, normalised vector. ``None`` (the default) declares float only and is omitted from every identity, so a config that does not choose keeps the identity it had; declaring a type is CONTENT because it changes the vector a downstream compares. An empty list is the absence of a declaration too, so it never re-keys a run.",
+          "title": "Embedding Types"
+        },
         "empty_doc": {
           "default": "send",
           "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
@@ -2567,7 +2672,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions and beside ``normalize: false`` (the head renormalises its output). A ``k`` equal to the checkpoint's own width is the **identity selection**: no head is applied and no ``mrl_cut`` record is written, so the card's full-width member stays selectable; on PoolingEndpoint a ``k`` wider than PoolingEndpoint.dim is refused.",
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions and beside ``normalize: false`` (the head renormalises its output). A ``k`` equal to the checkpoint's own width is the **identity selection**: no head is applied and no ``mrl_cut`` record is written, so the card's full-width member stays selectable; on PoolingEndpoint a ``k`` wider than PoolingEndpoint.dim is refused.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {
@@ -2964,6 +3069,27 @@
           ],
           "title": "Embed Dtype",
           "type": "string"
+        },
+        "embedding_types": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "int8",
+                  "uint8",
+                  "binary"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The quantized representations the run consumes besides the float vectors (``int8``, ``uint8`` or ``binary``, the three rcp.data.quantize produces): the consumer applies that module to the truncated, normalised vector. ``None`` (the default) declares float only and is omitted from every identity, so a config that does not choose keeps the identity it had; declaring a type is CONTENT because it changes the vector a downstream compares. An empty list is the absence of a declaration too, so it never re-keys a run.",
+          "title": "Embedding Types"
         },
         "empty_doc": {
           "default": "send",
@@ -3459,7 +3585,7 @@
             }
           ],
           "default": [],
-          "description": "The declared content normalisation, applied by rcp_ndcg.data.preprocess.fit to a shape's content spans before measuring -- so the reference and the engine see the same text. ``(\"strip\",)`` strips the spans (the topk wrapper strips the query text and the whole document); ``(\"strip\", \"lowercase\")`` strips then lowers them (a checkpoint trained on lowercased text); the ops run in the declared order. A tuple for every declared shape, or a mapping shape -> tuple naming every declared shape. Empty (the default): the text goes in as it is.",
+          "description": "The declared content normalisation, applied by rcp.data.preprocess.fit to a shape's content spans before measuring -- so the reference and the engine see the same text. ``(\"strip\",)`` strips the spans (the topk wrapper strips the query text and the whole document); ``(\"strip\", \"lowercase\")`` strips then lowers them (a checkpoint trained on lowercased text); the ops run in the declared order. A tuple for every declared shape, or a mapping shape -> tuple naming every declared shape. Empty (the default): the text goes in as it is.",
           "title": "Normalize"
         },
         "pair": {
@@ -3735,6 +3861,27 @@
           "title": "Doc Prompt",
           "type": "string"
         },
+        "embedding_types": {
+          "anyOf": [
+            {
+              "items": {
+                "enum": [
+                  "int8",
+                  "uint8",
+                  "binary"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The quantized representations the run consumes besides the float vectors (``int8``, ``uint8`` or ``binary``, the three rcp.data.quantize produces): the consumer applies that module to the truncated, normalised vector. ``None`` (the default) declares float only and is omitted from every identity, so a config that does not choose keeps the identity it had; declaring a type is CONTENT because it changes the vector a downstream compares. An empty list is the absence of a declaration too, so it never re-keys a run.",
+          "title": "Embedding Types"
+        },
         "empty_doc": {
           "default": "send",
           "description": "What an empty document becomes: ``send`` (the default: the empty string goes out, as today), ``omit_zero`` (it is never sent and scores ``0.0``, the jina-v3 and hosted-API rule), ``omit_zero_blank`` (the paper's blank rule: whitespace-only text is empty too, the jina-reranker-v3 policy), or ``send_text`` (a literal placeholder goes out, empty_doc_text names it). Content.",
@@ -3878,7 +4025,7 @@
             }
           ],
           "default": null,
-          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp_ndcg.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions and beside ``normalize: false`` (the head renormalises its output). A ``k`` equal to the checkpoint's own width is the **identity selection**: no head is applied and no ``mrl_cut`` record is written, so the card's full-width member stays selectable; on PoolingEndpoint a ``k`` wider than PoolingEndpoint.dim is refused.",
+          "description": "The Matryoshka output size served CLIENT-side, when the config selects one: the one MRL head home (rcp.data.mrl) applies the declared kind to the full-width reply -- truncation cuts and renormalises, projection applies the checkpoint's learned matrix for ``k`` -- and every row the head changed carries an ``mrl_cut`` ``ProcessingRecord``. Content: it changes the vectors. Only for a ``k`` in mrl_dims or mrl_range and only when mrl_kind is declared; refused beside dimensions and beside ``normalize: false`` (the head renormalises its output). A ``k`` equal to the checkpoint's own width is the **identity selection**: no head is applied and no ``mrl_cut`` record is written, so the card's full-width member stays selectable; on PoolingEndpoint a ``k`` wider than PoolingEndpoint.dim is refused.",
           "title": "Mrl Dim"
         },
         "mrl_dims": {
@@ -4169,8 +4316,11 @@
       "title": "Retriever"
     },
     "schema": {
-      "const": "rcp-ndcg.index.v1",
-      "default": "rcp-ndcg.index.v1",
+      "default": "rcp.index.v1",
+      "enum": [
+        "rcp.index.v1",
+        "rcp-ndcg.index.v1"
+      ],
       "title": "Schema",
       "type": "string"
     }
@@ -4184,5 +4334,5 @@
   ],
   "title": "Index",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.index.v1"
+  "x-rcp-schema": "rcp.index.v1"
 }

@@ -1,7 +1,7 @@
-"""The torch-free import surface of ``rcp_ndcg_core.irt``.
+"""The torch-free import surface of ``rcp_core.irt``.
 
-Importing ``rcp_ndcg_core.irt`` needs numpy and pydantic only, so the rubric
-scoring and the insertion primitive work on a bare ``rcp-ndcg-core`` install;
+Importing ``rcp_core.irt`` needs numpy and pydantic only, so the rubric
+scoring and the insertion primitive work on a bare ``rcp-core`` install;
 the two torch-backed estimator classes (``BradleyTerryEstimator``,
 ``RaschEstimator``) are read lazily and import torch when first touched, exactly
 as the tournament engine and Bradley-Terry do. Nothing else guards that
@@ -20,7 +20,7 @@ from pathlib import Path
 #: probe runs with this as its cwd, so `python -c` puts it first on sys.path and the
 #: probe imports the tree under test -- a hard-coded checkout path probed a
 #: different tree from every worktree and every CI runner.
-CORE_SRC = Path(__file__).resolve().parents[3] / "rcp-ndcg-core" / "src"
+CORE_SRC = Path(__file__).resolve().parents[3] / "rcp-core" / "src"
 
 TORCH_BLOCKED_PROBE = r"""
 import sys
@@ -33,12 +33,12 @@ class _Block:
 
 sys.meta_path.insert(0, _Block())
 
-import rcp_ndcg_core.metric  # noqa: F401 - numpy-only, must import
-import rcp_ndcg_core
-import rcp_ndcg_core.irt as irt
-from rcp_ndcg_core.schemas import ItemParams
+import rcp_core.metric  # noqa: F401 - numpy-only, must import
+import rcp_core
+import rcp_core.irt as irt
+from rcp_core.schemas import ItemParams
 
-print("CORE-FILE", rcp_ndcg_core.__file__)
+print("CORE-FILE", rcp_core.__file__)
 
 for name in irt.__all__:
     try:
@@ -60,7 +60,7 @@ print("TORCH-FREE OK")
 
 
 def test_criteria_2pl_imports_without_torch_and_torch_names_raise() -> None:
-    assert (CORE_SRC / "rcp_ndcg_core" / "__init__.py").is_file(), CORE_SRC
+    assert (CORE_SRC / "rcp_core" / "__init__.py").is_file(), CORE_SRC
     proc = subprocess.run(
         [sys.executable, "-c", TORCH_BLOCKED_PROBE],
         capture_output=True,

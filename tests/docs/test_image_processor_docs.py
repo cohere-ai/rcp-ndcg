@@ -10,8 +10,8 @@ from __future__ import annotations
 import re
 from typing import get_args
 
-from rcp_ndcg.data.resolution import PROCESSORS, ImageProcessor
-from rcp_ndcg.judging.client import JudgeConfig
+from rcp.data.resolution import PROCESSORS, ImageProcessor
+from rcp.judging.client import JudgeConfig
 from tests.docs._markdown import ROOT
 
 FAMILIES = get_args(ImageProcessor)

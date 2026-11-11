@@ -6,11 +6,11 @@ import json
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core.schemas import JudgementSet
+from rcp_core.schemas import JudgementSet
 
-from rcp_ndcg.calibration import Calibration, calibrate, read_judgements
-from rcp_ndcg.calibration._projection import rubric_observations
-from rcp_ndcg.calibration.fit import (
+from rcp.calibration import Calibration, calibrate, read_judgements
+from rcp.calibration._projection import rubric_observations
+from rcp.calibration.fit import (
     COVERAGE_FILE,
     DIAGNOSTICS_FILE,
     EXTENSIONS_FILE,
@@ -19,8 +19,8 @@ from rcp_ndcg.calibration.fit import (
     QUERIES_FILE,
     THETAS_FILE,
 )
-from rcp_ndcg.errors import DataError, IdentityError, MissingInputError, RcpNdcgWarning
-from rcp_ndcg.testing import TinyWorld
+from rcp.errors import DataError, IdentityError, MissingInputError, RcpNdcgWarning
+from rcp.testing import TinyWorld
 
 from .conftest import rubric_set
 
@@ -194,7 +194,7 @@ def test_an_unidentifiable_fit_is_a_data_error(judgements: JudgementSet, monkeyp
     def degenerate(*args, **kwargs):
         raise ValueError("degenerate 2PL fit: criterion C5 holds 0.9900 of the gain weight")
 
-    monkeypatch.setattr("rcp_ndcg.calibration.fit.fit_calibration", degenerate)
+    monkeypatch.setattr("rcp.calibration.fit.fit_calibration", degenerate)
 
     with pytest.raises(DataError, match="not identifiable.*C5"):
         calibrate(judgements, mode="rubric_only")
@@ -204,9 +204,9 @@ class TestTheBradleyTerryPenalty:
     """The refit's L2 is a fit option; the judgement store records the one the live tournament used."""
 
     def test_the_store_records_the_live_fits_penalty_and_the_fit_its_own(self, world: TinyWorld, tmp_path) -> None:
-        from rcp_ndcg_core.irt import Priors
+        from rcp_core.irt import Priors
 
-        from rcp_ndcg.judging import JudgementStore
+        from rcp.judging import JudgementStore
 
         live = JudgementStore(world.judgements).identities()["tournament"]["identity"]["bt_l2"]
         with pytest.warns(RcpNdcgWarning, match="rubric verdicts but no tournament ability"):
@@ -221,10 +221,10 @@ class TestTheBradleyTerryPenalty:
         import json
 
         from click.testing import CliRunner
-        from rcp_ndcg_core.irt import Priors
+        from rcp_core.irt import Priors
 
-        from rcp_ndcg.calibration import judged_bt_l2
-        from rcp_ndcg.cli.calibration import calibration_group
+        from rcp.calibration import judged_bt_l2
+        from rcp.cli.calibration import calibration_group
 
         live = judged_bt_l2(world.judgements)
         # The block holds two RcpNdcgWarnings: the mismatched penalty (its message quotes 0.05) and the fit's
@@ -254,7 +254,7 @@ def test_theta_map_and_gains_share_one_key_rule(fitted: Calibration) -> None:
 
 
 def test_the_calibration_tables_come_out_as_frames_with_gains(fitted: Calibration) -> None:
-    from rcp_ndcg_core import gain
+    from rcp_core import gain
 
     thetas = fitted.to_pandas()
     assert list(thetas.columns) == ["dataset", "query_id", "doc_id", "theta", "theta_se", "gain", "source"]
@@ -274,9 +274,9 @@ def test_a_tournament_fit_that_stops_short_of_the_map_warns(
     tiny world (a paper-sized fit reaches it on its own)."""
     import logging
 
-    from rcp_ndcg_core.irt import _tournament_2pl
+    from rcp_core.irt import _tournament_2pl
 
     monkeypatch.setattr(_tournament_2pl, "CONVERGED_GRAD_SUM", 1e-9)
-    with caplog.at_level(logging.WARNING, logger="rcp_ndcg.calibration.fit"):
+    with caplog.at_level(logging.WARNING, logger="rcp.calibration.fit"):
         calibrate(_fit_only(judgements, world))
     assert any("stopped short of the MAP" in record.message for record in caplog.records), caplog.text

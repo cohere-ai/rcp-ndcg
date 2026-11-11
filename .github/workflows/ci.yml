@@ -36,7 +36,7 @@ jobs:
         with:
           enable-cache: true
       - run: .github/scripts/cpu-env.sh dev
-      # src/ and the core package (rcp-ndcg/pyproject.toml [tool.basedpyright] include): zero errors, and it stays that way.
+      # src/ and the core package (rcp/pyproject.toml [tool.basedpyright] include): zero errors, and it stays that way.
       - run: uv run --no-sync basedpyright
 
   test:
@@ -76,7 +76,7 @@ jobs:
       # tests/docs tree runs on.
       - run: .github/scripts/cpu-env.sh dev data mteb docs
       # The recipes are package data (the layout move): a plain install carries them.
-      - run: uv pip install mcp ./rcp-ndcg-vllm
+      - run: uv pip install mcp ./rcp-vllm
       # Type-check with the integrations resolved: the `types` job installs `dev` alone, where every mteb,
       # datasets and transformers symbol is Unknown, so the code that uses them is never really checked.
       - run: uv run --no-sync basedpyright
@@ -124,26 +124,26 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
-      # rcp-ndcg-core promises the metric with numpy and pydantic only: install it outside the workspace and check
+      # rcp-core promises the metric with numpy and pydantic only: install it outside the workspace and check
       # that it computes RCP-nDCG without importing torch.
       - run: uv venv "$RUNNER_TEMP/core" --python 3.12
-      - run: uv pip install --python "$RUNNER_TEMP/core/bin/python" ./rcp-ndcg-core
+      - run: uv pip install --python "$RUNNER_TEMP/core/bin/python" ./rcp-core
       - run: |
           "$RUNNER_TEMP/core/bin/python" - <<'PY'
           import sys
 
-          from rcp_ndcg_core import PROTOCOLS, gain, ndcg, score_query
+          from rcp_core import PROTOCOLS, gain, ndcg, score_query
 
           items = {"gamma": [1.2, 1.0, 1.1, 0.9, 0.8], "beta": [-2.0, -0.5, 0.0, 0.8, 1.7]}
           gains = {d: gain(t, items) for d, t in {"d1": 1.4, "d2": -0.3, "d3": 0.6}.items()}
           scores = {"d1": 0.9, "d2": 0.7, "d3": 0.2}
           assert abs(ndcg(scores, gains, k=10) - score_query(scores, gains, protocol=PROTOCOLS["plain"])) < 1e-12
-          assert "torch" not in sys.modules, "rcp_ndcg_core imported torch"
-          print("rcp_ndcg_core alone:", ndcg(scores, gains, k=10))
+          assert "torch" not in sys.modules, "rcp_core imported torch"
+          print("rcp_core alone:", ndcg(scores, gains, k=10))
           PY
 
   vllm-recipes:
-    name: rcp-ndcg-vllm recipes (CPU)
+    name: rcp-vllm recipes (CPU)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -152,13 +152,13 @@ jobs:
           enable-cache: true
       # The lean serving package in its own venv (the engine image carries vLLM and torch): its own editable
       # install, its own pytest. The test extra adds pytest and jinja2. The package pins no sibling (decision
-      # 18: no lockstep pin between it and rcp-ndcg), so the members it exercises -- the core and rcp-ndcg's
+      # 18: no lockstep pin between it and rcp), so the members it exercises -- the core and rcp's
       # recipe resolution surface -- install from this checkout, never from an index.
       - run: uv venv "$RUNNER_TEMP/vllm-pkg" --python 3.12
       - run: >-
           uv pip install --python "$RUNNER_TEMP/vllm-pkg/bin/python"
-          -e rcp-ndcg-core -e rcp-ndcg -e 'rcp-ndcg-vllm[test]'
-      - run: '"$RUNNER_TEMP/vllm-pkg/bin/python" -m pytest rcp-ndcg-vllm/tests --ignore=rcp-ndcg-vllm/tests/models -q'
+          -e rcp-core -e rcp -e 'rcp-vllm[test]'
+      - run: '"$RUNNER_TEMP/vllm-pkg/bin/python" -m pytest rcp-vllm/tests --ignore=rcp-vllm/tests/models -q'
 
   wheel-smoke:
     name: the published wheels install and import (fresh venv)
@@ -171,90 +171,90 @@ jobs:
       # Release gate 1 (AGENTS.md, "three release gates"): twine checks metadata only, so a wheel whose
       # entry points or package data are broken would pass the tag pipeline unchecked. Each published
       # distribution installs from its built wheel -- never from the checkout -- into its own fresh venv
-      # and must import and work there. rcp-ndcg's wheel pins rcp-ndcg-core exactly, so the sibling
+      # and must import and work there. rcp's wheel pins rcp-core exactly, so the sibling
       # wheel comes from --find-links dist (the publish order ships core first), and the install runs
       # under the lock's constraints file so the resolution is the release's, not PyPI's latest.
       - name: build the three published distributions
         run: |
-          uv build --package rcp-ndcg-core --out-dir dist
-          uv build --package rcp-ndcg --out-dir dist
-          uv build --package rcp-ndcg-vllm --out-dir dist
+          uv build --package rcp-core --out-dir dist
+          uv build --package rcp --out-dir dist
+          uv build --package rcp-vllm --out-dir dist
       - name: the core wheel installs alone and computes the metric
         run: |
           uv venv "$RUNNER_TEMP/wheel-core" --python 3.12
-          uv pip install --python "$RUNNER_TEMP/wheel-core/bin/python" dist/rcp_ndcg_core-*.whl
+          uv pip install --python "$RUNNER_TEMP/wheel-core/bin/python" dist/rcp_core-*.whl
           "$RUNNER_TEMP/wheel-core/bin/python" - <<'PY'
           import sys
 
-          from rcp_ndcg_core import PROTOCOLS, gain, ndcg, score_query
+          from rcp_core import PROTOCOLS, gain, ndcg, score_query
 
           items = {"gamma": [1.2, 1.0, 1.1, 0.9, 0.8], "beta": [-2.0, -0.5, 0.0, 0.8, 1.7]}
           gains = {d: gain(t, items) for d, t in {"d1": 1.4, "d2": -0.3, "d3": 0.6}.items()}
           scores = {"d1": 0.9, "d2": 0.7, "d3": 0.2}
           assert abs(ndcg(scores, gains, k=10) - score_query(scores, gains, protocol=PROTOCOLS["plain"])) < 1e-12
-          assert "torch" not in sys.modules, "rcp_ndcg_core imported torch"
-          print("rcp_ndcg_core wheel alone:", ndcg(scores, gains, k=10))
+          assert "torch" not in sys.modules, "rcp_core imported torch"
+          print("rcp_core wheel alone:", ndcg(scores, gains, k=10))
           PY
       - name: the vllm wheel installs alone, serves and lists every recipe
         run: |
           uv venv "$RUNNER_TEMP/wheel-vllm" --python 3.12
-          uv pip install --python "$RUNNER_TEMP/wheel-vllm/bin/python" dist/rcp_ndcg_vllm-*.whl
+          uv pip install --python "$RUNNER_TEMP/wheel-vllm/bin/python" dist/rcp_vllm-*.whl
           "$RUNNER_TEMP/wheel-vllm/bin/python" - <<'PY'
-          from rcp_ndcg_vllm.recipe import iter_recipes
+          from rcp_vllm.recipe import iter_recipes
 
           recipes = list(iter_recipes())
           assert len(recipes) == 44, len(recipes)
-          print("rcp_ndcg_vllm wheel alone:", len(recipes), "recipes")
+          print("rcp_vllm wheel alone:", len(recipes), "recipes")
           PY
           # Release gate 2 (AGENTS.md): the --no-deps install must leave pip freeze unchanged in the
           # stock image, and must declare nothing the image does not ship.
-          python3 rcp-ndcg-vllm/tests/models/check_no_deps_install.py dist/rcp_ndcg_vllm-*.whl
+          python3 rcp-vllm/tests/models/check_no_deps_install.py dist/rcp_vllm-*.whl
           # Release gate 3 (AGENTS.md): every recipe must dry-run from the installed wheel, so a
           # template.jinja or package-data path that resolves only in the checkout fails here.
           for id in $("$RUNNER_TEMP/wheel-vllm/bin/python" -c \
-            'from rcp_ndcg_vllm.recipe import iter_recipes; print(" ".join(r.id for r in iter_recipes()))'); do
-            "$RUNNER_TEMP/wheel-vllm/bin/rcp-ndcg-vllm" serve "$id" --dry-run >/dev/null
+            'from rcp_vllm.recipe import iter_recipes; print(" ".join(r.id for r in iter_recipes()))'); do
+            "$RUNNER_TEMP/wheel-vllm/bin/rcp-vllm" serve "$id" --dry-run >/dev/null
           done
-      - name: the rcp-ndcg wheel installs (its core pin from dist/) and works
+      - name: the rcp wheel installs (its core pin from dist/) and works
         run: |
           uv venv "$RUNNER_TEMP/wheel-rcp" --python 3.12
           uv pip install --python "$RUNNER_TEMP/wheel-rcp/bin/python" \
-            dist/rcp_ndcg-*.whl --find-links dist --constraints requirements-constraints.txt
-          "$RUNNER_TEMP/wheel-rcp/bin/rcp-ndcg" --version
+            dist/rcp-*.whl --find-links dist --constraints requirements-constraints.txt
+          "$RUNNER_TEMP/wheel-rcp/bin/rcp" --version
           "$RUNNER_TEMP/wheel-rcp/bin/python" - <<'PY'
-          from rcp_ndcg.judging.prompts import load_prompt
+          from rcp.judging.prompts import load_prompt
 
           prompt = load_prompt("rubric")
           assert prompt.text, "the shipped rubric prompt is empty"
-          print("rcp-ndcg wheel alone: rubric prompt", len(prompt.text), "chars")
+          print("rcp wheel alone: rubric prompt", len(prompt.text), "chars")
           PY
 
   vllm-plugins:
-    name: rcp-ndcg-vllm folded models (CPU)
+    name: rcp-vllm folded models (CPU)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
-      # The model plugins fold into rcp-ndcg-vllm (layout-move item 3); their tests live under
-      # rcp-ndcg-vllm/tests/models and run in their own venv (torch and transformers on CPU; tests that
+      # The model plugins fold into rcp-vllm (layout-move item 3); their tests live under
+      # rcp-vllm/tests/models and run in their own venv (torch and transformers on CPU; tests that
       # import vLLM skip themselves), the way the engine image's python sees the package.
       - run: uv venv "$RUNNER_TEMP/models" --python 3.12
       - run: uv pip install --python "$RUNNER_TEMP/models/bin/python" pytest pyyaml pydantic numpy transformers
       - run: uv pip install --python "$RUNNER_TEMP/models/bin/python" torch --index-url https://download.pytorch.org/whl/cpu
       # The wheel-contract fixtures build the wheel with `uv build --offline` and fail the job when that cannot
       # run (CI must not skip the freeze and recipe checks). The isolated build resolves its build requirements
-      # (`setuptools>=77` and `wheel`, rcp-ndcg-vllm/pyproject.toml's build-system requires) from the uv cache;
+      # (`setuptools>=77` and `wheel`, rcp-vllm/pyproject.toml's build-system requires) from the uv cache;
       # the lock holds no `wheel` and setup-uv prunes cached wheels before saving, so fetch them here -- into a
       # scratch venv from PyPI: the torch step above already installs setuptools from the PyTorch index, so an
       # install into the models venv is a no-op that caches nothing the offline build can resolve.
       - run: uv venv "$RUNNER_TEMP/build-reqs" --python 3.12
       - run: uv pip install --python "$RUNNER_TEMP/build-reqs/bin/python" --refresh-package setuptools "setuptools>=77" wheel
-      - run: '"$RUNNER_TEMP/models/bin/python" -m pytest rcp-ndcg-vllm/tests/models rcp-ndcg-vllm/tests/test_no_torch.py -q'
+      - run: '"$RUNNER_TEMP/models/bin/python" -m pytest rcp-vllm/tests/models rcp-vllm/tests/test_no_torch.py -q'
 
   test-pkg:
-    name: rcp-ndcg-test cases and conformance (CPU)
+    name: rcp-test cases and conformance (CPU)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -267,11 +267,11 @@ jobs:
       # The recipe suite's offline half -- the contract pins, the mutants, the template and serve-argv pins,
       # the goldens -- runs here with the rest; its Hub-backed half runs in the recipe-tests job below.
       - run: .github/scripts/cpu-env.sh dev
-      # The per-test SIGALRM guard of rcp-ndcg-test/tests/conftest.py: a hang fails its own test here rather
+      # The per-test SIGALRM guard of rcp-test/tests/conftest.py: a hang fails its own test here rather
       # than holding the job (faulthandler_timeout only dumps a traceback; it never aborts).
       # -n 4: the tree is CPU-bound and the SIGALRM guard is per worker (conftest.py: "pytest's, and each
       # xdist worker's"), so the parallel run keeps the hang-fails-fast property the serial one had.
-      - run: uv run --no-sync pytest rcp-ndcg-test/tests -q -n 4
+      - run: uv run --no-sync pytest rcp-test/tests -q -n 4
         env:
           RCP_NDCG_TEST_TIMEOUT: "300"
       - name: the tests left the checkout clean
@@ -296,8 +296,8 @@ jobs:
       # a partial restore still reuses the other variants' tokenizer files.
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: ~/.cache/rcp-ndcg-vllm-tokenizers
-          key: recipe-tokenizers-${{ runner.os }}-${{ hashFiles('rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/**') }}
+          path: ~/.cache/rcp-vllm-tokenizers
+          key: recipe-tokenizers-${{ runner.os }}-${{ hashFiles('rcp-vllm/src/rcp_vllm/recipes/**') }}
           restore-keys: recipe-tokenizers-${{ runner.os }}-
       - run: .github/scripts/cpu-env.sh dev
       # Every recipe check that needs the public Hugging Face Hub -- the tokenizer fixtures and the tests that
@@ -306,10 +306,10 @@ jobs:
       - name: the Hub-backed recipe tests
         run: |
           export RCP_NDCG_NETWORK_TESTS=1
-          export RCP_NDCG_VLLM_TOKENIZER_CACHE="$HOME/.cache/rcp-ndcg-vllm-tokenizers"
+          export RCP_NDCG_VLLM_TOKENIZER_CACHE="$HOME/.cache/rcp-vllm-tokenizers"
           export HF_HUB_CACHE="$RCP_NDCG_VLLM_TOKENIZER_CACHE/hub"
           export RCP_NDCG_TEST_TIMEOUT=300
-          uv run --no-sync pytest rcp-ndcg-test/tests/recipes -q -n 4 -p no:cacheprovider
+          uv run --no-sync pytest rcp-test/tests/recipes -q -n 4 -p no:cacheprovider
       - name: the tests left the checkout clean
         run: |
           git status --porcelain --untracked-files=all
@@ -329,8 +329,8 @@ jobs:
           enable-cache: true
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: ~/.cache/rcp-ndcg-vllm-tokenizers
-          key: case-length-tokenizers-${{ runner.os }}-${{ hashFiles('rcp-ndcg-vllm/src/rcp_ndcg_vllm/recipes/**') }}
+          path: ~/.cache/rcp-vllm-tokenizers
+          key: case-length-tokenizers-${{ runner.os }}-${{ hashFiles('rcp-vllm/src/rcp_vllm/recipes/**') }}
           restore-keys: case-length-tokenizers-${{ runner.os }}-
       - run: .github/scripts/cpu-env.sh dev
       # The case grid's length strata are MEASURED (the product's fit over the recipe's tokenizer and media
@@ -342,7 +342,7 @@ jobs:
       - name: the measured length strata
         run: |
           export RCP_NDCG_NETWORK_TESTS=1
-          export HF_HUB_CACHE="$HOME/.cache/rcp-ndcg-vllm-tokenizers/hub"
+          export HF_HUB_CACHE="$HOME/.cache/rcp-vllm-tokenizers/hub"
           uv run --no-sync pytest tests/test_cases_package.py -q -p no:cacheprovider
       - name: the tests left the checkout clean
         run: |
@@ -401,7 +401,7 @@ jobs:
       # serving package's exported recipe/family schemas) must say so in CHANGELOG.md.
       - run: |
           changed=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
-          if grep -qE '^(tests/contract/snapshots/|schemas/|rcp-ndcg-vllm/schema/)' <<<"$changed" && ! grep -qx 'CHANGELOG.md' <<<"$changed"; then
-            echo "The public surface changed (tests/contract/snapshots/, schemas/ or rcp-ndcg-vllm/schema/) but CHANGELOG.md did not."
+          if grep -qE '^(tests/contract/snapshots/|schemas/|rcp-vllm/schema/)' <<<"$changed" && ! grep -qx 'CHANGELOG.md' <<<"$changed"; then
+            echo "The public surface changed (tests/contract/snapshots/, schemas/ or rcp-vllm/schema/) but CHANGELOG.md did not."
             exit 1
           fi

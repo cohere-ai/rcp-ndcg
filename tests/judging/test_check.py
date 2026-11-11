@@ -8,9 +8,9 @@ import json
 import httpx
 import pytest
 
-from rcp_ndcg.judging import JudgeConfig, check_judge
-from rcp_ndcg.judging.check import _probe_stage
-from rcp_ndcg.judging.client import JudgeClient
+from rcp.judging import JudgeConfig, check_judge
+from rcp.judging.check import _probe_stage
+from rcp.judging.client import JudgeClient
 
 # A tournament answer in the shape the parser reads (a ranking of the window's two documents).
 _TOURNAMENT = json.dumps({"ranking": [1, 2], "scores": {"1": 1.0, "2": 0.0}, "reasoning": "probe"})
@@ -119,7 +119,7 @@ def test_the_report_says_which_recipe_the_config_came_from() -> None:
 
 
 def test_a_config_without_a_url_is_refused_by_the_client() -> None:
-    from rcp_ndcg.errors import ConfigError
+    from rcp.errors import ConfigError
 
     with pytest.raises(ConfigError, match="no base_url"):
         check_judge(JudgeConfig(model="m"))

@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from rcp_ndcg_core.records import Document, Query
+from rcp_core.records import Document, Query
 
-import rcp_ndcg as rcp
-from rcp_ndcg.data import Dataset, QrelRow, RankingRow, Rankings
-from rcp_ndcg.errors import DataError
+import rcp
+from rcp.data import Dataset, QrelRow, RankingRow, Rankings
+from rcp.errors import DataError
 
 QUERIES = [{"query_id": "q1", "text": "tides"}, {"query_id": "q2", "text": "moon"}]
 CORPUS = [{"doc_id": d, "text": f"text of {d}"} for d in ("a", "b", "c")]
@@ -61,9 +61,9 @@ def test_the_dataset_holds_the_core_records() -> None:
 
 def test_the_compatibility_row_models_are_gone() -> None:
     with pytest.raises(ImportError):
-        from rcp_ndcg.data import DocumentRow  # noqa: F401
+        from rcp.data import DocumentRow  # noqa: F401
     with pytest.raises(ImportError):
-        from rcp_ndcg.data import QueryRow  # noqa: F401
+        from rcp.data import QueryRow  # noqa: F401
 
 
 def test_numeric_ids_are_coerced_to_strings() -> None:
@@ -195,7 +195,7 @@ def test_validate_checks_the_rows_that_rank_the_dataset() -> None:
 
 
 def test_a_document_carries_its_title_as_a_field_and_the_body_in_text() -> None:
-    from rcp_ndcg_core.records import Document
+    from rcp_core.records import Document
 
     document = Document(doc_id="d1", title="Tortoises", text="a tortoise is a reptile")
 
@@ -206,12 +206,12 @@ def test_a_document_carries_its_title_as_a_field_and_the_body_in_text() -> None:
 
 
 def test_a_document_title_round_trips_through_jsonl(tmp_path: Path) -> None:
-    from rcp_ndcg_core.records import Document
+    from rcp_core.records import Document
 
     path = tmp_path / "corpus.jsonl"
     path.write_text(Document(doc_id="d1", title="T", text="body").model_dump_json(exclude_none=True) + "\n")
 
-    from rcp_ndcg.storage.io import iter_jsonl
+    from rcp.storage.io import iter_jsonl
 
     (restored,) = iter_jsonl(str(path), example_class=Document, forbid_extra=True)
     assert restored.title == "T" and restored.text == "body"

@@ -1,6 +1,6 @@
 """The stage-order invariants of the one preparation pipeline.
 
-The pipeline (:data:`rcp_ndcg.inference.clients._base.STAGES`) is one declared order shared by every
+The pipeline (:data:`rcp.inference.clients._base.STAGES`) is one declared order shared by every
 role client: content normalisation -> empty handling -> media preparation -> template render -> budget
 fit -> wire lowering. These tests pin the order itself and the invariants that follow from it: the
 empty policy fires before the template frames a document and again on the media fit's all-dropped
@@ -14,14 +14,14 @@ import asyncio
 from typing import Any
 
 import numpy as np
-from rcp_ndcg_core.content import Content, ImagePart, TextPart
+from rcp_core.content import Content, ImagePart, TextPart
 
-from rcp_ndcg.inference.clients._base import STAGES
-from rcp_ndcg.inference.clients.embed import EmbeddingClient
-from rcp_ndcg.inference.clients.pool import PoolingClient
-from rcp_ndcg.inference.clients.rerank import RerankClient
-from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
-from rcp_ndcg.inference.types import EncodeRole, Reply
+from rcp.inference.clients._base import STAGES
+from rcp.inference.clients.embed import EmbeddingClient
+from rcp.inference.clients.pool import PoolingClient
+from rcp.inference.clients.rerank import RerankClient
+from rcp.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+from rcp.inference.types import EncodeRole, Reply
 from tests.conftest import SESSION_TOKENIZER
 from tests.inference._pooling import PoolingServer, server_sender
 
@@ -230,7 +230,7 @@ class TestOneFramePerRoute:
     def test_the_messages_route_frames_media_once(self, tmp_path: Any) -> None:
         """A media item's conversation carries the caption once -- the declared frame is the chat
         template's business, never the client's twice."""
-        from rcp_ndcg_core.content import MediaRef
+        from rcp_core.content import MediaRef
 
         page = tmp_path / "page.png"
         page.write_bytes(self._png())

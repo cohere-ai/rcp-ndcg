@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core import gain
+from rcp_core import gain
 
 FIXTURE = json.loads((Path(__file__).parent / "fixtures" / "paper_label_rows.json").read_text())
 

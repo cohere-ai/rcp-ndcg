@@ -14,7 +14,7 @@
       "type": "integer"
     },
     "schema": {
-      "const": "rcp-ndcg.rankings-file.v1",
+      "const": "rcp.rankings-file.v1",
       "type": "string"
     },
     "systems": {
@@ -34,5 +34,5 @@
   ],
   "title": "RankingsFile",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.rankings-file.v1"
+  "x-rcp-schema": "rcp.rankings-file.v1"
 }

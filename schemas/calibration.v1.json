@@ -209,7 +209,7 @@
   "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/calibration.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
-  "description": "``items.json``, the file of a calibration directory that names its layout (``rcp-ndcg.calibration.v1``).",
+  "description": "``items.json``, the file of a calibration directory that names its layout (``rcp.calibration.v1``).",
   "properties": {
     "beta": {
       "description": "Difficulty per criterion (logits).",
@@ -266,8 +266,11 @@
       "type": "string"
     },
     "schema": {
-      "const": "rcp-ndcg.calibration.v1",
-      "default": "rcp-ndcg.calibration.v1",
+      "default": "rcp.calibration.v1",
+      "enum": [
+        "rcp.calibration.v1",
+        "rcp-ndcg.calibration.v1"
+      ],
       "title": "Schema",
       "type": "string"
     }
@@ -283,5 +286,5 @@
   ],
   "title": "CalibrationItems",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.calibration.v1"
+  "x-rcp-schema": "rcp.calibration.v1"
 }

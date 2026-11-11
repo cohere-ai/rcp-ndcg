@@ -14,11 +14,11 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
+from rcp_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
 
-from rcp_ndcg.data.io import get_reader
-from rcp_ndcg.data.media import MediaResolver, content_parts_payload, probe_video_header
-from rcp_ndcg.errors import DataError
+from rcp.data.io import get_reader
+from rcp.data.media import MediaResolver, content_parts_payload, probe_video_header
+from rcp.errors import DataError
 from tests.conftest import write_mp4_header
 
 
@@ -44,7 +44,7 @@ class TestProbe:
     def test_an_isobmff_without_ftyp_is_not_labelled_avi(self, tmp_path: Path):
         """Older QuickTime .mov files commonly start with a ``wide`` or ``mdat`` box; ``media_extension``
         returned ``.avi`` (video/x-msvideo) for any ISO-BMFF payload that is not ftyp-first."""
-        from rcp_ndcg.data.media import media_extension
+        from rcp.data.media import media_extension
 
         path = write_mp4_header(tmp_path / "a.mp4", frames=3, timescale=1000, duration=1000, size=(32, 16))
         payload = path.read_bytes()
@@ -255,7 +255,7 @@ class TestIngest:
     def test_a_clip_directory_ingests_with_its_header_recorded(self, clip_dir: Path, tmp_path: Path):
         from click.testing import CliRunner
 
-        from rcp_ndcg.cli.data import data_group
+        from rcp.cli.data import data_group
 
         out = tmp_path / "ingested"
         result = CliRunner().invoke(

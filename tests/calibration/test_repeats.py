@@ -5,10 +5,10 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
-from rcp_ndcg_core.schemas import Judgement, JudgementSet, judgement_record_id
+from rcp_core.schemas import Judgement, JudgementSet, judgement_record_id
 
-from rcp_ndcg.calibration import Calibration, calibrate
-from rcp_ndcg.errors import RcpNdcgWarning
+from rcp.calibration import Calibration, calibrate
+from rcp.errors import RcpNdcgWarning
 
 
 def _later(judgement: Judgement, **update) -> Judgement:

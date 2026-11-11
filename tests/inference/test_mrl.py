@@ -3,7 +3,7 @@
 The declared kind and set are validated at load (a k outside the set, `dimensions` on a non-truncation
 kind, `dimensions` beside `mrl_dim`, and a projection kind without its source are all refused naming the
 field); the dense client cuts client-side exactly as the pooling client does, and every row the head
-changed carries a ``mrl_cut`` :class:`~rcp_ndcg.data.text_budget.ProcessingRecord`.
+changed carries a ``mrl_cut`` :class:`~rcp.data.text_budget.ProcessingRecord`.
 """
 
 from __future__ import annotations
@@ -13,12 +13,12 @@ from typing import Any
 
 import numpy as np
 import pytest
-from rcp_ndcg_core.content import Content
+from rcp_core.content import Content
 
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.inference.clients.embed import EmbeddingClient
-from rcp_ndcg.inference.config import PoolingEndpoint
-from rcp_ndcg.inference.types import Call, EncodeRole, Reply
+from rcp.errors import ConfigError
+from rcp.inference.clients.embed import EmbeddingClient
+from rcp.inference.config import PoolingEndpoint
+from rcp.inference.types import Call, EncodeRole, Reply
 from tests._safetensors import write_safetensors
 from tests.inference import _budget
 from tests.inference._embed import FakeSender, endpoint
@@ -315,7 +315,7 @@ class TestPoolingClientRecord:
             tokenizer=_budget.DEFAULT_TOKENIZER or "test/tokenizer",
             max_tokens=8192,
         )
-        from rcp_ndcg.inference.clients.pool import PoolingClient
+        from rcp.inference.clients.pool import PoolingClient
 
         pooled = PoolingClient(client, sender=sender)
         pooled.encode([Content.from_text("a")], EncodeRole.DOCUMENT)
@@ -342,7 +342,7 @@ class TestPoolingClientRecord:
             tokenizer=_budget.DEFAULT_TOKENIZER or "test/tokenizer",
             max_tokens=8192,
         )
-        from rcp_ndcg.inference.clients.pool import PoolingClient
+        from rcp.inference.clients.pool import PoolingClient
 
         pooled = PoolingClient(client, sender=sender)
         vectors = pooled.encode([Content.from_text("a")], EncodeRole.DOCUMENT)

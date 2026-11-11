@@ -69,7 +69,7 @@
       "type": "boolean"
     },
     "schema": {
-      "const": "rcp-ndcg.validation-report.v1",
+      "const": "rcp.validation-report.v1",
       "type": "string"
     },
     "systems": {
@@ -110,5 +110,5 @@
   ],
   "title": "ValidationReport",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.validation-report.v1"
+  "x-rcp-schema": "rcp.validation-report.v1"
 }

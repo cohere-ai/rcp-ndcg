@@ -2,9 +2,9 @@
 
 T4's outage scenario observes, on the node, that a run whose judge engine is killed **parks** and
 recovers when the engine is back, and that an outage past ``wait_on_outage_s`` fails with
-:class:`~rcp_ndcg.errors.BackendUnavailableError`.  That observation is recorded here against the real
+:class:`~rcp.errors.BackendUnavailableError`.  That observation is recorded here against the real
 socket stack: a real HTTP server on an ephemeral port is killed (its socket dies like an engine's), and
-the real :class:`~rcp_ndcg.inference.Transport` parks through the outage and speaks to the server when a
+the real :class:`~rcp.inference.Transport` parks through the outage and speaks to the server when a
 new one binds the same port.  The in-process outage-clock cases live in ``tests/inference/test_transport.py``;
 these cover what only a real dead socket shows: connection refusals while the engine is down.
 """
@@ -21,8 +21,8 @@ from typing import Any
 
 import pytest
 
-from rcp_ndcg.errors import BackendUnavailableError
-from rcp_ndcg.inference import Call, Endpoint, Transport
+from rcp.errors import BackendUnavailableError
+from rcp.inference import Call, Endpoint, Transport
 
 #: The one chat completion the stub judge answers (the judge route's shape).
 _ANSWER = {
@@ -118,7 +118,7 @@ def test_a_killed_engine_parks_the_request_until_it_is_back(engine: Engine) -> N
 
 def test_an_outage_past_wait_on_outage_s_fails_as_backend_unavailable(engine: Engine) -> None:
     """The observed expiry (T4 scenario 2b): the engine stays down past ``wait_on_outage_s`` (0.2 s here),
-    and the request fails with :class:`~rcp_ndcg.errors.BackendUnavailableError`, whose message states how
+    and the request fails with :class:`~rcp.errors.BackendUnavailableError`, whose message states how
     long the endpoint was unavailable."""
     engine.kill()
     started = time.monotonic()

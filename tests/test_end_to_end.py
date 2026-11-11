@@ -16,11 +16,11 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-import rcp_ndcg as rcp
-from rcp_ndcg.cli.introspect import command_specs
-from rcp_ndcg.cli.main import cli
-from rcp_ndcg.cli.output import CliEnvelope
-from rcp_ndcg.testing import TINY_RUBRIC, TINY_TOURNAMENT, tiny_rows
+import rcp
+from rcp.cli.introspect import command_specs
+from rcp.cli.main import cli
+from rcp.cli.output import CliEnvelope
+from rcp.testing import TINY_RUBRIC, TINY_TOURNAMENT, tiny_rows
 
 
 @pytest.fixture(scope="module")
@@ -95,9 +95,9 @@ def test_the_cli_runs_judges_calibrates_and_evaluates(world: dict[str, Path]) ->
 def test_a_job_runner_runs_the_same_pipeline_started_over_mcp(
     world: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """MCP ``run_start`` hands the run to the local job runner in the background (one job, ``rcp-ndcg run resume``
+    """MCP ``run_start`` hands the run to the local job runner in the background (one job, ``rcp run resume``
     in a subprocess) and returns its directory at once; ``run_status`` follows it and ``run logs`` reads its log."""
-    from rcp_ndcg import mcp
+    from rcp import mcp
 
     monkeypatch.setenv("PATH", f"{Path(sys.executable).parent}{os.pathsep}{os.environ['PATH']}")
     judge = {"base_url": "fake://seed/0", "model": "fake"}
@@ -135,7 +135,7 @@ def test_the_facade_runs_the_same_flow(world: dict[str, Path], tmp_path: Path) -
     projected = rcp.estimate(dataset, None, judge, stages=("tournament",))
     rcp.judge(dataset, None, judge, stage="tournament", out=store, schedule=TINY_TOURNAMENT)
     judged = rcp.judge(dataset, None, judge, stage="rubric", out=store, schedule=TINY_RUBRIC)
-    from rcp_ndcg.calibration import read_judgements
+    from rcp.calibration import read_judgements
 
     calibration = rcp.calibrate(read_judgements(store))
     candidates = rcp.Rankings.from_orders(dataset.candidates, system="candidates")

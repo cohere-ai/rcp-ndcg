@@ -78,7 +78,7 @@
       "type": "integer"
     },
     "schema": {
-      "const": "rcp-ndcg.reparse-report.v1",
+      "const": "rcp.reparse-report.v1",
       "type": "string"
     },
     "source": {
@@ -102,5 +102,5 @@
   ],
   "title": "ReparseReport",
   "type": "object",
-  "x-rcp-ndcg-schema": "rcp-ndcg.reparse-report.v1"
+  "x-rcp-schema": "rcp.reparse-report.v1"
 }

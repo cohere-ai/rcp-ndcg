@@ -6,16 +6,16 @@ import warnings
 from pathlib import Path
 
 import pytest
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
-from rcp_ndcg_core.records import RankingExample
+from rcp_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
+from rcp_core.records import RankingExample
 
-from rcp_ndcg.data.tokenizer import load_tokenizer
-from rcp_ndcg.errors import CapabilityError, ConfigError
-from rcp_ndcg.judging import CostEstimate, JudgeConfig, RubricSchedule, TournamentSchedule, estimate, judge
-from rcp_ndcg.judging.client import Completion, CompletionInput
-from rcp_ndcg.judging.judging import CHAT_TEMPLATE_TOKENS
-from rcp_ndcg.judging.tokens import APPROX_TOKENS_PER_IMAGE, APPROXIMATION_NOTE, IMAGE_APPROXIMATION_NOTE
-from rcp_ndcg.testing import FakeJudge, tiny_rows
+from rcp.data.tokenizer import load_tokenizer
+from rcp.errors import CapabilityError, ConfigError
+from rcp.judging import CostEstimate, JudgeConfig, RubricSchedule, TournamentSchedule, estimate, judge
+from rcp.judging.client import Completion, CompletionInput
+from rcp.judging.judging import CHAT_TEMPLATE_TOKENS
+from rcp.judging.tokens import APPROX_TOKENS_PER_IMAGE, APPROXIMATION_NOTE, IMAGE_APPROXIMATION_NOTE
+from rcp.testing import FakeJudge, tiny_rows
 
 
 def test_the_estimate_counts_the_schedules_calls() -> None:
@@ -47,7 +47,7 @@ def test_an_estimate_reports_calls_and_tokens_and_no_usd() -> None:
 def test_the_estimate_reports_retries_as_a_range() -> None:
     """A window's answer is retried up to ``MAX_ATTEMPTS`` times, and every retry re-sends the prompt: the
     requests (and the tokens) are a range, not the one-attempt count the estimate used to print."""
-    from rcp_ndcg.judging.judging import MAX_ATTEMPTS
+    from rcp.judging.judging import MAX_ATTEMPTS
 
     rows, _ = tiny_rows()
     projected = estimate(rows, None, JudgeConfig(base_url="http://h/v1", model="m"), stages=["rubric"])
@@ -107,7 +107,7 @@ def test_with_a_tokenizer_the_estimate_counts_the_prompts_exactly(tmp_path: Path
 def test_the_estimate_counts_the_query_text_the_pass_sends(tmp_path: Path, word_tokenizer_file: Path) -> None:
     """The task instruction (its generic prefix) and the title rule shape what the judge reads: the estimate
     counts those strings, so its ``exact`` label is the pass's own count."""
-    from rcp_ndcg.data import Dataset
+    from rcp.data import Dataset
 
     dataset = Dataset.from_records(
         name="sample",
@@ -200,7 +200,7 @@ def test_a_scheduled_window_over_the_max_images_is_refused() -> None:
 def test_a_window_at_the_max_images_is_estimated() -> None:
     """The cap is inclusive: a window carrying exactly ``max_images`` images is the pass's own limit, not a
     refusal, and a judge declared to read none refuses any window carrying an image."""
-    from rcp_ndcg.errors import RcpNdcgWarning
+    from rcp.errors import RcpNdcgWarning
 
     rows = _image_rows(50)
     at_cap = JudgeConfig(base_url="http://h/v1", model="m", max_images=150, context_tokens=272_000)
@@ -234,8 +234,8 @@ def _video_rows(docs: int, *, frames: int, container: bool) -> list[RankingExamp
 def test_the_estimate_counts_the_sampled_frames_a_frames_policy_sends() -> None:
     """The gate counted every raw frame of a clip, so a 60-frame directory under ``num_frames: 4`` was
     refused against a cap the pass's own pre-send gate (which counts the sampled frames) accepts."""
-    from rcp_ndcg.data.preprocess import Preprocessing
-    from rcp_ndcg.data.resolution import VideoPolicy
+    from rcp.data.preprocess import Preprocessing
+    from rcp.data.resolution import VideoPolicy
 
     rows = _video_rows(5, frames=60, container=False)
     hosted = JudgeConfig(base_url="http://h/v1", model="m", max_images=20)
@@ -251,8 +251,8 @@ def test_the_estimate_counts_the_sampled_frames_a_frames_policy_sends() -> None:
 def test_the_estimate_gates_videos_against_max_videos() -> None:
     """A ``video_url`` window of five containers was blessed while every window is refused at its first call
     (the pass's gate checks ``max_videos``); the estimate must check it like the pass does."""
-    from rcp_ndcg.data.preprocess import Preprocessing
-    from rcp_ndcg.data.resolution import VideoPolicy
+    from rcp.data.preprocess import Preprocessing
+    from rcp.data.resolution import VideoPolicy
 
     rows = _video_rows(5, frames=0, container=True)
     hosted = JudgeConfig(base_url="http://h/v1", model="m", max_videos=1, context_tokens=272_000)
@@ -272,8 +272,8 @@ def test_the_wall_time_is_labelled_a_floor_in_the_assumptions_and_the_schema() -
     rather than printing a number that reads as an expectation."""
     import math
 
-    from rcp_ndcg.judging.cost import SECONDS_PER_CALL
-    from rcp_ndcg.schemas import show
+    from rcp.judging.cost import SECONDS_PER_CALL
+    from rcp.schemas import show
 
     rows, _ = tiny_rows()
     projected = estimate(rows, None, JudgeConfig(base_url="http://h/v1", model="m", concurrency=4))
@@ -317,7 +317,7 @@ def _pages(images_per_page: int) -> list[RankingExample]:
 
 def test_a_hosted_judges_images_are_approximated_and_labelled() -> None:
     """No image_processor: the engine sizes the images, so their tokens are an assumption, stated as one."""
-    from rcp_ndcg.errors import RcpNdcgWarning
+    from rcp.errors import RcpNdcgWarning
 
     hosted = JudgeConfig(base_url="http://h/v1", model="m", max_images=6, context_tokens=272_000)
     with pytest.warns(RcpNdcgWarning, match="image tokens are approximate") as warned:
@@ -347,8 +347,8 @@ def test_a_text_budget_over_uncountable_images_is_refused_as_the_pass_refuses_it
 
 @pytest.mark.parametrize("stage", ["tournament", "rubric"])
 def test_the_estimate_of_a_subset_counts_the_calls_the_pass_makes(stage: str, tmp_path) -> None:
-    from rcp_ndcg.judging import judge
-    from rcp_ndcg.testing import TINY_RUBRIC, TINY_TOURNAMENT, FakeJudge
+    from rcp.judging import judge
+    from rcp.testing import TINY_RUBRIC, TINY_TOURNAMENT, FakeJudge
 
     rows, ability = tiny_rows()
     fake = FakeJudge(lambda text: ability[text.split()[-1]])
@@ -380,7 +380,7 @@ def test_the_estimate_passes_the_judges_tokenizer_to_the_media_count(
 ) -> None:
     """An fps container's timestamp lines are tokenizer-dependent: the estimate must pass the judge's
     tokenizer into the media count (dropping the pass silently reverts to the family's bound)."""
-    from rcp_ndcg.judging import judging as judging_module
+    from rcp.judging import judging as judging_module
 
     seen: dict[str, object] = {}
     real = judging_module._media_tokens

@@ -8,10 +8,10 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from rcp_ndcg.cli.main import cli
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.runs.config import RunConfig
-from rcp_ndcg.support.config import config_error, validation_problems
+from rcp.cli.main import cli
+from rcp.errors import ConfigError
+from rcp.runs.config import RunConfig
+from rcp.support.config import config_error, validation_problems
 
 
 @pytest.fixture
@@ -121,7 +121,7 @@ def test_a_refused_secret_is_never_echoed() -> None:
         RunConfig.from_data({"dataset": {"uri": "x"}, "judge": {"base_url": "http://user:pw-SECRET@host/v1"}})
     assert "pw-SECRET" not in json.dumps(caught.value.to_dict())
 
-    from rcp_ndcg.support.serve import parse_engines_env
+    from rcp.support.serve import parse_engines_env
 
     with pytest.raises(ConfigError) as caught:
         parse_engines_env('{"judge": {"urls": ["https://user:pw-SECRET@gw.example/v1", ""]}}')
@@ -173,7 +173,7 @@ def test_a_secret_under_an_env_or_in_a_command_is_never_echoed() -> None:
 def test_a_control_character_refusal_names_the_character_not_the_value() -> None:
     """A mirror URI can carry a presigned signature; the refusal names the character and its position, so
     the value (signature included) does not ride out in the message."""
-    from rcp_ndcg.support.resources import no_control_characters
+    from rcp.support.resources import no_control_characters
 
     with pytest.raises(ValueError) as caught:
         no_control_characters("gs://b/x?sig=SECRETSIG\n")

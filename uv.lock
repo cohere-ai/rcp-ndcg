@@ -12,14 +12,14 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "rcp-ndcg",
-    "rcp-ndcg-core",
-    "rcp-ndcg-test",
-    "rcp-ndcg-vllm",
+    "rcp",
+    "rcp-core",
+    "rcp-test",
+    "rcp-vllm",
 ]
 
 [manifest.dependency-groups]
-dev = [{ name = "rcp-ndcg-test", editable = "rcp-ndcg-test" }]
+dev = [{ name = "rcp-test", editable = "rcp-test" }]
 
 [[package]]
 name = "adlfs"
@@ -2703,9 +2703,9 @@ wheels = [
 ]
 
 [[package]]
-name = "rcp-ndcg"
+name = "rcp"
 version = "0.0.1"
-source = { editable = "rcp-ndcg" }
+source = { editable = "rcp" }
 dependencies = [
     { name = "bm25s" },
     { name = "click" },
@@ -2720,7 +2720,7 @@ dependencies = [
     { name = "pystemmer" },
     { name = "python-dotenv" },
     { name = "pyyaml" },
-    { name = "rcp-ndcg-core" },
+    { name = "rcp-core" },
     { name = "scipy" },
     { name = "tqdm" },
 ]
@@ -2766,6 +2766,9 @@ mteb = [
 s3 = [
     { name = "s3fs" },
 ]
+vllm = [
+    { name = "rcp-vllm" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -2796,8 +2799,9 @@ requires-dist = [
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.5" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rcp-ndcg", extras = ["calibrate", "hf"], marker = "extra == 'dev'", editable = "rcp-ndcg" },
-    { name = "rcp-ndcg-core", editable = "rcp-ndcg-core" },
+    { name = "rcp", extras = ["calibrate", "hf"], marker = "extra == 'dev'", editable = "rcp" },
+    { name = "rcp-core", editable = "rcp-core" },
+    { name = "rcp-vllm", marker = "extra == 'vllm'", editable = "rcp-vllm" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "s3fs", marker = "extra == 's3'", specifier = ">=2025.3.0" },
     { name = "scipy", specifier = ">=1.15" },
@@ -2806,12 +2810,12 @@ requires-dist = [
     { name = "torch", marker = "extra == 'calibrate'", specifier = ">=2.0" },
     { name = "tqdm", specifier = ">=4.67" },
 ]
-provides-extras = ["s3", "azure", "hf", "http", "mteb", "calibrate", "data", "dev", "docs"]
+provides-extras = ["s3", "azure", "hf", "http", "mteb", "calibrate", "data", "vllm", "dev", "docs"]
 
 [[package]]
-name = "rcp-ndcg-core"
+name = "rcp-core"
 version = "0.0.1"
-source = { editable = "rcp-ndcg-core" }
+source = { editable = "rcp-core" }
 dependencies = [
     { name = "numpy" },
     { name = "pydantic" },
@@ -2833,15 +2837,15 @@ requires-dist = [
 provides-extras = ["irt"]
 
 [[package]]
-name = "rcp-ndcg-test"
+name = "rcp-test"
 version = "0.0.1"
-source = { editable = "rcp-ndcg-test" }
+source = { editable = "rcp-test" }
 dependencies = [
     { name = "numpy" },
     { name = "pydantic" },
     { name = "pyyaml" },
-    { name = "rcp-ndcg" },
-    { name = "rcp-ndcg-vllm" },
+    { name = "rcp" },
+    { name = "rcp-vllm" },
 ]
 
 [package.optional-dependencies]
@@ -2855,15 +2859,15 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.11" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rcp-ndcg", editable = "rcp-ndcg" },
-    { name = "rcp-ndcg-vllm", editable = "rcp-ndcg-vllm" },
+    { name = "rcp", editable = "rcp" },
+    { name = "rcp-vllm", editable = "rcp-vllm" },
 ]
 provides-extras = ["test"]
 
 [[package]]
-name = "rcp-ndcg-vllm"
+name = "rcp-vllm"
 version = "0.0.1"
-source = { editable = "rcp-ndcg-vllm" }
+source = { editable = "rcp-vllm" }
 dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },

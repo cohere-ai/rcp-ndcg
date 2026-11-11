@@ -10,10 +10,10 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-from rcp_ndcg_core.irt import fit_bradley_terry
-from rcp_ndcg_core.schemas import Judgement, JudgementFamily, JudgementSet, Placement
+from rcp_core.irt import fit_bradley_terry
+from rcp_core.schemas import Judgement, JudgementFamily, JudgementSet, Placement
 
-from rcp_ndcg.calibration._projection import bradley_terry, namespace
+from rcp.calibration._projection import bradley_terry, namespace
 
 L2 = 1e-4
 FAMILY = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="0" * 64, parse_version=2)

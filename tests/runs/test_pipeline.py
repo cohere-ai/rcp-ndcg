@@ -9,12 +9,12 @@ from typing import Any
 
 import pytest
 
-from rcp_ndcg.data import Rankings, load_rankings
-from rcp_ndcg.errors import ConfigError, DataError, IdentityError, MissingInputError, RcpNdcgWarning
-from rcp_ndcg.judging import TournamentSchedule
-from rcp_ndcg.runs import Pipeline, RunManifest, RunStatus, StepStatus
-from rcp_ndcg.support.identity import check_declarations, identity_payload
-from rcp_ndcg.testing import TINY_RUBRIC, TINY_TOURNAMENT, tiny_rows
+from rcp.data import Rankings, load_rankings
+from rcp.errors import ConfigError, DataError, IdentityError, MissingInputError, RcpNdcgWarning
+from rcp.judging import TournamentSchedule
+from rcp.runs import Pipeline, RunManifest, RunStatus, StepStatus
+from rcp.support.identity import check_declarations, identity_payload
+from rcp.testing import TINY_RUBRIC, TINY_TOURNAMENT, tiny_rows
 from tests._tokenizers import byte_bpe_tokenizer
 from tests.conftest import SESSION_TOKENIZER
 from tests.runs.conftest import STEPS, tiny_config
@@ -55,7 +55,7 @@ class TestARun:
         assert load_rankings(finished / "candidates.parquet").systems == ["candidates"]
         assert sorted(load_rankings(finished / "candidates.parquet").queries()) == ["q1", "q2"]
         report = json.loads((finished / "metrics" / "report.json").read_text(encoding="utf-8"))
-        assert report["schema"] == "rcp-ndcg.eval-report.v1"
+        assert report["schema"] == "rcp.eval-report.v1"
         candidates = {
             (row["metric"], row["k"]): row["value"] for row in report["summary"] if row["system"] == "candidates"
         }
@@ -82,7 +82,7 @@ class TestARun:
 def test_a_judging_step_records_what_the_judges_endpoint_serves(
     data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from rcp_ndcg.judging import JudgeClient
+    from rcp.judging import JudgeClient
     from tests.judging.test_judging import _SchemaEndpoint
 
     endpoint = _SchemaEndpoint("3.1")
@@ -157,7 +157,7 @@ class TestResume:
         """runs-8: the hint said to move ``judgements/<stage>.jsonl`` aside, but ``identity.json`` keeps the
         claim (and a mirror restores the file), so the next resume refuses again; a mirrored run also needs a
         new mirror URI, which the hint did not say."""
-        from rcp_ndcg import storage
+        from rcp import storage
 
         pipeline = Pipeline(
             tiny_config(data, steps=["tournament"], mirror="memory://mirror/identity"),
@@ -183,7 +183,7 @@ class TestFailure:
         def broken(*args, **kwargs):
             raise RuntimeError("boom")
 
-        monkeypatch.setattr("rcp_ndcg.calibration.calibrate", broken)
+        monkeypatch.setattr("rcp.calibration.calibrate", broken)
         pipeline = Pipeline(tiny_config(data), runs_dir=str(tmp_path))
         with pytest.raises(RuntimeError, match="boom"):
             pipeline.run()
@@ -201,10 +201,10 @@ class TestStepBudget:
     ) -> None:
         import asyncio
 
-        from rcp_ndcg_core.irt._bradley_terry import BradleyTerryEstimator  # noqa: F401 - warm the lazy import
+        from rcp_core.irt._bradley_terry import BradleyTerryEstimator  # noqa: F401 - warm the lazy import
 
-        from rcp_ndcg.errors import StepBudgetExceededError
-        from rcp_ndcg.judging.client import JudgeClient
+        from rcp.errors import StepBudgetExceededError
+        from rcp.judging.client import JudgeClient
 
         complete = JudgeClient.complete
 
@@ -240,8 +240,8 @@ class TestStepBudget:
     ) -> None:
         """The judging pass checks the budget before a phase's windows: a client that answers in process (the
         fake judge's transport seam is never reached) still stops typed."""
-        from rcp_ndcg.errors import StepBudgetExceededError
-        from rcp_ndcg.judging.client import JudgeClient, RequestRejectedError
+        from rcp.errors import StepBudgetExceededError
+        from rcp.judging.client import JudgeClient, RequestRejectedError
 
         async def rejecting(self, request):
             raise RequestRejectedError("refused without a transport")
@@ -262,7 +262,7 @@ class TestAFailedChange:
 
         recorded = RunManifest.load(run_dir)
         run_yaml = (run_dir / "run.yaml").read_text(encoding="utf-8")
-        monkeypatch.setattr("rcp_ndcg.calibration.calibrate", broken)
+        monkeypatch.setattr("rcp.calibration.calibrate", broken)
         with pytest.raises(RuntimeError, match="boom"):
             Pipeline.resume(run_dir, overrides=["calibration.priors.sigma_tau=3.0"]).run()
 
@@ -296,7 +296,7 @@ class TestAFailedChange:
             raise RuntimeError("boom")
 
         recorded = RunManifest.load(run_dir)
-        monkeypatch.setattr("rcp_ndcg.eval.evaluate", broken)
+        monkeypatch.setattr("rcp.eval.evaluate", broken)
         with pytest.raises(RuntimeError, match="boom"):
             Pipeline.resume(run_dir, overrides=["calibration.priors.sigma_tau=3.0"]).run()
         assert RunManifest.load(run_dir).config == recorded.config
@@ -314,7 +314,7 @@ class TestAFailedChange:
         def broken(self, request):
             raise RuntimeError("endpoint gone")
 
-        monkeypatch.setattr("rcp_ndcg.judging.client.JudgeClient.complete", broken)
+        monkeypatch.setattr("rcp.judging.client.JudgeClient.complete", broken)
         with pytest.raises(RuntimeError, match="endpoint gone"):
             Pipeline.resume(pipeline.layout.root, overrides=["steps=[tournament, rubric]"]).run()
         manifest = RunManifest.load(pipeline.layout.root)
@@ -330,7 +330,7 @@ class TestAFailedChange:
 def test_a_failed_step_error_is_recorded_redacted(data: Path, tmp_path: Path) -> None:
     """runs-12: a credentialed URI the recorded config strips must not ride the error text into the mirrored
     ``manifest.json`` or ``logs/run.log``."""
-    from rcp_ndcg.runs.run import execute_run
+    from rcp.runs.run import execute_run
 
     config = tiny_config(
         data,
@@ -374,7 +374,7 @@ class TestTheBradleyTerryPenalty:
         with pytest.warns(RcpNdcgWarning, match="L2 0.05"):
             pipeline.run()
 
-        from rcp_ndcg.calibration import Calibration
+        from rcp.calibration import Calibration
 
         calibration = Calibration.load(Path(pipeline.layout.root) / "calibration")
         assert calibration.identity.priors.bt_l2 == 0.05
@@ -424,7 +424,7 @@ class TestEstimateAndRetrieve:
     def test_a_rankings_sourced_run_is_estimated_from_its_rankings_file_before_it_retrieves(
         self, data: Path, tmp_path: Path
     ) -> None:
-        from rcp_ndcg.data import Rankings
+        from rcp.data import Rankings
 
         rankings = tmp_path / "systems.jsonl"
         rows, _ = tiny_rows()
@@ -462,7 +462,7 @@ class TestEstimateAndRetrieve:
                     checkpoint(str(example.id), scores)
             return []
 
-        monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", score_by_position)
+        monkeypatch.setattr("rcp.retrieval._api.RerankClient.rerank_many", score_by_position)
         config = tiny_config(
             data,
             candidates={
@@ -682,9 +682,9 @@ class TestTheRetrieveAndRerankIdentities:
         """The text-formatting rule is code, not a config field: every step's identity carries its version
         (:data:`TEXT_FORMATTING_VERSION`) and the dataset's resolved task instruction, so a resume never
         reuses candidates or judgements built from other strings."""
-        from rcp_ndcg_core.records import TEXT_FORMATTING_VERSION
+        from rcp_core.records import TEXT_FORMATTING_VERSION
 
-        from rcp_ndcg.runs import pipeline as pipeline_module
+        from rcp.runs import pipeline as pipeline_module
 
         config = tiny_config(data)
         pipeline = Pipeline(config, runs_dir=str(tmp_path / "runs"))
@@ -706,9 +706,9 @@ class TestTheRetrieveAndRerankIdentities:
         by the dataset's resolved commit; the formatting rule itself enters by its version
         (:data:`TEXT_FORMATTING_VERSION`, pinned above). A resume check never loads the dataset, so the
         resolved instruction is not read here (the review's A4/A5 gaps: local content and code versions)."""
-        from rcp_ndcg.data import Dataset
-        from rcp_ndcg.runs.config import DatasetSource
-        from rcp_ndcg.support.identity import hash_payload
+        from rcp.data import Dataset
+        from rcp.runs.config import DatasetSource
+        from rcp.support.identity import hash_payload
 
         def loaded(instruction: str | None) -> Dataset:
             return Dataset.from_records(
@@ -752,7 +752,7 @@ class TestTheRetrieveAndRerankIdentities:
         path is runtime -- the same text under another name is the same instrument, edited text is not) and the
         judge tokenizer's digest. Editing a prompt file or swapping the tokenizer bytes re-keys the step, so a
         resume re-judges instead of skipping with stale judgements."""
-        from rcp_ndcg.judging.prompts import load_prompt, shipped_prompts_digest
+        from rcp.judging.prompts import load_prompt, shipped_prompts_digest
         from tests._tokenizers import byte_bpe_tokenizer, save, word_tokenizer
 
         for directory in ("one", "two", "prompts"):
@@ -810,8 +810,8 @@ class TestTheRetrieveAndRerankIdentities:
 
     def test_the_candidates_payload_keys_by_field_name_not_alias(self, data: Path, tmp_path: Path) -> None:
         """``identity_payload`` keys by field name: ``from:`` in YAML is ``source`` in the identity."""
-        from rcp_ndcg.retrieval import BM25Config
-        from rcp_ndcg.runs.config import CandidatesConfig
+        from rcp.retrieval import BM25Config
+        from rcp.runs.config import CandidatesConfig
 
         pipeline = Pipeline(
             tiny_config(data, candidates={"from": "retrieval", "retrieval": {"kind": "bm25"}}, steps=["retrieve"]),
@@ -870,7 +870,7 @@ class TestTheRetrieveAndRerankIdentities:
         ],
     )
     def test_every_model_the_candidates_payload_reaches_declares_its_roles(self, candidates: dict) -> None:
-        from rcp_ndcg.runs.config import CandidatesConfig
+        from rcp.runs.config import CandidatesConfig
 
         check_declarations(CandidatesConfig)
         identity_payload(CandidatesConfig.model_validate(candidates))
@@ -898,7 +898,7 @@ class TestTheRetrieveAndRerankIdentities:
         the field) is stale on that class: the declaration lives next to the field, and the MRO merge hands it to
         the leaves.
         """
-        import rcp_ndcg.retrieval.config as retrieval_config
+        import rcp.retrieval.config as retrieval_config
 
         check_declarations(getattr(retrieval_config, klass))
 
@@ -912,7 +912,7 @@ class TestTheRetrieveAndRerankIdentities:
                     checkpoint(str(example.id), scores)
             return []
 
-        monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", score_by_position)
+        monkeypatch.setattr("rcp.retrieval._api.RerankClient.rerank_many", score_by_position)
         candidates = {
             "rerank": {"api": "rerank", "model": "stub", "base_url": "http://stub.test:8000", **_SERVED_RERANK_BUDGET},
             "depth": 4,
@@ -978,7 +978,7 @@ class TestTheEnginesOverlay:
                 checkpoint(str(example.id), tuple(float(i) for i in range(len(example.doc_ids))))
             return []
 
-        monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", score_by_position)
+        monkeypatch.setattr("rcp.retrieval._api.RerankClient.rerank_many", score_by_position)
         monkeypatch.setenv(
             "RCP_NDCG_ENGINES", json.dumps({"reranker": {"urls": ["http://node:8000/v1"], "wait_on_outage_s": 60}})
         )
@@ -1012,8 +1012,8 @@ class TestTheEnginesOverlay:
         """The overlay rebuilds the config through its model, so an overlaid URL is normalised as a configured
         one is, and a value no configured endpoint accepts (a fake:// replica list) is refused with the typed
         error where the overlay is applied."""
-        from rcp_ndcg.judging import JudgeConfig
-        from rcp_ndcg.support.serve import ENGINES_ENV
+        from rcp.judging import JudgeConfig
+        from rcp.support.serve import ENGINES_ENV
 
         config = tiny_config(data, judge={"base_url": "http://judge.test/v1/", "model": "m"})
         configured = JudgeConfig.model_validate({"base_url": "http://n1:8000/v1", "model": "m"})
@@ -1075,7 +1075,7 @@ class TestTheEnginesOverlay:
     def test_the_overlay_refuses_roles_this_run_cannot_point_at_an_engine(
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from rcp_ndcg.support.serve import ENGINES_ENV
+        from rcp.support.serve import ENGINES_ENV
 
         def refused(variable: str, match: str) -> None:
             monkeypatch.setenv(ENGINES_ENV, json.dumps(variable))
@@ -1090,7 +1090,7 @@ class TestTheEnginesOverlay:
     def test_a_retrieval_role_takes_one_replica_url(
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from rcp_ndcg.support.serve import ENGINES_ENV
+        from rcp.support.serve import ENGINES_ENV
 
         monkeypatch.setenv(
             ENGINES_ENV,
@@ -1101,7 +1101,7 @@ class TestTheEnginesOverlay:
 
     def test_a_substance_of_the_candidates_ignores_their_runtime_fields(self, data: Path) -> None:
         """An injected engine URL (a --set or an overlay) is no config change: a failed resume keeps it."""
-        from rcp_ndcg.runs.pipeline import _substance
+        from rcp.runs.pipeline import _substance
 
         base = self._rerank()
         one = tiny_config(data, candidates=base, steps=["rerank", "tournament", "rubric", "calibrate", "evaluate"])
@@ -1126,8 +1126,8 @@ class TestTheEvaluateIdentity:
 
 class TestTheRunsSeed:
     def test_it_defaults_to_the_schedules_seed(self) -> None:
-        from rcp_ndcg.judging import RubricSchedule, TournamentSchedule
-        from rcp_ndcg.runs import RunConfig
+        from rcp.judging import RubricSchedule, TournamentSchedule
+        from rcp.runs import RunConfig
 
         assert (
             RunConfig(dataset="jsonl:x", steps=["evaluate"]).seed == TournamentSchedule().seed == RubricSchedule().seed
@@ -1151,7 +1151,7 @@ class TestTheRunsSeed:
 class TestEvaluationSystems:
     def test_a_multi_system_file_and_a_picked_system_are_scored(self, run_dir: Path, tmp_path: Path) -> None:
         """Every system of a file is scored under its own name; `<file>#<system>` picks one under the key."""
-        from rcp_ndcg.data import Rankings
+        from rcp.data import Rankings
 
         rows, _ = tiny_rows()
         orders = {row.id: row.doc_ids for row in rows}
@@ -1173,7 +1173,7 @@ class TestEvaluationSystems:
             Pipeline.resume(run_dir, overrides=[f"evaluation.systems={{x: '{both}#other'}}"]).run()
 
     def test_a_file_whose_rows_name_the_runs_dataset_is_scored(self, run_dir: Path, tmp_path: Path) -> None:
-        from rcp_ndcg.data import Rankings
+        from rcp.data import Rankings
 
         rows, _ = tiny_rows()
         orders = {row.id: row.doc_ids for row in rows}
@@ -1196,7 +1196,7 @@ class TestFailures:
         import yaml
         from click.testing import CliRunner
 
-        from rcp_ndcg.cli.main import cli
+        from rcp.cli.main import cli
 
         config = tiny_config(
             data,
@@ -1246,8 +1246,8 @@ class TestFailures:
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """The requests of a failed judging step were lost from the step and the run's usage."""
-        from rcp_ndcg.judging import JudgeClient
-        from rcp_ndcg.judging.client import BackendUnavailableError
+        from rcp.judging import JudgeClient
+        from rcp.judging.client import BackendUnavailableError
 
         complete = JudgeClient.complete
         answered = []
@@ -1298,7 +1298,7 @@ def test_a_resume_whose_judge_config_is_gone_raises_the_typed_error(
     """A resume of a finished run whose judge config file is gone fails with the typed MissingInputError from
     the identity check -- not the AttributeError of the failure handler touching an unset usage, which used to
     mask it and skip finish_step."""
-    from rcp_ndcg.judging import JudgeClient
+    from rcp.judging import JudgeClient
     from tests.judging.test_judging import _SchemaEndpoint
 
     judge_yaml = tmp_path / "judge.yaml"
@@ -1321,7 +1321,7 @@ def test_a_rankings_sourced_rerank_run_without_a_retrieve_step_reranks_the_suppl
     """`from: rankings` + a rerank step, with no retrieve step: the rankings file IS the first stage, so the
     run works -- the preamble writes the first stage from the supplied pools, the reranker rescores it, and
     the judging steps read its candidates (the combination used to fail mid-run on an internal scratch path)."""
-    from rcp_ndcg.judging import JudgeClient
+    from rcp.judging import JudgeClient
     from tests.judging.test_judging import _SchemaEndpoint
 
     rankings = tmp_path / "rankings.jsonl"
@@ -1338,7 +1338,7 @@ def test_a_rankings_sourced_rerank_run_without_a_retrieve_step_reranks_the_suppl
             checkpoint(str(example.id), tuple(float(i) for i in range(len(example.doc_ids))))
         return []
 
-    monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", score_by_position)
+    monkeypatch.setattr("rcp.retrieval._api.RerankClient.rerank_many", score_by_position)
     config = tiny_config(
         data,
         candidates={
@@ -1411,7 +1411,7 @@ def test_a_rankings_run_without_retrieve_pins_the_rankings_file_on_resume(
     so flipping ``candidates.system`` changes every pool while the file and its hash stay the same -- the
     judging, evaluate and rerank steps must re-run instead of reusing the other system's judgements, report or
     reranked candidates."""
-    from rcp_ndcg.judging import JudgeClient
+    from rcp.judging import JudgeClient
     from tests.judging.test_judging import _SchemaEndpoint
 
     rows, _ = tiny_rows()
@@ -1461,7 +1461,7 @@ def test_a_rankings_run_without_retrieve_pins_the_rankings_file_on_resume(
             checkpoint(str(example.id), tuple(float(i) for i in range(len(example.doc_ids))))
         return []
 
-    monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", score_by_position)
+    monkeypatch.setattr("rcp.retrieval._api.RerankClient.rerank_many", score_by_position)
     reranked = Pipeline(
         tiny_config(
             data,
@@ -1520,7 +1520,7 @@ class TestTheLocalDatasetContentAndTheBehaviourVersions:
         return rows
 
     def test_a_local_datasets_content_names_it(self, data: Path, tmp_path: Path) -> None:
-        from rcp_ndcg.runs.config import DatasetSource
+        from rcp.runs.config import DatasetSource
 
         rows = self._local_rows(data, tmp_path)
         source = DatasetSource(uri=f"jsonl:{rows}")
@@ -1578,7 +1578,7 @@ class TestTheLocalDatasetContentAndTheBehaviourVersions:
     def test_the_retrieve_step_identity_carries_its_behaviour_version(
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import rcp_ndcg.retrieval as retrieval
+        import rcp.retrieval as retrieval
 
         pipeline = Pipeline(
             tiny_config(data, candidates={"from": "retrieval", "retrieval": {"kind": "bm25"}}, steps=["retrieve"]),
@@ -1593,7 +1593,7 @@ class TestTheLocalDatasetContentAndTheBehaviourVersions:
     def test_the_rerank_step_identity_carries_its_behaviour_version(
         self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import rcp_ndcg.retrieval as retrieval
+        import rcp.retrieval as retrieval
 
         pipeline = Pipeline(
             tiny_config(
@@ -1632,7 +1632,7 @@ def test_only_rerank_regenerates_a_missing_first_stage(
                 checkpoint(str(example.id), scores)
         return []
 
-    monkeypatch.setattr("rcp_ndcg.retrieval._api.RerankClient.rerank_many", score_by_position)
+    monkeypatch.setattr("rcp.retrieval._api.RerankClient.rerank_many", score_by_position)
     config = tiny_config(
         data,
         candidates={
@@ -1662,7 +1662,7 @@ class TestRemoteInputs:
 
     @pytest.fixture(autouse=True)
     def _empty_memory_fs(self):
-        from rcp_ndcg import storage
+        from rcp import storage
 
         memory = storage.filesystem("memory://")
         memory.store.clear()
@@ -1716,8 +1716,8 @@ class TestRemoteInputs:
 def test_the_rankings_first_stage_orders_a_tied_pair_by_the_lower_id() -> None:
     """A9: a `from: rankings` run's pool order applies the retrieval stack's one tie rule (score descending,
     then the lower document id), the same one `Rankings.top` and the first stage's cut apply -- now the one
-    helper `rcp_ndcg.data.rankings.ordered_documents`."""
-    from rcp_ndcg.data.rankings import ordered_documents
+    helper `rcp.data.rankings.ordered_documents`."""
+    from rcp.data.rankings import ordered_documents
 
     assert ordered_documents({"d2": 1.0, "d1": 1.0}) == ["d1", "d2"]
     assert ordered_documents({"d1": 0.5, "d2": 1.0}) == ["d2", "d1"]

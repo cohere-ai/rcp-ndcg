@@ -1,7 +1,7 @@
 """The embedding wire adapters: what each profile sends, what it reads back, and what it refuses.
 
 Every test is offline: adapters build and read
-:class:`~rcp_ndcg.inference.types.Call` / :class:`~rcp_ndcg.inference.types.Reply` objects directly.
+:class:`~rcp.inference.types.Call` / :class:`~rcp.inference.types.Reply` objects directly.
 """
 
 from __future__ import annotations
@@ -12,17 +12,17 @@ from typing import Any, ClassVar
 
 import numpy as np
 import pytest
-from rcp_ndcg_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
+from rcp_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
 
-from rcp_ndcg.errors import CapabilityError, ProviderError, RequestRejectedError
-from rcp_ndcg.inference import Adapter, EmbedRequest, EncodeRole, get_adapter, known_adapters
-from rcp_ndcg.inference.adapters.embeddings import (
+from rcp.errors import CapabilityError, ProviderError, RequestRejectedError
+from rcp.inference import Adapter, EmbedRequest, EncodeRole, get_adapter, known_adapters
+from rcp.inference.adapters.embeddings import (
     CohereEmbeddings,
     GeminiEmbeddings,
     OpenAIEmbeddings,
     VoyageEmbeddings,
 )
-from rcp_ndcg.inference.types import Reply, TokenCount
+from rcp.inference.types import Reply, TokenCount
 from tests.docs._markdown import ROOT
 from tests.inference._embed import embeddings_data, vendor_payload
 
@@ -67,8 +67,8 @@ class TestRegistry:
     def test_the_embed_names_resolve_inside_their_role_only(self) -> None:
         """The registry is scoped by role: ``cohere`` is shared with the rerank role, whose lookup resolves to
         the rerank wire, never to the embedding profile."""
-        from rcp_ndcg.errors import ConfigError
-        from rcp_ndcg.inference.adapters.rerank import CohereRerankAdapter
+        from rcp.errors import ConfigError
+        from rcp.inference.adapters.rerank import CohereRerankAdapter
 
         assert get_adapter("cohere", role="rerank") is CohereRerankAdapter
         assert get_adapter("cohere", role="embed") is CohereEmbeddings
@@ -462,7 +462,7 @@ class TestNullEmbeddingRefused:
     data is a refused answer, never a silent zero row the corpus would index."""
 
     def test_a_null_embedding_is_refused(self) -> None:
-        from rcp_ndcg.errors import RequestRejectedError
+        from rcp.errors import RequestRejectedError
 
         reply = Reply(200, {"data": [{"index": 0, "embedding": None}]}, {})
         with pytest.raises(RequestRejectedError, match="without"):
@@ -471,7 +471,7 @@ class TestNullEmbeddingRefused:
             )
 
     def test_a_missing_embedding_entry_is_refused(self) -> None:
-        from rcp_ndcg.errors import RequestRejectedError
+        from rcp.errors import RequestRejectedError
 
         reply = Reply(200, {"data": [{"index": 0}]}, {})
         with pytest.raises(RequestRejectedError, match="embedding"):

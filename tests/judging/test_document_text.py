@@ -15,9 +15,9 @@ from typing import Any
 
 import httpx
 
-from rcp_ndcg.data import Dataset
-from rcp_ndcg.judging import JudgementStore, judge
-from rcp_ndcg.testing import TINY_RUBRIC, FakeJudge
+from rcp.data import Dataset
+from rcp.judging import JudgementStore, judge
+from rcp.testing import TINY_RUBRIC, FakeJudge
 
 TASK_INSTRUCTION = "Given a claim, find documents that refute the claim"
 
@@ -102,7 +102,7 @@ def test_title_joined_and_separate_documents_never_pool(tmp_path: Path) -> None:
 def test_naming_the_default_join_resumes_an_unset_store(tmp_path: Path) -> None:
     """`title: join` names the default rule: the family and the store identity leave it out exactly as an
     unset one, so a store judged with the title unset resumes with the default named."""
-    from rcp_ndcg.judging import JudgeConfig
+    from rcp.judging import JudgeConfig
 
     assert (
         JudgeConfig(base_url="http://h/v1", model="m", title="join").identity()
@@ -144,7 +144,7 @@ def test_a_dataset_without_a_task_instruction_records_none(tmp_path: Path) -> No
 def test_a_loaded_dataset_without_a_task_instruction_keeps_its_identity_key(tmp_path: Path) -> None:
     """An absent instruction is the absence of a declaration: a loaded dataset that carries none keeps the
     identity it had (the key is added only when one is declared, as ``identity_payload`` does)."""
-    from rcp_ndcg.data import load_dataset
+    from rcp.data import load_dataset
 
     root = tmp_path / "beir"
     (root / "qrels").mkdir(parents=True)

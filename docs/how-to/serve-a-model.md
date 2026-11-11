@@ -8,28 +8,28 @@ and a recipe returns to `verified` only from a wave that re-recorded its corpus 
 these 34 are verified there today, and the two `topk-embed-v1` variants are the owner-disposed `failed` rows
 (42 verified today across all 44 recipes, none `unverified`; the
 [GPU validation ledger](../reference/gpu-validation.md) states the rule and records every row). This walk-through
-serves one, points `rcp-ndcg` at it and scores what it retrieves. The rules of the
+serves one, points `rcp` at it and scores what it retrieves. The rules of the
 recipes are in [recipes and serving models](../reference/recipes.md); hosted APIs (Cohere, Voyage, Gemini)
 need none of this -- [embedding endpoints](../concepts/embeddings.md) covers them.
 
 ## 1. The engine host: one wheel on the stock image
 
-The serving recipes and the `rcp-ndcg-vllm serve` command ship in the `rcp-ndcg-vllm` distribution -- the lean
+The serving recipes and the `rcp-vllm serve` command ship in the `rcp-vllm` distribution -- the lean
 serving package (its only dependencies are pydantic and PyYAML). Installing it with `--no-deps` is the one
 change the engine environment takes; a `pip freeze` before and after differs by exactly this wheel.
 
 ```bash
-python3 -m pip install --no-deps rcp-ndcg-vllm==<version>
-rcp-ndcg-vllm serve qwen3-embedding-0.6b --port 8000
+python3 -m pip install --no-deps rcp-vllm==<version>
+rcp-vllm serve qwen3-embedding-0.6b --port 8000
 ```
 
-`rcp-ndcg-vllm serve <recipe-id> [--variant VARIANT-ID] [--port PORT] [--set PATH=VALUE ...] [--dry-run]`
+`rcp-vllm serve <recipe-id> [--variant VARIANT-ID] [--port PORT] [--set PATH=VALUE ...] [--dry-run]`
 builds the `vllm serve`
 argv from the recipe's package data -- the chat template file path, the media flags, the pooler config -- and
 runs it. `--dry-run` prints the argv (one shell-quoted line), the recipe's identity, the applied overrides and
 the engine environment's patch opt-in (`RCP_NDCG_VLLM_PATCHES`, empty for a recipe that declares none), and
 exits, to inspect what would run. The argv alone is not the engine command for a patched recipe: the patches
-are inert unless the engine process carries the variable, so run `rcp-ndcg-vllm serve` itself (or export the
+are inert unless the engine process carries the variable, so run `rcp-vllm serve` itself (or export the
 printed value) rather than pasting the argv alone. A checkpoint that needs its model plugin is refused with the
 exact install line. The check runs in the interpreter the `vllm` executable's shebang names, so a `vllm` from
 another environment is judged by its own environment (the wheel must be installed there too).
@@ -38,7 +38,7 @@ Two options when the image does not carry the wheel: bake it into your image (im
 it inline where the engine command runs:
 
 ```bash
-bash -lc 'python3 -m pip install --no-deps rcp-ndcg-vllm==<version> && exec rcp-ndcg-vllm serve <id> --port 8000'
+bash -lc 'python3 -m pip install --no-deps rcp-vllm==<version> && exec rcp-vllm serve <id> --port 8000'
 ```
 
 The same two forms work in a run config's `serve:` block, whose `command` is yours verbatim ([runs and job
@@ -51,7 +51,7 @@ how it batches. Those are the recipe's **deployment** fields, and `--set <path>=
 time without touching the recipe:
 
 ```bash
-rcp-ndcg-vllm serve qwen3-reranker-0.6b --port 8000 \
+rcp-vllm serve qwen3-reranker-0.6b --port 8000 \
   --set resources.gpus=2 \
   --set serve.gpu_memory_utilization=0.85 \
   --set serve.max_num_seqs=64 \
@@ -69,7 +69,7 @@ rcp-ndcg-vllm serve qwen3-reranker-0.6b --port 8000 \
 | `serve.port` | `--port` | wins over the console's `--port`; 0-65535 (0: the engine binds an ephemeral port) |
 | `serve.max_model_len` | `--max-model-len` | at or above the client's largest token budget, see below |
 
-The recipe schema declares this surface once (`rcp_ndcg_vllm.recipe.FIELD_ROLES`), so the list above is the
+The recipe schema declares this surface once (`rcp_vllm.recipe.FIELD_ROLES`), so the list above is the
 schema's, not the command's: a path that is not declared DEPLOYMENT is refused. A **content** field -- the
 model, the revision, `serve.dtype`, the pooler config, a template, the hf overrides, a patch -- is refused by
 name with the hint *a different revision or content is a different variant: add a variant row*: serving
@@ -109,7 +109,7 @@ every pooling recipe whose largest client budget reaches `serve.max_model_len`
 validates it, families included, and the file never needs to live in the package.
 
 ```bash
-rcp-ndcg-vllm serve ./my-family/ --variant my-reranker-0.6b --port 8000
+rcp-vllm serve ./my-family/ --variant my-reranker-0.6b --port 8000
 ```
 
 `--variant` names the size when the directory declares more than one; a directory with exactly one variant
@@ -137,11 +137,11 @@ encoder:
 `--retriever recipe:./my-family/` / `--reranker recipe:./my-family/` expands to it. A multi-variant family
 directory names its variants in the refusal: point `recipe:` at a single-variant directory, or serve the
 variant with `--variant` and use the served URL. The `schema_version` check applies to a file of your own
-exactly as it does to a shipped one: a version this `rcp-ndcg` does not read is refused, naming both.
+exactly as it does to a shipped one: a version this `rcp` does not read is refused, naming both.
 
 ## 4. The client host: `recipe:` in the retriever config
 
-The client side needs `rcp-ndcg` with `rcp-ndcg-vllm` installed alongside it (no extra alias): a role config
+The client side needs `rcp` with `rcp-vllm` installed alongside it (no extra alias): a role config
 naming `recipe: <id>` takes its whole client block -- api, tokenizer, budgets, template, media, instruction
 mode -- from the recipe, and `base_url` (and the other run-time fields) stays on the config. Any content field
 set explicitly must equal the recipe's, or the config is refused with an error naming both values.
@@ -159,14 +159,14 @@ template's anchors preserved, and every cut is recorded -- never an engine-side 
 ([text budgets](../concepts/text-budgets.md)).
 
 ```bash
-rcp-ndcg retrieval index --dataset suite:nanobeir --subset NanoSciFactRetrieval --retriever retriever.yaml --out index/
-rcp-ndcg retrieval search --dataset suite:nanobeir --subset NanoSciFactRetrieval --retriever retriever.yaml --out rankings.parquet
-rcp-ndcg eval score --rankings rankings.parquet --suite nanobeir --subset NanoSciFactRetrieval
+rcp retrieval index --dataset suite:nanobeir --subset NanoSciFactRetrieval --retriever retriever.yaml --out index/
+rcp retrieval search --dataset suite:nanobeir --subset NanoSciFactRetrieval --retriever retriever.yaml --out rankings.parquet
+rcp eval score --rankings rankings.parquet --suite nanobeir --subset NanoSciFactRetrieval
 ```
 
 The command line also takes the shorthand `--retriever recipe:qwen3-embedding-0.6b` (and `--reranker
 recipe:<id>`), which expands to the mapping above with the URL from `--set retriever.encoder.base_url=...` or
-from a `serve:` engine. `rcp-ndcg retrieval rerank` re-scores the pool with a `recipe:` reranker the same way
+from a `serve:` engine. `rcp retrieval rerank` re-scores the pool with a `recipe:` reranker the same way
 ([retrieval and reranking](../concepts/retrieval.md)), and a run's `retrieve`, `rerank` steps carry the same
 configs.
 

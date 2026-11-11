@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg.data import tokenizer as tokenizer_module
-from rcp_ndcg.data.tokenizer import TextTokenizer, load_tokenizer
-from rcp_ndcg.errors import DependencyError, MissingInputError
+from rcp.data import tokenizer as tokenizer_module
+from rcp.data.tokenizer import TextTokenizer, load_tokenizer
+from rcp.errors import DependencyError, MissingInputError
 from tests._tokenizers import framed_bpe_tokenizer, save, spaced_special_tokenizer, word_tokenizer
 
 
@@ -130,7 +130,7 @@ def test_a_missing_library_names_the_extra(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setitem(sys.modules, "tokenizers", None)
     with pytest.raises(DependencyError) as caught:
         tokenizer_module.load_tokenizer(path)
-    assert caught.value.hint == 'pip install "rcp-ndcg[hf]"'
+    assert caught.value.hint == 'pip install "rcp[hf]"'
 
 
 def test_embedded_truncation_and_padding_do_not_cap_the_counts(tmp_path: Path) -> None:

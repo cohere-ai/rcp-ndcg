@@ -1,4 +1,4 @@
-"""``rcp_ndcg.testing.results_conformance``: the sink contract as one check a sink's own tests call.
+"""``rcp.testing.results_conformance``: the sink contract as one check a sink's own tests call.
 
 A sink consumes a versioned record and nothing else: its name is a registered entry point, its constructor takes
 ``uri`` first, it accepts a valid record without mutating it, ``flush`` is idempotent, and it refuses a record
@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.results import (
+from rcp.errors import ConfigError
+from rcp.results import (
     RESULT_SCHEMA,
     JsonlResultSink,
     NullResultSink,
@@ -25,7 +25,7 @@ from rcp_ndcg.results import (
     ResultSubject,
     record_identity,
 )
-from rcp_ndcg.testing import results_conformance
+from rcp.testing import results_conformance
 from tests.results._sinks import inject_sinks
 
 
@@ -154,4 +154,4 @@ def test_the_conformance_names_the_schema_it_emits(monkeypatch: pytest.MonkeyPat
             self._known(record)
 
     results_conformance(Strict(), registered=False)
-    assert RESULT_SCHEMA == "rcp-ndcg.result-record.v1"
+    assert RESULT_SCHEMA == "rcp.result-record.v1"

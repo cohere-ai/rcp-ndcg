@@ -2,8 +2,8 @@
 
 ## Supported versions
 
-Security fixes land on the latest release only. The published distributions (`rcp-ndcg`, `rcp-ndcg-core`,
-`rcp-ndcg-vllm`) carry one version and are released together; upgrade to the newest one before reporting
+Security fixes land on the latest release only. The published distributions (`rcp`, `rcp-core`,
+`rcp-vllm`) carry one version and are released together; upgrade to the newest one before reporting
 anything that may already be fixed.
 
 ## Reporting a vulnerability

@@ -1,5 +1,5 @@
 """The text-budget wiring in the role clients (item 4): a config with ``max_tokens`` fits every request
-through :func:`rcp_ndcg.data.preprocess.fit` -- only content spans cut, the template re-attached (anchors
+through :func:`rcp.data.preprocess.fit` -- only content spans cut, the template re-attached (anchors
 kept), every cut recorded, and nothing left for the engine to truncate (no ``truncate_prompt_tokens`` or
 kin is ever sent).
 """
@@ -15,19 +15,19 @@ from typing import Any
 import numpy as np
 import pytest
 from PIL import Image as PILImage
-from rcp_ndcg_core.content import Content, ImagePart, TextPart
-from rcp_ndcg_core.records import RankingExample
+from rcp_core.content import Content, ImagePart, TextPart
+from rcp_core.records import RankingExample
 
-from rcp_ndcg.data.prepare import apply_media_fit
-from rcp_ndcg.data.preprocess import TextBudgetExceededError, TextTruncationCensus
-from rcp_ndcg.data.resolution import ImagePolicy, content_media_tokens
-from rcp_ndcg.data.templates import Segment, TemplateSpec
-from rcp_ndcg.data.tokenizer import load_tokenizer
-from rcp_ndcg.errors import CapabilityError, ConfigError
-from rcp_ndcg.inference import EmbeddingClient, PoolingClient, RerankClient
-from rcp_ndcg.inference.clients.rerank import QUERY_DOC_ID
-from rcp_ndcg.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
-from rcp_ndcg.inference.types import EncodeRole, Reply, Usage
+from rcp.data.prepare import apply_media_fit
+from rcp.data.preprocess import TextBudgetExceededError, TextTruncationCensus
+from rcp.data.resolution import ImagePolicy, content_media_tokens
+from rcp.data.templates import Segment, TemplateSpec
+from rcp.data.tokenizer import load_tokenizer
+from rcp.errors import CapabilityError, ConfigError
+from rcp.inference import EmbeddingClient, PoolingClient, RerankClient
+from rcp.inference.clients.rerank import QUERY_DOC_ID
+from rcp.inference.config import EmbeddingEndpoint, PoolingEndpoint, RerankEndpoint
+from rcp.inference.types import EncodeRole, Reply, Usage
 from tests._tokenizers import byte_bpe_tokenizer, framed_bpe_tokenizer, save, word_tokenizer
 from tests.conftest import SESSION_TOKENIZER
 from tests.inference._pooling import PoolingServer
@@ -209,7 +209,7 @@ class TestEmbedBudget:
         """The one preparation path: a media-carrying request for the text-only embed role is refused
         before the media is fetched (the adapters' own contract, kept in front of preparation); the
         media-token reservation the fit receives is the prepared request's."""
-        from rcp_ndcg_core.content import MediaRef
+        from rcp_core.content import MediaRef
 
         client = EmbeddingClient(
             EmbeddingEndpoint(base_url="http://127.0.0.1:9000/v1", model="m", tokenizer=tokenizer_json, max_tokens=64),
@@ -451,7 +451,7 @@ class TestRerankBudget:
         assert (cut.doc_id, cut.cause) == ("1", "document_share")
         plain = self._config(tokenizer=tokenizer_json, max_tokens=64)
         capped = self._config(tokenizer=tokenizer_json, max_tokens=64, document_max_tokens=5)
-        from rcp_ndcg.support.identity import identity_payload
+        from rcp.support.identity import identity_payload
 
         assert identity_payload(capped)["document_max_tokens"] == 5
         assert "document_max_tokens" not in identity_payload(plain)
@@ -631,7 +631,7 @@ class TestQueryShareSettled:
         changed what it sends, and the settlement row says so -- ``cause: query_share`` and the uncut probe
         request's size (the frame with the uncut query, an empty document), which is under the budget. No
         pair row is recorded: the documents ship whole."""
-        from rcp_ndcg.data.preprocess import rendered_pair_tokens
+        from rcp.data.preprocess import rendered_pair_tokens
 
         config = RerankEndpoint(
             base_url="http://127.0.0.1:9000/v1",
@@ -669,7 +669,7 @@ class TestQueryShareSettled:
         assert sender.bodies[-1]["query"] == long_query
 
     def test_a_query_that_alone_fills_the_budget_is_refused_without_a_split(self, tokenizer_json: str) -> None:
-        from rcp_ndcg.data.preprocess import TextBudgetExceededError
+        from rcp.data.preprocess import TextBudgetExceededError
 
         client = RerankClient(
             RerankEndpoint(
@@ -852,7 +852,7 @@ class TestMediaUnderTheBudget:
         assert "plain" in sent_texts, "the text item rides with its media"
 
     def test_media_alone_over_the_budget_fails_under_the_fail_policy(self, tmp_path: Any) -> None:
-        from rcp_ndcg.data.preprocess import TextBudgetExceededError
+        from rcp.data.preprocess import TextBudgetExceededError
 
         sender = RecordingSender()
         client = self._media_client(sender, max_tokens=60, on_overflow="fail")
@@ -891,10 +891,10 @@ class TestMediaUnderTheBudget:
         are refused once the same request carries it, because the engine's prompt is frame + instruction +
         media and the text fit reserves the same term.  Without the reservation the media fit keeps what the
         text fit then refuses."""
-        from rcp_ndcg_core.content import ImagePart
+        from rcp_core.content import ImagePart
 
-        from rcp_ndcg.data.prepare import prepare_image
-        from rcp_ndcg.data.preprocess import rendered_pair_tokens
+        from rcp.data.prepare import prepare_image
+        from rcp.data.preprocess import rendered_pair_tokens
 
         tokenizer = load_tokenizer(tokenizer_json)
         instruction = " ".join(["evidence"] * 5)
@@ -1091,7 +1091,7 @@ class TestPerSideMedia:
         return PoolingClient(PoolingEndpoint(**settings), sender=RecordingSender())
 
     def test_media_on_a_forbidden_side_is_refused_naming_the_field(self, tokenizer_json: str, tmp_path: Any) -> None:
-        from rcp_ndcg.errors import CapabilityError
+        from rcp.errors import CapabilityError
 
         client = self._pool_client(tokenizer_json, media_sides=["document"])
         with pytest.raises(CapabilityError, match="media_sides"):
@@ -1101,7 +1101,7 @@ class TestPerSideMedia:
         assert result.num_items == 1
 
     def test_media_on_the_rerank_query_is_refused_naming_the_field(self, tokenizer_json: str, tmp_path: Any) -> None:
-        from rcp_ndcg.errors import CapabilityError
+        from rcp.errors import CapabilityError
 
         config = RerankEndpoint(
             base_url="http://127.0.0.1:9000/v1",
@@ -1133,7 +1133,7 @@ class TestPerSideMedia:
     def test_an_explicitly_empty_media_sides_allows_no_side(self, tokenizer_json: str, tmp_path: Any) -> None:
         """The empty field is a real declaration (a config without media fields may carry it): media on ANY
         side is refused naming the field, not silently widened back to both sides."""
-        from rcp_ndcg.errors import CapabilityError
+        from rcp.errors import CapabilityError
 
         config = RerankEndpoint(
             base_url="http://127.0.0.1:9000/v1",
@@ -1183,7 +1183,7 @@ class TestEmptyQuery:
         )
 
     def test_the_default_refuses_an_empty_query_naming_the_id(self, tokenizer_json: str) -> None:
-        from rcp_ndcg.errors import DataError
+        from rcp.errors import DataError
 
         client = RerankClient(
             RerankEndpoint(
@@ -1267,7 +1267,7 @@ class TestMediaGates:
         assert result.num_items == 2
 
     def test_one_request_over_the_limit_is_refused(self, tokenizer_json: str, tmp_path: Any) -> None:
-        from rcp_ndcg.errors import CapabilityError
+        from rcp.errors import CapabilityError
 
         client = self._pool_client(tokenizer_json, max_images=1)
         page = tmp_path / "two.png"
@@ -1276,13 +1276,13 @@ class TestMediaGates:
         PILImage.new("RGB", (300, 300), (10, 10, 200)).save(page, format="PNG")
         content = Content.from_parts(
             [
-                __import__("rcp_ndcg_core.content", fromlist=["ImagePart"]).ImagePart(
-                    ref=__import__("rcp_ndcg_core.content", fromlist=["MediaRef"]).MediaRef(
+                __import__("rcp_core.content", fromlist=["ImagePart"]).ImagePart(
+                    ref=__import__("rcp_core.content", fromlist=["MediaRef"]).MediaRef(
                         uri=page.as_uri(), mime="image/png"
                     )
                 ),
-                __import__("rcp_ndcg_core.content", fromlist=["ImagePart"]).ImagePart(
-                    ref=__import__("rcp_ndcg_core.content", fromlist=["MediaRef"]).MediaRef(
+                __import__("rcp_core.content", fromlist=["ImagePart"]).ImagePart(
+                    ref=__import__("rcp_core.content", fromlist=["MediaRef"]).MediaRef(
                         uri=page.as_uri(), mime="image/png"
                     )
                 ),
@@ -1293,7 +1293,7 @@ class TestMediaGates:
         assert "max_images" in (caught.value.hint or ""), "the refusal's hint names the knob"
 
     def test_media_for_a_model_that_reads_none_is_refused(self, tokenizer_json: str, tmp_path: Any) -> None:
-        from rcp_ndcg.errors import CapabilityError
+        from rcp.errors import CapabilityError
 
         client = self._pool_client(tokenizer_json, max_images=0)
         with pytest.raises(CapabilityError, match="max_images") as caught:
@@ -1333,7 +1333,7 @@ class TestRerankEmptyDocuments:
 
         class ScoringSender(RecordingSender):
             async def send(self, calls: Any) -> list[Any]:
-                from rcp_ndcg.inference.types import Reply
+                from rcp.inference.types import Reply
 
                 for call in calls:
                     sent.append(call.json)
@@ -1391,13 +1391,13 @@ class TestEngineMediaCheck:
         assert asyncio.run(client.check_engine_media()) is None, "no media, nothing to check"
 
     def test_a_mismatch_is_refused_with_the_hint(self, tokenizer_json: str) -> None:
-        from rcp_ndcg.errors import ProviderError
+        from rcp.errors import ProviderError
 
         class LyingUsageSender(RecordingSender):
             """Answers the probe's /pooling with a prompt-token report the count contradicts."""
 
             async def send(self, calls: Any) -> list[Any]:
-                from rcp_ndcg.inference.types import Reply
+                from rcp.inference.types import Reply
 
                 return [Reply(200, {"data": [], "usage": {"prompt_tokens": 9999}}, {}) for _ in calls]
 
@@ -1408,7 +1408,7 @@ class TestEngineMediaCheck:
     def test_a_reply_without_usage_is_recorded_not_checked(self, tokenizer_json: str) -> None:
         class UsagelessSender(RecordingSender):
             async def send(self, calls: Any) -> list[Any]:
-                from rcp_ndcg.inference.types import Reply
+                from rcp.inference.types import Reply
 
                 return [Reply(200, {"data": [{"index": 0, "data": [[1.0, 1.0]]}]}, {}) for _ in calls]
 
@@ -1450,7 +1450,7 @@ class TestRerankChunkAndOmitCompose:
     def test_chunked_documents_with_an_omitted_sibling(self, tokenizer_json: str) -> None:
         class ScoringSender(RecordingSender):
             async def send(self, calls: Any) -> list[Any]:
-                from rcp_ndcg.inference.types import Reply
+                from rcp.inference.types import Reply
 
                 for call in calls:
                     self.bodies.append(call.json)
@@ -1515,7 +1515,7 @@ class TestEngineMediaCheckPass:
 
         class HonestPoolingSender(RecordingSender):
             async def send(self, calls: Any) -> list[Any]:
-                from rcp_ndcg.inference.types import Reply
+                from rcp.inference.types import Reply
 
                 replies = []
                 for call in calls:
@@ -1558,7 +1558,7 @@ class TestEngineMediaCheckPass:
 
         class HonestRerankSender(RecordingSender):
             async def send(self, calls: Any) -> list[Any]:
-                from rcp_ndcg.inference.types import Reply
+                from rcp.inference.types import Reply
 
                 replies = []
                 for call in calls:
@@ -1576,8 +1576,8 @@ class TestEngineMediaCheckPass:
 
         sender = HonestRerankSender()
         sender.template = self.TEMPLATE_TOKENS
-        from rcp_ndcg.inference import RerankClient
-        from rcp_ndcg.inference.config import RerankEndpoint
+        from rcp.inference import RerankClient
+        from rcp.inference.config import RerankEndpoint
 
         client = RerankClient(
             RerankEndpoint(
@@ -1605,7 +1605,7 @@ class _CountingSender(RecordingSender):
     async def send(self, calls: Any) -> list[Any]:
         from PIL import Image as PILImage
 
-        from rcp_ndcg.inference.types import Reply
+        from rcp.inference.types import Reply
 
         # The probe call's lowered body carries the request the engine saw; the client's count of the
         # same request is what an honest engine reports.
@@ -1724,7 +1724,7 @@ class _ChunkScoreSender(RecordingSender):
     """Chunk k of the wire's candidate set scores k/10: the pool must take each document's best chunk."""
 
     async def send(self, calls: Any) -> list[Any]:
-        from rcp_ndcg.inference.types import Reply
+        from rcp.inference.types import Reply
 
         for call in calls:
             self.bodies.append(call.json)
@@ -1744,7 +1744,7 @@ class TestVideoContainerFit:
 
     @staticmethod
     def _policies() -> tuple[ImagePolicy, Any]:
-        from rcp_ndcg.data.resolution import VideoPolicy
+        from rcp.data.resolution import VideoPolicy
 
         # qwen3_vl: the family whose fps rule (and so a container count) is ported; the Qwen2-VL families
         # refuse a container count (their engine backend is fps-driven and their rule is not ported).
@@ -1754,9 +1754,9 @@ class TestVideoContainerFit:
 
     @staticmethod
     def _container_content(tmp_path: Any) -> Any:
-        from rcp_ndcg_core.content import VideoPart
+        from rcp_core.content import VideoPart
 
-        from rcp_ndcg.data.media import MediaRef
+        from rcp.data.media import MediaRef
 
         container = tmp_path / "clip.mp4"
         container.write_bytes(b"mp4-bytes")
@@ -1781,7 +1781,7 @@ class TestVideoContainerFit:
         budget allows, dropped whole when it does not -- never a spurious DataError."""
         from PIL import Image as PILImage
 
-        from rcp_ndcg.data.prepare import fit_media_to_budget, prepare_request
+        from rcp.data.prepare import fit_media_to_budget, prepare_request
 
         image, video = self._policies()
         big = tmp_path / "page.png"
@@ -1793,7 +1793,7 @@ class TestVideoContainerFit:
 
     def test_a_container_that_cannot_fit_is_dropped_whole(self, tokenizer_json: str, tmp_path: Any) -> None:
         """A container cannot shrink: under ``cut`` the fit drops it whole, recorded under its doc_id."""
-        from rcp_ndcg.data.prepare import fit_media_to_budget, prepare_request
+        from rcp.data.prepare import fit_media_to_budget, prepare_request
 
         image, video = self._policies()
         request = prepare_request([self._container_content(tmp_path)], image, video)
@@ -1804,10 +1804,10 @@ class TestVideoContainerFit:
         """The client passes its loaded tokenizer into the media fit: an fps container whose exact count
         (98) fits ``max_tokens: 100`` is kept, though the family's timestamp bound (130) would drop it.
         This is the wiring's own regression test (reverting `_base`'s tokenizer pass must redden it)."""
-        from rcp_ndcg_core.content import VideoPart
+        from rcp_core.content import VideoPart
 
-        from rcp_ndcg.data.media import MediaRef
-        from rcp_ndcg.data.resolution import VideoPolicy
+        from rcp.data.media import MediaRef
+        from rcp.data.resolution import VideoPolicy
         from tests._tokenizers import save, vendored_qwen3_vl_tokenizer
 
         tokenizer_dir = tmp_path / "tok"
@@ -1854,7 +1854,7 @@ class TestDropCensusDocIds:
     role name, never another document's id (the re-fix round's shifts)."""
 
     def test_rerank_pair_query_image_and_document_image_both_dropped(self, tokenizer_json: str, tmp_path: Any) -> None:
-        from rcp_ndcg.data.prepare import MediaCensus
+        from rcp.data.prepare import MediaCensus
 
         census = MediaCensus()
         client = RerankClient(
@@ -1878,7 +1878,7 @@ class TestDropCensusDocIds:
         assert rows == {QUERY_DOC_ID, "0"}, "each drop under its own input's doc_id, never the role name"
 
     def test_a_document_with_two_images_both_dropped(self, tokenizer_json: str, tmp_path: Any) -> None:
-        from rcp_ndcg.data.prepare import MediaCensus
+        from rcp.data.prepare import MediaCensus
 
         census = MediaCensus()
         client = RerankClient(
@@ -1904,7 +1904,7 @@ class TestDropCensusDocIds:
         assert rows == {"0"}, "both drops under the document's id, never the role name"
 
     def test_pool_content_with_two_images_both_dropped(self, tokenizer_json: str, tmp_path: Any) -> None:
-        from rcp_ndcg.data.prepare import MediaCensus
+        from rcp.data.prepare import MediaCensus
 
         census = MediaCensus()
         client = PoolingClient(
@@ -1937,7 +1937,7 @@ def _words(count: int) -> str:
 
 def _image_content(tmp_path: Any, index: int, size: int) -> Any:
     """One square PNG (``size`` a multiple of the processor's patch factor, so the token count is exact)."""
-    from rcp_ndcg_core.content import Content
+    from rcp_core.content import Content
 
     page = tmp_path / f"page-{index}-{size}.png"
     PILImage.new("RGB", (size, size), (10, 10, 200)).save(page, format="PNG")
@@ -2198,8 +2198,8 @@ class TestEmbedMessagesMediaFit:
     POLICY = {"min_px": 3136, "max_px": 1003520, "processor": "qwen2_vl"}
 
     def _client(self, tokenizer_json: str, *, max_tokens: int, template: Any = None, census: Any = None) -> Any:
-        from rcp_ndcg.inference import EmbeddingClient
-        from rcp_ndcg.inference.config import EmbeddingEndpoint
+        from rcp.inference import EmbeddingClient
+        from rcp.inference.config import EmbeddingEndpoint
 
         return EmbeddingClient(
             EmbeddingEndpoint(
@@ -2234,7 +2234,7 @@ class TestEmbedMessagesMediaFit:
     def test_the_census_rows_name_the_source_never_a_data_uri(self, tokenizer_json: str, tmp_path: Any) -> None:
         """The kept and the dropped media are recorded under their SOURCE uri: a second preparation of the
         already-prepared contents would record the inlined ``data:`` bytes instead."""
-        from rcp_ndcg.data.prepare import MediaCensus
+        from rcp.data.prepare import MediaCensus
 
         census = MediaCensus()
         client = self._client(tokenizer_json, max_tokens=4, census=census)
@@ -2250,7 +2250,7 @@ class TestEmbedMessagesMediaFit:
 
 def test_the_pair_fit_invariant_message_carries_its_numbers() -> None:
     """The bug-report DataError interpolates its numbers -- no literal braces in the message a user reports."""
-    from rcp_ndcg.errors import DataError
+    from rcp.errors import DataError
 
     client = RerankClient(
         RerankEndpoint(
@@ -2264,7 +2264,7 @@ def test_the_pair_fit_invariant_message_carries_its_numbers() -> None:
             load_tokenizer(str(SESSION_TOKENIZER)), ImagePolicy(min_px=3136, max_px=1003520, processor="qwen2_vl")
         ),
     )
-    from rcp_ndcg.data.preprocess import ContentParts
+    from rcp.data.preprocess import ContentParts
 
     contents: list[ContentParts] = [("q", " ".join(["word"] * 50))]
     with pytest.raises(DataError, match="over the budget of 12") as caught:
@@ -2310,7 +2310,7 @@ class TestLongQueryDoesNotDropFittingMedia:
 
 class TestProcessingRecords:
     """H2 (decision 9): every role client's preparation emits, per input row it changed, one
-    :class:`~rcp_ndcg.data.preprocess.ProcessingRecord` naming each change's mechanism -- a text cut to the
+    :class:`~rcp.data.preprocess.ProcessingRecord` naming each change's mechanism -- a text cut to the
     budget (with the uncut and kept request totals, frame and media included), a query-share settlement, a
     per-document cap, an empty-document substitution, a media resize or drop. A row without a record was sent as
     given: a consumer (the equivalence harness) decides gating from the record alone."""

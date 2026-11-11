@@ -1,4 +1,4 @@
-"""``rcp-ndcg run start`` against the offline judge: estimate, plan, run, resume, no-resume."""
+"""``rcp run start`` against the offline judge: estimate, plan, run, resume, no-resume."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ import pytest
 import yaml
 from click.testing import CliRunner
 
-from rcp_ndcg.cli.main import cli
-from rcp_ndcg.errors import ExitCode
+from rcp.cli.main import cli
+from rcp.errors import ExitCode
 from tests.conftest import SESSION_TOKENIZER
 from tests.runs.conftest import tiny_config
 
@@ -96,7 +96,7 @@ class _FakeRunner:
 @pytest.fixture
 def fake_runner(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, ...]]:
     _FakeRunner.submitted = []
-    monkeypatch.setattr("rcp_ndcg.runs.execution.get_runner", lambda name, **options: _FakeRunner(**options))
+    monkeypatch.setattr("rcp.runs.execution.get_runner", lambda name, **options: _FakeRunner(**options))
     return _FakeRunner.submitted
 
 
@@ -118,13 +118,13 @@ def test_a_run_on_a_runner_is_submitted_once_and_its_job_runs_it_here(
 
 
 def test_the_library_entry_point_honours_the_configured_runner(data: Path, tmp_path: Path, fake_runner: list) -> None:
-    import rcp_ndcg
+    import rcp
 
     config = tiny_config(data, runner={"name": "fake"})
-    run = rcp_ndcg.run(config, runs_dir=str(tmp_path / "runs"))
+    run = rcp.run(config, runs_dir=str(tmp_path / "runs"))
     assert len(fake_runner) == 1 and run.manifest.status.value == "submitted"
     # Resuming the run directory (what the job does) runs it here.
-    assert rcp_ndcg.run(run.dir).manifest.status.value == "completed"
+    assert rcp.run(run.dir).manifest.status.value == "completed"
     assert len(fake_runner) == 1
 
 
@@ -151,11 +151,11 @@ def test_a_dry_run_without_resume_plans_every_step(finished: Path) -> None:
 def test_a_cluster_run_requests_the_resources_image_and_env_of_its_runner_options(
     data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import rcp_ndcg
-    from rcp_ndcg.errors import ConfigError
-    from rcp_ndcg.runners import RunnerError
-    from rcp_ndcg.runs.config import DatasetSource
-    from rcp_ndcg.runs.run import Run
+    import rcp
+    from rcp.errors import ConfigError
+    from rcp.runners import RunnerError
+    from rcp.runs.config import DatasetSource
+    from rcp.runs.run import Run
 
     submitted: list[str] = []
 
@@ -165,37 +165,37 @@ def test_a_cluster_run_requests_the_resources_image_and_env_of_its_runner_option
         submitted.append(input_text or "")
         return '{"metadata": {"uid": "u"}}' if argv[0] == "kubectl" else "4242\n"
 
-    monkeypatch.setattr("rcp_ndcg.runners.slurm.run_cli", scheduler)
-    monkeypatch.setattr("rcp_ndcg.runners.kubernetes.run_cli", scheduler)
+    monkeypatch.setattr("rcp.runners.slurm.run_cli", scheduler)
+    monkeypatch.setattr("rcp.runners.kubernetes.run_cli", scheduler)
     job = {
         "resources": {"gpus": 2, "cpus": 8, "memory_gb": 64, "time_limit_s": 7200},
-        "image": "registry.example.com/rcp-ndcg:vllm",
+        "image": "registry.example.com/rcp:vllm",
         "env": {"HF_HOME": "/scratch/hf"},
     }
     slurm = {"partition": "gpu", "log_dir": str(tmp_path / "slurm"), "container_runtime": "apptainer", **job}
-    run = rcp_ndcg.run(tiny_config(data, runner={"name": "slurm", "options": slurm}), runs_dir=str(tmp_path / "runs"))
+    run = rcp.run(tiny_config(data, runner={"name": "slurm", "options": slurm}), runs_dir=str(tmp_path / "runs"))
     (script,) = submitted
     for line in ("--gres=gpu:2", "--cpus-per-task=8", "--mem=65536M", "--time=0-02:00:00", "--partition=gpu"):
         assert f"#SBATCH {line}\n" in script
-    assert "registry.example.com/rcp-ndcg:vllm" in script and "export HF_HOME=/scratch/hf" in script
+    assert "registry.example.com/rcp:vllm" in script and "export HF_HOME=/scratch/hf" in script
     # The job fields are the job's, not the runner's: the recorded options rebuild the runner for run status.
     assert "resources" not in Run(run.dir).jobs()["options"]
-    assert rcp_ndcg.runs.execution.status(run.dir).runner == "slurm"
+    assert rcp.runs.execution.status(run.dir).runner == "slurm"
 
     submitted.clear()
     kubernetes = {"namespace": "eval", **job}
     local = tiny_config(data, runner={"name": "kubernetes", "options": kubernetes}, mirror="memory://runs/k8s")
     with pytest.raises(ConfigError, match="do not see this host's files") as refused:  # the pod cannot read it
-        rcp_ndcg.run(local, runs_dir=str(tmp_path / "refused"))
+        rcp.run(local, runs_dir=str(tmp_path / "refused"))
     assert refused.value.details["inputs"] == [f"dataset: {data}"] and not (tmp_path / "refused").exists()
     import fsspec
 
     fsspec.filesystem("memory").pipe("/data/rows.jsonl", data.read_bytes())
     config = local.model_copy(update={"dataset": DatasetSource(uri="jsonl:memory://data/rows.jsonl")})
-    run = rcp_ndcg.run(config, runs_dir=str(tmp_path / "runs"))
+    run = rcp.run(config, runs_dir=str(tmp_path / "runs"))
     manifest = yaml.safe_load(submitted[0])
     container = manifest["spec"]["template"]["spec"]["containers"][0]
-    assert container["image"] == "registry.example.com/rcp-ndcg:vllm"
+    assert container["image"] == "registry.example.com/rcp:vllm"
     assert container["resources"]["limits"] == {"nvidia.com/gpu": 2, "cpu": 8, "memory": "64Gi"}
     assert manifest["spec"]["activeDeadlineSeconds"] == 7200
     assert "export HF_HOME=/scratch/hf" in container["command"][2]
@@ -299,7 +299,7 @@ class TestRunnersAndServe:
         plan = _start(str(config), "--runs-dir", str(tmp_path / "runs"), "--dry-run")
         (script,) = plan["rendered"].values()
         assert script.startswith("#!/usr/bin/env bash\n#SBATCH --job-name=rcp-")
-        assert "rcp-ndcg run resume --run" in script
+        assert "rcp run resume --run" in script
         assert not (tmp_path / "runs").exists()
         text = CliRunner().invoke(cli, ["run", "start", str(config), "--runs-dir", str(tmp_path), "--dry-run"])
         assert "what the runner would submit" in text.stdout and "#SBATCH --ntasks=1" in text.stdout
@@ -353,9 +353,9 @@ class TestRunnersAndServe:
 
         import fsspec
 
-        from rcp_ndcg.runs.config import RunConfig
-        from rcp_ndcg.runs.execution import job_for
-        from rcp_ndcg.runs.run import prepare
+        from rcp.runs.config import RunConfig
+        from rcp.runs.execution import job_for
+        from rcp.runs.run import prepare
         from tests.runners.k8s_schema import check_objects
         from tests.runners.shell import assert_shellcheck_clean
 
@@ -426,13 +426,13 @@ class TestRunnersAndServe:
         assert error["exit_code"] == 3 and error["details"]["errors"][0]["field"] == "serve.judge.nodes_per_replica"
 
     def test_serve_needs_a_served_judge(self, data: Path) -> None:
-        from rcp_ndcg.errors import ConfigError
+        from rcp.errors import ConfigError
 
         with pytest.raises(ConfigError, match="no served judge"):
             tiny_config(data, serve=SERVE)  # judge: fake
 
     def test_an_old_single_engine_serve_shape_shows_the_new_one(self, data: Path) -> None:
-        from rcp_ndcg.errors import ConfigError
+        from rcp.errors import ConfigError
 
         old = {"image": "vllm/vllm-openai:v0.30.0", "command": ["vllm", "serve", "m"]}
         with pytest.raises(ConfigError, match="old single-engine shape") as refused:
@@ -593,7 +593,7 @@ def test_an_estimate_of_a_resume_counts_only_the_judging_steps_it_would_run(fini
 
 def test_the_judge_flags_say_what_they_take_and_refuse_what_they_would_ignore(data: Path, tmp_path: Path) -> None:
     """--judge took a shipped name its help did not list, and --judge-model without --judge-url was ignored."""
-    from rcp_ndcg.judging.judges import judge_names
+    from rcp.judging.judges import judge_names
 
     help_text = " ".join(CliRunner().invoke(cli, ["run", "start", "--help"]).output.split())
     assert all(name in help_text for name in judge_names())
@@ -617,7 +617,7 @@ class TestEngineFlagEdges:
         assert "fake-secret" not in repr(error)
 
     def test_an_inline_fake_judge_is_refused_like_the_name(self, data: Path) -> None:
-        from rcp_ndcg.errors import ConfigError
+        from rcp.errors import ConfigError
 
         with pytest.raises(ConfigError, match="no served judge"):
             tiny_config(

@@ -1,9 +1,9 @@
 # The results record: a compatibility contract
 
-`rcp-ndcg.result-record.v1` is the public, versioned record of one evaluation row: one record per **system ×
+`rcp.result-record.v1` is the public, versioned record of one evaluation row: one record per **system ×
 dataset × metric × cutoff**. It is what a consumer reads instead of the package's internal layout, and it is
 pinned like every other public surface: `schemas/result-record.v1.json` is exported from the pydantic model
-(`rcp_ndcg.results.ResultRecord`), `tests/contract/snapshots/python_api.json` pins the model's fields, and a
+(`rcp.results.ResultRecord`), `tests/contract/snapshots/python_api.json` pins the model's fields, and a
 change to either is a reviewed diff with a CHANGELOG entry. The how-to is
 [Export evaluation results](../how-to/export-results.md).
 
@@ -24,7 +24,7 @@ change to either is a reviewed diff with a CHANGELOG entry. The how-to is
 
 | Field | Type | Notes |
 |---|---|---|
-| `schema` | `"rcp-ndcg.result-record.v1"` | the version tag |
+| `schema` | `"rcp.result-record.v1"` | the version tag |
 | `record_id` | `str` | `record_identity(subject, dataset, metrics)`, a SHA-256 hex digest |
 | `created_at` | `datetime` | timezone-aware; a naive datetime is refused |
 | `subject` | `ResultSubject` | what the row is about |
@@ -75,7 +75,7 @@ number, and the record states which table it came from.
 The report a record is built from carries the same conventions. `EvalReport` holds the per-query, per-dataset and
 summary tables for every system, metric and cutoff it scored, the protocol it was scored under
 (`report.protocol`), the gains table it read (`report.gains_source`, the four values above) and, for a report
-written by `rcp-ndcg eval score --out`, its input files (`report.inputs`). `value(system, metric, k)` reads one
+written by `rcp eval score --out`, its input files (`report.inputs`). `value(system, metric, k)` reads one
 summary value and `leaderboard(metric, k)` the wide table: a row per system, a column per dataset, the summary as
 `mean`, best first. A `(metric, k)` the report never computed is refused by all four: `value` with a `DataError`
 naming the system, metric and cutoff it asked for, and `leaderboard`, `compare` and `sensitivity` with one naming
@@ -89,8 +89,8 @@ comparison cannot mix scoring conventions: the protocol is the report's.
 
 ## The sink contract
 
-A sink consumes records; it never reads a run. It is registered under the `rcp_ndcg.results` entry-point group,
+A sink consumes records; it never reads a run. It is registered under the `rcp.results` entry-point group,
 its constructor's first parameter after `self` is `uri`, its `emit` refuses a record whose schema it does not
 know, and `flush` is called once after the last record. The shared check is
-`rcp_ndcg.testing.results_conformance(sink)`; the built-in sinks (`jsonl`, `parquet`, `null`) run through it in
-the package's own tests, and `rcp-ndcg results sinks` lists what is installed.
+`rcp.testing.results_conformance(sink)`; the built-in sinks (`jsonl`, `parquet`, `null`) run through it in
+the package's own tests, and `rcp results sinks` lists what is installed.

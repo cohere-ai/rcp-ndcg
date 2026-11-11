@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from rcp_ndcg.errors import ConfigError
-from rcp_ndcg.runners import JobSpec, JobStatus, LocalRunner, RunnerError, ServeConfig, get_runner
+from rcp.errors import ConfigError
+from rcp.runners import JobSpec, JobStatus, LocalRunner, RunnerError, ServeConfig, get_runner
 
 
 def _py(code: str) -> tuple[str, ...]:
@@ -108,7 +108,7 @@ class TestDetached:
     ) -> None:
         """A coordinator that traps or ignores SIGTERM once survived ``run cancel`` while the run was recorded
         ``cancelled``: there was no grace period, no SIGKILL and no check that the group died."""
-        monkeypatch.setattr("rcp_ndcg.runners.local.STOP_GRACE_S", 1)
+        monkeypatch.setattr("rcp.runners.local.STOP_GRACE_S", 1)
         runner = LocalRunner(log_dir=str(tmp_path / "logs"), detach=True)
         ready = tmp_path / "ready"
         code = (
@@ -174,7 +174,7 @@ def test_render_is_the_script_that_runs(tmp_path: Path) -> None:
 
 def test_a_phase_that_starts_an_engine_is_refused() -> None:
     """The local runner runs a phased job's phases (its commands) and refuses the ones with engines."""
-    from rcp_ndcg.runners import JobPhase
+    from rcp.runners import JobPhase
 
     engine = ServeConfig(command=["vllm", "serve", "m"])
     phases = (
@@ -189,7 +189,7 @@ def test_a_phase_that_starts_an_engine_is_refused() -> None:
 def test_engine_free_phases_run_in_order(tmp_path: Path) -> None:
     """A phased job's commands are its phases' argv: the local runner runs each in order (its plan has no
     engines: the engine-free phases cover exactly the run's steps)."""
-    from rcp_ndcg.runners import JobPhase
+    from rcp.runners import JobPhase
 
     phases = (JobPhase(argv=_py("print('one')")), JobPhase(argv=_py("print('two')")))
     job = JobSpec(name="phased", phases=phases)
@@ -209,13 +209,13 @@ def test_options_are_config_errors() -> None:
 
 
 def test_a_plugin_runner_is_found_through_its_entry_point(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The one lookup: every runner, built-in or plugin, is an ``rcp_ndcg.runners`` entry point."""
+    """The one lookup: every runner, built-in or plugin, is an ``rcp.runners`` entry point."""
     from importlib.metadata import EntryPoint
 
-    import rcp_ndcg.runners.registry as registry
+    import rcp.runners.registry as registry
 
-    plugin = EntryPoint(name="teleport", value="tests.runners.test_local:TeleportRunner", group="rcp_ndcg.runners")
-    installed = registry.entry_points(group="rcp_ndcg.runners")
+    plugin = EntryPoint(name="teleport", value="tests.runners.test_local:TeleportRunner", group="rcp.runners")
+    installed = registry.entry_points(group="rcp.runners")
     monkeypatch.setattr(registry, "entry_points", lambda group: [*installed, plugin])
 
     runner = get_runner("teleport", site="moon")
@@ -229,10 +229,10 @@ def test_a_duplicate_entry_point_name_never_shadows_a_built_in(monkeypatch: pyte
     (and receive the built-in's typed options) with no diagnostic."""
     from importlib.metadata import EntryPoint
 
-    import rcp_ndcg.runners.registry as registry
+    import rcp.runners.registry as registry
 
-    plugin = EntryPoint(name="local", value="tests.runners.test_local:TeleportRunner", group="rcp_ndcg.runners")
-    installed = registry.entry_points(group="rcp_ndcg.runners")
+    plugin = EntryPoint(name="local", value="tests.runners.test_local:TeleportRunner", group="rcp.runners")
+    installed = registry.entry_points(group="rcp.runners")
     monkeypatch.setattr(registry, "entry_points", lambda group: [*installed, plugin])
     with pytest.raises(ConfigError, match="more than one") as refused:
         get_runner("local")
@@ -247,15 +247,15 @@ def test_a_plugin_runner_that_fails_to_import_is_a_config_error(monkeypatch: pyt
     reached the user as an internal bug (exit 1), not a ConfigError naming the plugin (exit 3)."""
     from importlib.metadata import EntryPoint
 
-    import rcp_ndcg.runners.registry as registry
+    import rcp.runners.registry as registry
 
-    plugin = EntryPoint(name="broken", value="tests.runners.not_a_module:Runner", group="rcp_ndcg.runners")
-    installed = registry.entry_points(group="rcp_ndcg.runners")
+    plugin = EntryPoint(name="broken", value="tests.runners.not_a_module:Runner", group="rcp.runners")
+    installed = registry.entry_points(group="rcp.runners")
     monkeypatch.setattr(registry, "entry_points", lambda group: [*installed, plugin])
 
     with pytest.raises(ConfigError) as refused:
         get_runner("broken")
-    assert "the 'broken' entry point of 'rcp_ndcg.runners' could not be loaded" in str(refused.value)
+    assert "the 'broken' entry point of 'rcp.runners' could not be loaded" in str(refused.value)
 
 
 class TeleportRunner:
@@ -267,7 +267,7 @@ class TeleportRunner:
 
 def test_a_job_runs_in_the_callers_working_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # A relative run directory (`--runs-dir runs`) is resolved where the command was typed, also in a checkout.
-    (tmp_path / "pyproject.toml").write_text('[project]\nname = "rcp-ndcg"\n', encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "rcp"\n', encoding="utf-8")
     here = tmp_path / "sub"
     here.mkdir()
     monkeypatch.chdir(here)
@@ -277,7 +277,7 @@ def test_a_job_runs_in_the_callers_working_directory(tmp_path: Path, monkeypatch
 
 def test_a_failing_job_is_raised_as_its_own_exit_codes_error(tmp_path: Path) -> None:
     """An evaluate step that failed MissingInputError (exit 4) came back as a retryable PROVIDER error."""
-    from rcp_ndcg.errors import MissingInputError
+    from rcp.errors import MissingInputError
 
     runner = LocalRunner(log_dir=str(tmp_path / "logs"))
     with pytest.raises(MissingInputError, match=r"exited 4 \(MISSING_INPUT\)") as failed:
