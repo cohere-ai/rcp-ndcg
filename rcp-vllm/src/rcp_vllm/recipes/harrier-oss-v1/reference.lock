@@ -2,7 +2,7 @@
 # family: harrier-oss-v1
 # image: vllm/vllm-openai:v0.33.0
 # image-freeze-sha256: 02e121d5b5f24e78d5fea60676c90a59af9f7f382e467dfbad6f736fc32d9fea
-# reference-in-sha256: 3a5c07fc4447e014fd005b82977752e266330dc9439a0e147d587a5adf3f6834
+# reference-in-sha256: 457d6776f04ba9de5f4c93c6015b99b69e6067127399a085446f924eab7eead7
 # own-torch: false
 # image-constraint: torch==2.14.0+cu130 (family floor: torch>=2.0)
 #

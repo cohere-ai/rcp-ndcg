@@ -2,7 +2,7 @@
 # family: pplx-embed-v2-context
 # image: vllm/vllm-openai:v0.33.0
 # image-freeze-sha256: 02e121d5b5f24e78d5fea60676c90a59af9f7f382e467dfbad6f736fc32d9fea
-# reference-in-sha256: 548ba178f0df4ee67673906cc58b45b7e2ac0ff21de13a103eef48d22aeb19e8
+# reference-in-sha256: 97605d88c03a8856a4944d633ecf9e568cd9fe624f3d69630e155ce318db4850
 # own-torch: false
 # image-constraint: torch==2.14.0+cu130 (family floor: torch>=2.0)
 #

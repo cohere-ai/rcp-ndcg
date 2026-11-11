@@ -2,7 +2,7 @@
 # family: octen-embedding
 # image: vllm/vllm-openai:v0.33.0
 # image-freeze-sha256: 02e121d5b5f24e78d5fea60676c90a59af9f7f382e467dfbad6f736fc32d9fea
-# reference-in-sha256: 9a0caae706fdf93e043b68a13919af06e28094925a231fe7b78d77969099885b
+# reference-in-sha256: b537b023a20382e36ec2c69d511bd769111947893608acd914cb8cf2758647f7
 # own-torch: false
 # image-constraint: torch==2.14.0+cu130 (family floor: torch>=2.0)
 #

@@ -2,7 +2,7 @@
 # family: qwen3-reranker
 # image: vllm/vllm-openai:v0.33.0
 # image-freeze-sha256: 02e121d5b5f24e78d5fea60676c90a59af9f7f382e467dfbad6f736fc32d9fea
-# reference-in-sha256: e47a3aaa8cdb00d7840db82f25bc6f014e481892c03b791c4695a8018dadfe36
+# reference-in-sha256: 404bbdb2169237da58cd8e0e2b16d7f13f8eba72438e96167499a171c386f848
 # own-torch: false
 # image-constraint: torch==2.14.0+cu130 (family floor: torch>=2.0)
 #
