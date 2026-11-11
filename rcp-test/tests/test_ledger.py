@@ -16,6 +16,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from rcp_test.jobs import ledger
 from rcp_test.jobs.ledger import LedgerEvidenceError, main, plan
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -107,6 +108,46 @@ def _snapshot(root: Path) -> dict[str, bytes]:
         for path in ([root / relative] if (root / relative).is_file() else sorted((root / relative).rglob("*")))
         if path.is_file()
     }
+
+
+def test_the_key_derivation_puts_both_spellings_of_every_renamed_package_on_the_path(tmp_path: Path) -> None:
+    """A wave's RC commit can predate a rename, so the derivation puts each package's old and new source
+    directory on its path: the old spelling of the main package is the one a pre-rename tree needs."""
+    spellings = (
+        "rcp-core",
+        "rcp-ndcg-core",
+        "rcp",
+        "rcp-ndcg",
+        "rcp-vllm",
+        "rcp-ndcg-vllm",
+        "rcp-test",
+        "rcp-ndcg-test",
+    )
+    for spelling in spellings:
+        (tmp_path / spelling / "src").mkdir(parents=True)
+    paths = [path.relative_to(tmp_path).as_posix() for path in ledger._source_paths(tmp_path)]
+    assert set(paths) == {f"{spelling}/src" for spelling in spellings}
+
+
+PRE_RENAME = "f6320c33"
+"""The main tip before the rename: the RC commit of the waves recorded before it."""
+
+
+def _in_history(commit: str) -> bool:
+    """Whether ``commit`` is in this clone's history (a shallow clone carries only the recent commits)."""
+    found = subprocess.run(["git", "-C", str(ROOT), "cat-file", "-e", f"{commit}^{{commit}}"], capture_output=True)
+    return found.returncode == 0
+
+
+@pytest.mark.skipif(not _in_history(PRE_RENAME), reason=f"{PRE_RENAME} is not in this clone's history")
+def test_the_key_derivation_reads_a_wave_commit_from_before_the_rename() -> None:
+    """A wave records the commit it ran at, and the waves recorded before the rename ran at a tree spelled
+    `rcp_ndcg`/`rcp_ndcg_vllm`/`rcp_ndcg_test`: the derivation runs in that tree's own spelling, so it derives
+    the 44 shipped recipes' keys with no error instead of dying on the installed package's newer imports."""
+    keys, errors = ledger.rc_keys(PRE_RENAME, ROOT)
+
+    assert errors == {}
+    assert len(keys) == 44, "the recipes the tree at that commit ships"
 
 
 def test_the_ledger_refuses_evidence_that_does_not_compute_todays_key(tmp_path: Path) -> None:
