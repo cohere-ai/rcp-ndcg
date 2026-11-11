@@ -511,6 +511,50 @@ class TestVideoContainers:
         assert fake.usage.requests == 0
 
 
+@pytest.mark.parametrize(("media", "at_once"), [("pages", 1), ("container", 3), ("mixed", 1)])
+def test_the_media_gate_bounds_only_the_inlined_pool(
+    tmp_path: Path, pages, monkeypatch, media: str, at_once: int
+) -> None:
+    """The one-slot gate guards the pool a query *holds*: prepared pages and frames are inlined data URIs kept
+    until its run returns, so an inlined pass serialises. A container is not inlined -- its bytes live only
+    while a request is lowered, and the video cache bounds them -- so a container pass runs at the judge's own
+    concurrency; a pass carrying one inlined query still takes the gate."""
+    from rcp.data.resolution import VideoPolicy
+    from rcp.judging import judging as module
+
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"\x00" * 64)
+    container = MediaRef(uri=str(clip), mime="video/mp4", num_bytes=64, num_frames=30, fps=30.0, duration_s=1.0)
+    inlined = [Content.from_parts([ImagePart(ref=ref)]) for ref in pages[:2]]
+    containers = [Content.from_parts([VideoPart(ref=container)]) for _ in range(2)]
+    pools = {"pages": [inlined] * 3, "container": [containers] * 3, "mixed": [inlined, containers, inlined]}
+    rows = [
+        RankingExample(query_id=f"q{index}", query="what happens", doc_ids=["p0", "p1"], contents=contents)
+        for index, contents in enumerate(pools[media])
+    ]
+    depth = 0
+    peak = 0
+    original = module.run_rubric
+
+    async def spy(query, schedule, run):
+        nonlocal depth, peak
+        depth += 1
+        peak = max(peak, depth)
+        try:
+            await original(query, schedule, run)
+        finally:
+            depth -= 1
+
+    monkeypatch.setattr(module, "run_rubric", spy)
+    fake = FakeJudge()
+    fake.config = fake.config.model_copy(update={"max_images": 2, "max_videos": 2})
+    preprocessing = Preprocessing(video=VideoPolicy(num_frames=8, wire="video_url", engine_video_pinning=True))
+
+    judge(rows, None, fake, stage="rubric", out=tmp_path / "store", schedule=SMALL, preprocessing=preprocessing)
+
+    assert peak == at_once
+
+
 def test_a_media_pass_bounds_prepared_media_to_one_query_s_pool(tmp_path: Path, pages, monkeypatch) -> None:
     """Every prepared page and frame is an inlined PNG data URI; the shared image LRU is sized to one
     query's pool, but a pass that starts every query before its first answer used to hold one pool per

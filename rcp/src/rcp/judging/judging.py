@@ -1202,18 +1202,25 @@ async def _run_rubric(query: _Query, schedule: RubricSchedule, run: _Pass) -> No
 
 
 def _media_query_gate(queries: Sequence[_Query]) -> asyncio.Semaphore | None:
-    """A one-slot gate when any query carries media, else ``None``.
+    """A one-slot gate when any query carries *inlined* media -- a page or a frame set -- else ``None``.
 
     Every prepared page and frame is an inlined PNG data URI, and one query's pool can hold hundreds of
     them (the shared image LRU is sized to one pool, :data:`~rcp.data.prepare.IMAGE_CACHE_SIZE`). A
     pass that starts every query before its first answer holds one pool per query -- the window budget
-    prepares each query's pool synchronously, before its first await -- so a media pass runs one query at a
+    prepares each query's pool synchronously, before its first await -- so an inlined pass runs one query at a
     time; text queries keep the full concurrency.
+
+    A container is not inlined: :func:`~rcp.data.prepare.prepare_content` keeps its :class:`~rcp_core.content.MediaRef`
+    and the bytes are read only while one request is lowered, so a container pass keeps the judge's own
+    concurrency, which with ``RCP_NDCG_VIDEO_CACHE_SIZE`` is the bound on its memory. A part that carries
+    frames takes the gate whatever the video policy's wire: the frames are inlined, and a ``video_url`` policy
+    on such a part is the rare case that serialises rather than one that grows.
     """
     for query in queries:
         for content in query.contents.values():
-            if any(isinstance(part, ImagePart | VideoPart) for part in content.parts):
-                return asyncio.Semaphore(1)
+            for part in content.parts:
+                if isinstance(part, ImagePart) or (isinstance(part, VideoPart) and part.frames):
+                    return asyncio.Semaphore(1)
     return None
 
 
