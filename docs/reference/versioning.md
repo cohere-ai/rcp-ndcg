@@ -116,16 +116,19 @@ not in `rcp`'s.
 
 ## Artifact tags
 
-Every artifact `rcp` writes carries its own version tag, `rcp-ndcg.<name>.v1`, independent of the package
-version and bumped only when that artifact changes incompatibly. The tag is the record's `schema` field, and a
-reader refuses a tag it does not know. Within one `v1`, fields are only ever added (optional or defaulted), so a
-reader of the first `v1` keeps reading later `v1` records; a change to an existing field's meaning or type is a
-new tag, never a silent reinterpretation. The rule, spelled out for the exported results, is on
+Every artifact `rcp` writes carries its own version tag, `rcp.<name>.v1`, independent of the package version
+and bumped only when that artifact changes incompatibly. The tag is the record's `schema` field, and a reader
+refuses a tag it does not know. Within one `v1`, fields are only ever added (optional or defaulted), so a reader
+of the first `v1` keeps reading later `v1` records; a change to an existing field's meaning or type is a new tag,
+never a silent reinterpretation. The rule, spelled out for the exported results, is on
 [the results record](results-record.md); it holds for the run manifest and layout
-(`rcp.run-manifest.v1`, `rcp-ndcg.run-layout.v1`), the judgement store
-(`rcp.judgement-store.v1`), the calibration (`rcp.calibration.v1`) and every other exported schema. An artifact written before the rename carries the pre-rename spelling
-(`rcp-ndcg.<name>.v1`): every reader accepts both spellings, and every artifact written now carries
-`rcp.<name>.v1`.
+(`rcp.run-manifest.v1`, `rcp-ndcg.run-layout.v1`), the judgement store (`rcp.judgement-store.v1`), the
+calibration (`rcp.calibration.v1`) and every other exported schema.
+
+0.0.1 moved the tag from `rcp-ndcg.<name>.v1` to `rcp.<name>.v1`; the run layout's own tag
+(`rcp-ndcg.run-layout.v1`) is not a schema id and did not move. An artifact written before the move carries the
+old spelling, and every reader accepts both. A new artifact carries the new spelling. A judgement store keeps
+the tag it was created with, so resuming an old store writes no file its own code would then refuse.
 `rcp schema export --out DIR` writes them all; the repository's `schemas/` is that output, committed, and
 `tests/contract` pins it byte for byte.
 

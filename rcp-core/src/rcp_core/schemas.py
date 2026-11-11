@@ -603,6 +603,8 @@ def items_from_mapping(params: Mapping[str, Sequence[float]]) -> ItemParams:
 
 __all__ = [
     "JUDGEMENT_SCHEMA",
+    "LEGACY_SCHEMA_ID_PREFIX",
+    "SCHEMA_ID_PREFIX",
     "Decoding",
     "DocumentEstimate",
     "EstimateFlags",
@@ -615,8 +617,10 @@ __all__ = [
     "Placement",
     "QueryParams",
     "Stage",
+    "accepted_schema_ids",
     "criterion_labels",
     "items_from_mapping",
     "judgement_record_id",
+    "schema_id",
     "supersedes",
 ]

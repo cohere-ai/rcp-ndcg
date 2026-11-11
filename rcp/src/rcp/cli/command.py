@@ -276,7 +276,7 @@ def command(
             ``--x/--no-x``, lists become repeatable options); fields named in *positional* become arguments.
         result: The pydantic model of the output; ``None`` for a free-form JSON document, which then needs an
             explicit *output_schema*.
-        output_schema: The schema id of ``data``; default ``rcp-ndcg.<kebab name of result>.v1``.
+        output_schema: The schema id of ``data``; default ``rcp.<kebab name of result>.v1``.
         text: Renders the result for a person; default a YAML dump of ``data``.
         positional: Fields taken as positional arguments.
         envvars: Field name -> environment variable read when the flag is absent (shown in ``--help``).

@@ -79,6 +79,16 @@ def test_the_success_envelope_carries_data_and_meta(runner: CliRunner) -> None:
     assert "error" not in document
 
 
+def test_a_schema_id_from_before_the_rename_opens_its_schema(runner: CliRunner) -> None:
+    """The tag an artifact written before the rename carries is a valid ``schema show`` argument, not a usage
+    error: a reader pastes the id it found and gets the schema."""
+    result = runner.invoke(cli, ["schema", "show", "rcp-ndcg.run-manifest.v1", "--json"])
+
+    document = _one_document(result.stdout)
+    assert result.exit_code == 0
+    assert document["data"]["x-rcp-schema"] == "rcp.run-manifest.v1"
+
+
 def test_a_typed_failure_keeps_its_exit_code(runner: CliRunner, tmp_path: Path) -> None:
     result = runner.invoke(cli, ["run", "show", "--run", str(tmp_path / "nope"), "--json"])
 

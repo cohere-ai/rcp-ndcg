@@ -258,7 +258,10 @@ reproducible from the store after its file moves or changes.
   one identity -- the same bytes copied under another directory are not; the names the pass
   was given are kept beside it (`sources`). Judging into a store of another identity raises `IdentityError` and names
   the differing fields.
-  `force=True` moves the old records aside instead. Beside the identity, each stage's entry lists what the judge's
+  `force=True` moves the old records aside instead. The file's tag is `rcp.judgement-store.v1`, or the older
+  `rcp-ndcg.judgement-store.v1` in a store written before the id moved: a store keeps the tag it was created with,
+  so a resumed pass writes the identity back under that tag and the code that wrote the store still opens it.
+  Beside the identity, each stage's entry lists what the judge's
   endpoints said they serve (`engines`: the served model id, `max_model_len`, `owned_by`, the `server` and any
   version header, and the first answer's `system_fingerprint`). This is runtime information: it never enters the
   identity, so a store resumed against another engine version adds a report instead of being refused. The dataset

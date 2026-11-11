@@ -73,6 +73,12 @@ def test_an_unknown_name_is_a_usage_error_listing_the_known_ones() -> None:
     assert "run-manifest" in caught.value.details["known"]
 
 
+def test_a_schema_id_from_before_the_rename_names_the_same_schema() -> None:
+    """``rcp-ndcg.<name>.v1`` is the id an artifact written before the rename carries: ``show`` takes it (``_key``
+    strips either prefix), so a reader can paste the tag it found in an old artifact."""
+    assert schemas.show("rcp-ndcg.run-manifest.v1") == schemas.show("rcp.run-manifest.v1")
+
+
 def test_export_writes_one_file_per_schema(tmp_path: Path) -> None:
     written = schemas.export(tmp_path / "out")
 
