@@ -1382,12 +1382,7 @@
         "required": false,
         "secondary_opts": [],
         "type": {
-          "choices": [
-            "rcp",
-            "qrel_ndcg",
-            "count_ndcg"
-          ],
-          "name": "choice"
+          "name": "text"
         }
       },
       "report": {

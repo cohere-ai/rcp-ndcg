@@ -44,8 +44,6 @@ from rcp.runs.pipeline import REFERENCE_SYSTEMS
 
 #: What ``eval score`` computes; Count-nDCG needs count gains, which its rubric judgement stores supply.
 ScoreMetric = Literal["rcp", "qrel_ndcg", "count_ndcg"]
-#: What ``eval compare`` compares: any metric of a report, including one the library wrote with Count-nDCG.
-Metric = Literal["rcp", "qrel_ndcg", "count_ndcg"]
 
 
 class EvalScoreRequest(BaseModel):
@@ -355,7 +353,11 @@ class EvalCompareRequest(BaseModel):
     report: str | None = Field(default=None, description="A report file from `eval score --out`.")
     run: str | None = Field(default=None, description="A run directory (its systems, scored with its calibration).")
     baseline: str | None = Field(default=None, description="Compare every system against this one.")
-    metric: Metric = Field(default="rcp", description="The metric compared.")
+    metric: str = Field(
+        default="rcp",
+        description="The metric compared: any metric the report holds, a plugin's included (the report's "
+        "`metrics`: `rcp`, `qrel_ndcg`, `count_ndcg`, or a name registered under `rcp.metrics`).",
+    )
     k: int | None = Field(default=None, ge=1, description="The cutoff (may be omitted when the report has one).")
     alpha: float = Field(default=0.05, gt=0, lt=1, description="Significance level; the interval covers 1 - alpha.")
     bootstrap: int = Field(default=10_000, ge=0, description="Bootstrap resamples of the interval.")

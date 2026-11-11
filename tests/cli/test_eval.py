@@ -663,3 +663,40 @@ def test_a_metric_given_twice_is_scored_once(tmp_path: Path, monkeypatch: pytest
     assert document["exit_code"] == 0, document
     assert document["data"]["metrics"] == ["qrel_ndcg"]
     assert len([r for r in document["data"]["summary"] if r["metric"] == "qrel_ndcg"]) == 1
+
+
+def test_compare_reaches_a_metric_a_plugin_scored(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``compare --metric`` names any metric the report holds, a plugin's included: ``compare()`` already takes
+    a name, so a report scored ``--metric map`` must compare on the command line too."""
+    from tests.eval._metrics import install_metrics, metric_entry
+
+    install_metrics(monkeypatch, metric_entry("map", "tests.eval._metrics:MeanAveragePrecision"))
+    path = tmp_path / "rows.jsonl"
+    row = {"query_id": "q1", "query": "q", "doc_ids": ["a", "b", "c"], "docs": ["A", "B", "C"],
+           "qrels": {"a": 1.0, "b": 0.0, "c": 1.0}}  # fmt: skip
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    rankings = tmp_path / "run.jsonl"
+    Rankings.concat(
+        [
+            Rankings.from_scores({"q1": {"a": 3.0, "c": 2.0, "b": 1.0}}, system="mine"),
+            Rankings.from_scores({"q1": {"b": 3.0, "a": 2.0, "c": 1.0}}, system="other"),
+        ]
+    ).save(rankings)
+    report = tmp_path / "report.json"
+    scored = _invoke(
+        "score", "--rankings", str(rankings), "--dataset", f"jsonl:{path}",
+        "--metrics", "qrel_ndcg", "--metric", "map", "--k", "2", "--out", str(report),
+    )  # fmt: skip
+    assert scored["exit_code"] == 0, scored
+
+    compared = _invoke("compare", "--report", str(report), "--metric", "map", "--bootstrap", "10")
+
+    assert compared["exit_code"] == 0, compared
+    assert compared["data"]["metric"] == "map"
+
+    # A name the report does not hold is a typed DATA error naming what it has, never a silent empty table.
+    unknown = _invoke("compare", "--report", str(report), "--metric", "nope")
+
+    assert unknown["exit_code"] == 12, unknown
+    assert unknown["error"]["code"] == "DATA"
+    assert "qrel_ndcg" in unknown["error"]["message"]
