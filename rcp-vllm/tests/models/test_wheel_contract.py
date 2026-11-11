@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 
 PACKAGE_DIR = Path(__file__).resolve().parents[2]
-WHEEL_NAME = "rcp_vllm-0.0.1-py3-none-any.whl"
+WHEEL_NAME = "rcp_vllm-0.1.0-py3-none-any.whl"
 N_FAMILIES = 24
 N_RECIPES = 44  # the variants across the families (decision 34; the ten judges are eight of the families)
 
@@ -49,10 +49,13 @@ def built_wheel(tmp_path_factory: pytest.TempPathFactory) -> Path:
 
 
 def test_the_wheel_is_pure_python_and_declares_only_the_image_deps(built_wheel: Path) -> None:
+    # The dist-info directory is named after the distribution and its version, so read it from the wheel's own
+    # name: a version bump must not break this test, and a test that hardcoded the version did.
+    dist_info = f"{built_wheel.name.split('-py3-')[0]}.dist-info"
     with zipfile.ZipFile(built_wheel) as archive:
-        wheel_meta = archive.read("rcp_vllm-0.0.1.dist-info/WHEEL").decode()
-        metadata = archive.read("rcp_vllm-0.0.1.dist-info/METADATA").decode()
-        entry_points = archive.read("rcp_vllm-0.0.1.dist-info/entry_points.txt").decode()
+        wheel_meta = archive.read(f"{dist_info}/WHEEL").decode()
+        metadata = archive.read(f"{dist_info}/METADATA").decode()
+        entry_points = archive.read(f"{dist_info}/entry_points.txt").decode()
         names = archive.namelist()
         forbidden = [name for name in names if name.endswith((".so", ".pyd", ".dylib", ".dll", ".exe"))]
     assert "Wheel-Version: 1" in wheel_meta

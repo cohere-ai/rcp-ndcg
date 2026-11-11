@@ -46,7 +46,7 @@ from .recipe import (
     serve_argv,
 )
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"
 
 __all__ = [
     "FIELD_ROLES",
