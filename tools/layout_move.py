@@ -114,8 +114,9 @@ input (`template_file`), so renaming inside one would cost a GPU re-record."""
 # The rewrite rules, applied in order to the text of every tracked file outside EXEMPT. A rule is
 # (name, pattern, replacement, files): ``files`` restricts the rule to paths matching any of its
 # globs (None: every file). Patterns match old paths only; where a spelling is ambiguous (a bare
-# ``pyproject.toml`` names every package's manifest) the rule is scoped to the contexts where the
-# token is executable path syntax, and the bare spelling in prose is left to the owning page.
+# ``pyproject.toml`` names every package's manifest; the bare ``rcp_ndcg`` is the metric's id far
+# more often than the module) the rule is scoped to the contexts where the token is executable path
+# syntax, and the bare spelling in prose is left to the owning page.
 REWRITES: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     # The rename on top of the move: the distributions' and import names drop `ndcg`
     # (`rcp-ndcg-core` -> `rcp-core`, `rcp_ndcg_core` -> `rcp_core`, `rcp-ndcg` -> `rcp`,
@@ -134,9 +135,31 @@ REWRITES: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     # public dataset ids (`rcp-ndcg-nanobeir`, ...) or the bucket (`rcp-ndcg-rfc`), and never the
     # repository URL (`cohere-ai/rcp-ndcg`), which is the operator's and redirects.
     ("main-name", r"(?<![\w./-])rcp-ndcg(?![-.\w])", "rcp", None),
-    # The main module, whole-token; a JSON or Python string escape is a word boundary, not an
-    # identifier (`\nrcp_ndcg` is the module, `delta_rcp_ndcg` and `rcp_ndcg10` are the metric's).
-    ("main-module", r"(?:(?<!\w)|(?<=\\[ntr]))rcp_ndcg(?!\w)", "rcp", None),
+    # The main module, in the contexts where the token can only be it. After the rename the bare
+    # spelling is the metric's id far more often than the module's (`Literal["rcp_ndcg", ...]`,
+    # `METRICS`, `--metrics rcp_ndcg`), so it is left to the owning page; the rules below are the
+    # module syntax, and each says which form it is.
+    #
+    # A dotted reference: `rcp_ndcg.eval`, `rcp_ndcg.support.api_docs`, `rcp_ndcg.cli.main`. A
+    # JSON or Python string escape is a word boundary, not an identifier (`\nrcp_ndcg.eval` is the
+    # module, `delta_rcp_ndcg` and `rcp_ndcg10` are the metric's).
+    ("main-dotted", r"(?:(?<!\w)|(?<=\\[ntr]))rcp_ndcg(?=\.)", "rcp", None),
+    # An import: `import rcp_ndcg`, `import os, rcp_ndcg, ...`, `from rcp_ndcg import ...`.
+    ("main-import", r"(\bimport\s+(?:[\w.]+\s*,\s*)*)rcp_ndcg(?![\w])", r"\1rcp", None),
+    ("main-from", r"(\bfrom\s+)rcp_ndcg(?![\w])", r"\1rcp", None),
+    # A path segment: the package's directory under a `src/` tree (`src/rcp_ndcg`,
+    # `rcp/src/rcp_ndcg`), and the package's own directory, repo-relative (`rcp_ndcg/data/`,
+    # `rcp_ndcg/pyproject.toml`). The metric's id follows no `src/` and is followed by no `/`.
+    ("main-path", r"(\bsrc/)rcp_ndcg(?![\w])", r"\1rcp", None),
+    ("main-path-dir", r"(?<![\w])rcp_ndcg(?=/)", "rcp", None),
+    # The same path segment where a test spells the join as a Path division (`"src" / "rcp_ndcg"`):
+    # the segment after a `/` operator is a directory, never a metric.
+    ("main-path-split", r"""(/\s*)(["'])rcp_ndcg\2""", r"\1\2rcp\2", None),
+    # The two config keys that name the module in quotes: ruff's first-party classification and
+    # mkdocs' nav entry. Everywhere else a quoted bare name is the metric's id, so these two declared
+    # positions are rules and the rest are not.
+    ("main-isort", r'(known-first-party = \[)(")rcp_ndcg(")', r"\1\2rcp\3", ("pyproject.toml",)),
+    ("main-nav", r'(")rcp_ndcg(":)', r"\1rcp\2", ("mkdocs.yml",)),
     # The serving distribution and its import package (`rcp-ndcg-vllm` -> `rcp-vllm`,
     # `rcp_ndcg_vllm` -> `rcp_vllm`). `serve.plugin` and the plugin's module names are fingerprint
     # inputs, but the fingerprint keys them in the recorded spelling (`rcp_test.fingerprint`), so the
@@ -145,7 +168,7 @@ REWRITES: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     ("vllm-module", r"(?<!\w)rcp_ndcg_vllm\b", "rcp_vllm", None),
     # The unpublished harness's distribution and import names drop `ndcg`. `test-name`'s lookbehind
     # keeps `x-`-style prefixes and sibling distributions out, like `main-name`'s; `test-module`
-    # matches the same escape boundary as `main-module` (`\nrcp_ndcg_test` in a record is the
+    # matches the same escape boundary as `main-dotted` (`\nrcp_ndcg_test` in a record is the
     # module, never a fragment of another identifier).
     ("test-name", r"(?<![\w-])rcp-ndcg-test\b", "rcp-test", None),
     ("test-module", r"(?:(?<!\w)|(?<=\\[ntr]))rcp_ndcg_test(?!\w)", "rcp_test", None),

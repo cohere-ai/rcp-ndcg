@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -318,14 +319,54 @@ def test_a_stale_old_path_left_behind_is_refused(tmp_path: Path) -> None:
     assert "MANIFEST.in" in proc.stderr
 
 
-@pytest.mark.parametrize("source,destination", [("pyproject.toml", "rcp/pyproject.toml"), ("src", "rcp/src")])
-def test_the_move_table_names_the_root_package(source: str, destination: str) -> None:
+def tool() -> ModuleType:
+    """``tools/layout_move.py`` loaded by path: the transform is a script, not an installed module."""
     from importlib.util import module_from_spec, spec_from_file_location
 
     spec = spec_from_file_location("layout_move_under_test", REAL_SCRIPT)
     assert spec is not None and spec.loader is not None
     module = module_from_spec(spec)
     spec.loader.exec_module(module)
+    return module
+
+
+def test_the_sweep_rewrites_the_module_and_leaves_the_metric_id() -> None:
+    """After the rename `rcp_ndcg` is the metric's id far more often than the module's.
+
+    The sweep rewrites the module in the contexts where the token is module syntax (a dotted
+    reference, an import, a path segment) and leaves the id the metric's: ``Literal["rcp_ndcg", ...]``,
+    ``--metrics rcp_ndcg``, ``report.value(..., "rcp_ndcg")``. Rewriting those is the regression this
+    narrowing exists to prevent -- a correctness fix restored the id, and a bare-token rule undid it.
+    """
+    text = (
+        'MetricName = Literal["rcp_ndcg", "qrel_ndcg"]\n'
+        "from rcp_ndcg.eval import evaluate\n"
+        "import rcp_ndcg\n"
+        "import os, rcp_ndcg, rcp_ndcg.cli.main\n"
+        "PUBLIC = rcp_ndcg.support.api_docs.PUBLIC_MODULES\n"
+        'PROBE = "import rcp_ndcg"\n'
+        'SOURCE = "rcp/src/rcp_ndcg"\n'
+        'USAGE = ("--metrics", "rcp_ndcg")\n'
+        'value = report.value("system", "rcp_ndcg", 10)\n'
+    )
+    rewritten, _hits = tool()._apply_rewrites(text, Path("rcp/src/rcp/module.py"))
+
+    # The metric's id survives, in every context it is spelled in.
+    assert 'MetricName = Literal["rcp_ndcg", "qrel_ndcg"]' in rewritten
+    assert 'USAGE = ("--metrics", "rcp_ndcg")' in rewritten
+    assert 'value = report.value("system", "rcp_ndcg", 10)' in rewritten
+    # The module does not, in any of the forms that can only be the module.
+    assert "from rcp.eval import evaluate" in rewritten
+    assert "\nimport rcp\n" in rewritten
+    assert "import os, rcp, rcp.cli.main" in rewritten
+    assert "PUBLIC = rcp.support.api_docs.PUBLIC_MODULES" in rewritten
+    assert 'PROBE = "import rcp"' in rewritten
+    assert 'SOURCE = "rcp/src/rcp"' in rewritten
+
+
+@pytest.mark.parametrize("source,destination", [("pyproject.toml", "rcp/pyproject.toml"), ("src", "rcp/src")])
+def test_the_move_table_names_the_root_package(source: str, destination: str) -> None:
+    module = tool()
     assert (source, destination) in module.MOVES
     assert module.OPTIONAL_SOURCES == frozenset(
         {"packages/rcp-ndcg-test", "rcp-ndcg-test", "rcp-test/src/rcp_ndcg_test"}
