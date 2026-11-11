@@ -604,7 +604,7 @@ def test_a_directory_where_a_report_belongs_is_a_missing_input(tmp_path: Path) -
 
 
 # ---------------------------------------------------------------------------
-# the metric seam (RFC-0002 G2): --metric lists and scores a registered plugin
+# the metric seam: --metric lists and scores a registered plugin metric
 # ---------------------------------------------------------------------------
 
 

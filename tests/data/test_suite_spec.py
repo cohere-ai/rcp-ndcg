@@ -1,4 +1,4 @@
-"""The suite file format (RFC-0002 §4.3): the four shipped suites, a suite by path, and a revision pin.
+"""The suite file format: the four shipped suites, a suite by path, and a revision pin.
 
 The four suites ship as data (``rcp/data/suites/<name>.yaml``) and are read through the one suite reader.
 The gate is byte identity: :data:`FROZEN_DIGESTS` were taken from the four suites as the literal ``SUITES``

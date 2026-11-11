@@ -1,4 +1,4 @@
-"""The metric seam (RFC-0002 G2): the ``rcp.metrics`` group, the shipped three and the k rule.
+"""The metric seam: the ``rcp.metrics`` group, the shipped three and the k rule.
 
 The shipped three stay the registry's first members and are scored through it, so a plugin and a built-in
 resolve through one lookup and one duplicate-name policy. A plugin is scored on the dataset's qrels: at every

@@ -1,4 +1,4 @@
-"""The four hygiene decisions of RFC-0002 §4.12, each with the evidence its item asks for.
+"""The four module-hygiene decisions, each with the evidence its item asks for.
 
 * ``data/preprocess.py`` -- **kept** and documented as the one import path (item 1): the module says so, and
   every name it exports is a home module's own object, never a second definition.
