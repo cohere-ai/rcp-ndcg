@@ -1490,8 +1490,9 @@ class VllmEmulator:
             index for index in range(len(set_.prompts)) if set_.count(index, self.tokenizer) > self.facts.max_model_len
         ]
         if over:
-            # The over-length refusal as vLLM v0.33.0 words it: the committed corpora recorded this message
-            # verbatim (``.refs/vllm`` is a 0.31-era checkout, which words it another way).
+            # The over-length refusal as the pinned engine words it: the committed corpora recorded this
+            # message verbatim, and the vendored ``.refs/vllm`` checkout predates the pin and words it
+            # another way.
             cap = self.facts.max_model_len
             return None, _error(
                 400,
