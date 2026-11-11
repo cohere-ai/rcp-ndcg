@@ -36,6 +36,20 @@ every reader still accepts it. All four distributions carry the tag version; `rc
   installed in the optional `rcp.events` entry-point group. It is called synchronously, in run order. A
   subscriber that raises is logged once and never fails the run, and a run with no subscriber emits nothing
   and records the same manifest. A step `run cancel` stopped reports `cancelled` in `detail.status`.
+- **The run manifest holds every dataset and suite a run read, and the producer's own visibility statement** (the
+  run manifest's added `v1` fields): `RunManifest` gains five optional fields, and `schemas/run-manifest.v1.json`
+  carries them. `path` is the run directory the manifest was last written in, which `RunManifest.save` records;
+  the `steps` artifact paths are relative to it, so a manifest read away from its run directory resolves them.
+  `datasets` is one `DatasetEntry` per source the run read: the `dataset` provenance (`name`, `revisions`,
+  `subset`, `split`, `task`) plus `args`, the reader arguments that selected the slice, and `internal`, the
+  producer's statement that the source is not for publication. `internal` defaults to `false` and is never an
+  inference: the product reads the field and does not decide it, so a source the producer did not mark is not
+  internal. `suites` is one `SuiteEntry` per suite read, with the `entries` the run evaluated. `rows` is the
+  downstream row schema the run's rows were written as (`{schema}`, a free string the package never
+  interprets). `dataset` stays the run's primary dataset. Each field is optional with a default, so a manifest
+  written by the first `v1` validates unchanged, and the reader still refuses a field it does not know.
+  `rcp run` writes `path` and the primary `dataset`; a downstream producer writes `datasets`, `suites` and
+  `rows`. The new [run manifest](docs/reference/run-manifest.md) page states every field.
 - **The serving recipes are a declared extra, and the three kept modules say why they stay** (the four hygiene
   items of the downstream-surface work): `rcp` declares `vllm = ["rcp-vllm"]`, so `pip install "rcp[vllm]"`
   installs the sibling a `recipe:` config needs, a `recipe:` config without it is refused naming that install
