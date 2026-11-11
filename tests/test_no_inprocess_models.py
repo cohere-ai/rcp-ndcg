@@ -48,14 +48,14 @@ _RENAMED_CITATIONS = (
 
 
 def _citation_files() -> list[Path]:
-    """The files a cross-reference may live in: the source trees and the manifests' comments."""
+    """The files a cross-reference may live in: the source trees, the shared session and the manifests' comments."""
     root = Path(__file__).resolve().parents[1]
     return sorted(
         path
         for folder in (SRC, root / "packages/rcp-vllm/src", root / "packages/rcp-test/src")
         for path in folder.rglob("*.py")
         if "__pycache__" not in path.parts
-    ) + [root / "tests/conftest.py", root / "packages/rcp/pyproject.toml"]
+    ) + [root / "tests/conftest.py", root / "tests/_session.py", root / "packages/rcp/pyproject.toml"]
 
 
 def test_no_module_under_src_imports_a_model_framework() -> None:
@@ -95,3 +95,14 @@ def test_no_citation_names_a_renamed_module() -> None:
         text = path.read_text(encoding="utf-8")
         for pattern, why in _RENAMED_CITATIONS:
             assert not pattern.search(text), f"{path}: {why}"
+
+
+def test_the_citation_scan_covers_the_shared_session() -> None:
+    """The session's hooks and fixtures live in ``tests/_session.py``, not in the conftest that re-exports them.
+
+    The root conftest is ``from tests._session import *``, so a citation in the session body is as stale as
+    one in a source tree: the scan follows the file the text moved to, or it stops seeing most of it.
+    """
+    root = Path(__file__).resolve().parents[1]
+    scanned = {path.relative_to(root).as_posix() for path in _citation_files()}
+    assert {"tests/conftest.py", "tests/_session.py"} <= scanned
