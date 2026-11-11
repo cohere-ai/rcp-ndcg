@@ -1,0 +1,370 @@
+{
+  "format": 1,
+  "note": "The golden digests for emb_utils/base/hashing.py. The owner is the authority. W64 copies these bytes into rcp-ndcg, so a divergence fails on both sides. A tagged object names a value that JSON cannot carry.",
+  "owner": "rcp-ndcg/rcp-core/src/rcp_core/_hashing.py",
+  "relations": [
+    {
+      "a": "key-order-1",
+      "b": "key-order-2",
+      "kind": "same",
+      "why": "keys are sorted, so insertion order is not part of the identity"
+    },
+    {
+      "a": "negative-zero",
+      "b": "positive-zero",
+      "kind": "same",
+      "why": "-0.0 == 0.0, so the two must not hash apart"
+    },
+    {
+      "a": "tuple-of-two",
+      "b": "list-of-two",
+      "kind": "same",
+      "why": "a tuple is a sequence, so its canonical form is a list"
+    },
+    {
+      "a": "enum-red",
+      "b": "plain-red",
+      "kind": "same",
+      "why": "the canonical form of an enum member is its declared value"
+    },
+    {
+      "a": "int-one",
+      "b": "float-one",
+      "kind": "different",
+      "why": "a count of 1 and a fraction of 1.0 are different settings"
+    },
+    {
+      "a": "empty-object",
+      "b": "empty-list",
+      "kind": "different",
+      "why": "{} and [] are different payloads"
+    },
+    {
+      "a": "strings-split-a",
+      "b": "strings-split-b",
+      "kind": "different",
+      "why": "the length prefix makes the two splits differ"
+    }
+  ],
+  "vectors": [
+    {
+      "call": "hash_payload",
+      "digest": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "input": null,
+      "name": "null"
+    },
+    {
+      "call": "hash_payload",
+      "digest": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+      "input": true,
+      "name": "bool-true"
+    },
+    {
+      "call": "hash_payload",
+      "digest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "input": {},
+      "name": "empty-object"
+    },
+    {
+      "call": "hash_payload",
+      "digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "input": [],
+      "name": "empty-list"
+    },
+    {
+      "call": "hash_payload",
+      "digest": "d3626ac30a87e6f7a6428233b3c68299976865fa5508e4267c5415c76af7a772",
+      "input": {
+        "a": 2,
+        "b": 1
+      },
+      "name": "key-order-1"
+    },
+    {
+      "call": "hash_payload",
+      "digest": "d3626ac30a87e6f7a6428233b3c68299976865fa5508e4267c5415c76af7a772",
+      "input": {
+        "a": 2,
+        "b": 1
+      },
+      "name": "key-order-2"
+    },
+    {
+      "call": "hash_payload",
+      "digest": "aba6ceac8f6367072e0e688f8a9bddaf639bdfffb36159e561e5c759af7de26b",
+      "input": {
+        "outer": {
+          "inner": [
+            1,
+            2.5,
+            null,
+            false,
+            "text"
+          ]
+        }
+      },
+      "name": "nested"
+    },
+    {
+      "call": "hash_payload",
+      "digest": "9ee22bb90ca0369372fe7496228fbf7774b5a59b587372ed3366fe32c452e3b7",
+      "input": {
+        "text": "café – naïve"
+      },
+      "name": "unicode-text"
+    },
+    {
+      "call": "hash_payload",
+      "digest": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+      "input": 1,
+      "name": "int-one"
+    },
+    {
+      "call": "hash_payload",
+      "digest": "d0ff5974b6aa52cf562bea5921840c032a860a91a3512f7fe8f768f6bbe005f6",
+      "input": 1.0,
+      "name": "float-one"
+    },
+    {
+      "call": "hash_payload",
+      "digest": "8aed642bf5118b9d3c859bd4be35ecac75b6e873cce34e7b6f554b06f75550d7",
+      "input": 0.0,
+      "name": "positive-zero"
+    },
+    {
+      "call": "hash_payload",
+      "digest": "8aed642bf5118b9d3c859bd4be35ecac75b6e873cce34e7b6f554b06f75550d7",
+      "input": {
+        "__negzero__": true
+      },
+      "name": "negative-zero"
+    },
+    {
+      "call": "hash_payload",
+      "digest": "2010945388e2de98f5651051478912aa4ff38bb13a2cdb1a2c257bb97fbf98ff",
+      "input": {
+        "__tuple__": [
+          1,
+          "a"
+        ]
+      },
+      "name": "tuple-of-two"
+    },
+    {
+      "call": "hash_payload",
+      "digest": "2010945388e2de98f5651051478912aa4ff38bb13a2cdb1a2c257bb97fbf98ff",
+      "input": [
+        1,
+        "a"
+      ],
+      "name": "list-of-two"
+    },
+    {
+      "call": "hash_payload",
+      "digest": "25983d6c7d4ac8a54ef3af958a49d66d179c958f4f7ba5742ee6db8d6e9952de",
+      "input": {
+        "__date__": "2024-02-29"
+      },
+      "name": "date"
+    },
+    {
+      "call": "hash_payload",
+      "digest": "7b414ee571066356232d996e9b251e6f7d271be85979c5fcdbf00e27e8ba989a",
+      "input": {
+        "__aware_datetime__": "2024-02-29T12:00:00+00:00"
+      },
+      "name": "aware-datetime"
+    },
+    {
+      "call": "hash_payload",
+      "digest": "4bc9274d8758b867e8c071a6082c68a2eb1668fc5ad34f631f96bf94f354c1e1",
+      "input": {
+        "__enum__": "red"
+      },
+      "name": "enum-red"
+    },
+    {
+      "call": "hash_payload",
+      "digest": "4bc9274d8758b867e8c071a6082c68a2eb1668fc5ad34f631f96bf94f354c1e1",
+      "input": "red",
+      "name": "plain-red"
+    },
+    {
+      "call": "hash_payload",
+      "input": {
+        "__set__": [
+          3,
+          1,
+          2
+        ]
+      },
+      "name": "set",
+      "raises": "UnhashableValueError"
+    },
+    {
+      "call": "hash_payload",
+      "input": {
+        "__frozenset__": [
+          3,
+          1,
+          2
+        ]
+      },
+      "name": "frozenset",
+      "raises": "UnhashableValueError"
+    },
+    {
+      "call": "hash_payload",
+      "input": {
+        "__bytes__": "00ff"
+      },
+      "name": "bytes",
+      "raises": "UnhashableValueError"
+    },
+    {
+      "call": "hash_payload",
+      "input": {
+        "__bytearray__": "00ff"
+      },
+      "name": "bytearray",
+      "raises": "UnhashableValueError"
+    },
+    {
+      "call": "hash_payload",
+      "input": {
+        "__nan__": true
+      },
+      "name": "nan",
+      "raises": "UnhashableValueError"
+    },
+    {
+      "call": "hash_payload",
+      "input": {
+        "__inf__": "+inf"
+      },
+      "name": "infinity",
+      "raises": "UnhashableValueError"
+    },
+    {
+      "call": "hash_payload",
+      "input": {
+        "__inf__": "-inf"
+      },
+      "name": "negative-infinity",
+      "raises": "UnhashableValueError"
+    },
+    {
+      "call": "hash_payload",
+      "input": {
+        "__naive_datetime__": "2024-02-29T12:00:00"
+      },
+      "name": "naive-datetime",
+      "raises": "UnhashableValueError"
+    },
+    {
+      "call": "hash_payload",
+      "input": {
+        "__map__": [
+          [
+            1,
+            "a"
+          ]
+        ]
+      },
+      "name": "int-key-map",
+      "raises": "UnhashableValueError"
+    },
+    {
+      "call": "hash_payload",
+      "input": {
+        "__object__": true
+      },
+      "name": "plain-object",
+      "raises": "UnhashableValueError"
+    },
+    {
+      "call": "combine_digests",
+      "input": [
+        "ab",
+        "cd"
+      ],
+      "name": "combine-short-digest",
+      "raises": "ValueError"
+    },
+    {
+      "call": "hash_text",
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "input": "",
+      "name": "text-empty"
+    },
+    {
+      "call": "hash_text",
+      "digest": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+      "input": "hello",
+      "name": "text-ascii"
+    },
+    {
+      "call": "hash_text",
+      "digest": "850f7dc43910ff890f8879c0ed26fe697c93a067ad93a7d50f466a7028a9bf4e",
+      "input": "café",
+      "name": "text-unicode"
+    },
+    {
+      "call": "hash_strings",
+      "digest": "601d5476e2ccfe2c87a2bba7a322659734a05749d5b5aa781f513e4912db0d5f",
+      "input": [
+        "ab",
+        "c"
+      ],
+      "name": "strings-split-a"
+    },
+    {
+      "call": "hash_strings",
+      "digest": "3fafa1cf2f19a7c1129beb20cf0983f73a489a221fc0dd2f16d1be292d089205",
+      "input": [
+        "a",
+        "bc"
+      ],
+      "name": "strings-split-b"
+    },
+    {
+      "call": "hash_strings",
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "input": [],
+      "name": "strings-empty"
+    },
+    {
+      "call": "hash_strings",
+      "digest": "79943b0065eca6c6e2d1bc036b99819c710b70e7e51f2cc6ede0d92382c034e4",
+      "input": [
+        "café",
+        ""
+      ],
+      "name": "strings-unicode"
+    },
+    {
+      "call": "combine_digests",
+      "digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "input": [],
+      "name": "combine-none"
+    },
+    {
+      "call": "combine_digests",
+      "digest": "8876cf5ba2b39120ed2cd3b8c8a1b4cc143a5567f7584789afc500418e2fd477",
+      "input": [
+        "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+        "850f7dc43910ff890f8879c0ed26fe697c93a067ad93a7d50f466a7028a9bf4e"
+      ],
+      "name": "combine-order-a"
+    },
+    {
+      "call": "combine_digests",
+      "digest": "6ce326bf23b7c0ca92c7dd031b7bacfd985c114ecc480e287c2aab2881cc0296",
+      "input": [
+        "850f7dc43910ff890f8879c0ed26fe697c93a067ad93a7d50f466a7028a9bf4e",
+        "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+      ],
+      "name": "combine-order-b"
+    }
+  ]
+}

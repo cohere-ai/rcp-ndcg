@@ -26,6 +26,18 @@ every reader still accepts it. All four distributions carry the tag version; `rc
 
 ## Unreleased
 
+### Changed — the licensed hashing copy
+
+- **`rcp_core._hashing` is the authority for the copy in `emb_utils/base/hashing.py`**: the private
+  `emb-utils` library holds a copy of this module's recipe, because the leaf imports no repository code. The
+  licence has four terms. The owner is `packages/rcp-core/src/rcp_core/_hashing.py`, and it decides every
+  digest. The golden vectors are shared: `packages/rcp/tests/support/hashing_vectors.json` holds the
+  input-to-digest pairs, and the copy holds the same bytes in its own `tests/fixtures/hashing_vectors.json`,
+  so one set of bytes decides both implementations. Both sides record the copy in their
+  changelog, and this entry is the authority's side. The licence expires at the next major release of
+  `rcp_core`, or earlier if the two implementations collapse into one. At that point a lane re-cuts the
+  vectors from the new authority, or deletes the copy.
+
 ## 0.0.1 — 2026-11-11
 
 ### Overview
