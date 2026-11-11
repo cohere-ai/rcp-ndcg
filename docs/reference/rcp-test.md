@@ -1,48 +1,52 @@
 # The `rcp-test` package
 
-Reference cases, one conformance suite, model-level fakes and the GPU job tooling for RCP-nDCG's served
-models. Audience: contributors to the repository and authors of serving recipes -- users of the metric need
-none of it.
+This package holds the reference cases, one conformance suite, model-level fakes and the GPU job tooling. The tooling
+serves the models of RCP-nDCG. The audience is the contributors to the repository and the authors of serving recipes.
+A user of the metric needs none of it.
 
-**Unpublished on purpose.** `rcp-test` is never uploaded to PyPI and no published package names it: the
-repository's test runs install it from the checkout (the workspace's `dev` dependency group), the GPU node's
-client environment installs the staged harness wheel (`rc_build.sh` builds it into `<stage>/harness/`), and
-anywhere else (a downstream's own suite) it installs **from a git subdirectory** of the repository:
+**The package is unpublished on purpose.** `rcp-test` is never uploaded to PyPI, and no published package names
+it. The repository's test runs install it from the checkout, as the `dev` dependency group of the workspace. The
+client environment of a GPU node installs the staged harness wheel (`rc_build.sh` builds it into `<stage>/harness/`).
+Anywhere else, such as a downstream's own suite, installs it **from a git subdirectory** of the repository:
 
 ```bash
 pip install "rcp-test @ git+https://github.com/cohere-ai/rcp-ndcg.git@v0.0.1#subdirectory=rcp-test"
 ```
 
-It depends on `rcp` and `rcp-vllm` at the release's version -- never the other way round. Its own
-README has the runnable commands; this page maps what lives where.
+It depends on `rcp` and `rcp-vllm` at the version of the release. The dependency never points the other way.
+Its own README holds the runnable commands. This page maps what lives where.
 
 ## What it holds
 
-- **Reference cases.** One case per model-card example and per generated stratum (`cases/<recipe-id>/`): the
-  card's exact inputs and quote (model card cases, each pinned to the card's commit), and generated cases over
-  the strata the budgets care about -- multimodal, short, long-under and long-over the budget, and mixed
-  batches.
-- **Filling the cases.** `python -m rcp_test.case_fill --recipe <id> --reference-python <the family's
-  reference venv>` runs the recipe's reference implementation over every pending case's inputs and writes
-  its own outputs into the case YAML (`values`, `status: reproduced`, the fill recorded in the note). A
-  media-bearing case's `media/` files enter the pairs row's `media` field, so the reference's own mode
-  reads them and the case fills like a text one; a case's run-level `instruction` enters the pairs row
-  only when the recipe's client places it (a recipe declaring `instruction: none` drops it by
-  declaration, so the reference reads exactly the inputs the served request carries); a case the
-  reference refuses (a container it cannot
-  sample at the recipe's pin) is retried on its own and recorded as an exception -- the reason in the
-  report and in the case's note, the case left `pending_gpu` -- and a pending case the mode cannot fill
-  (`kind: none`, or another stage's kind) is skipped per case with its reason recorded and its file
-  untouched. The cuda families' fills run as the `submit.sh --script casefill` job.
-- **Conformance.** One suite, two targets -- a live engine and a recipe-level fake engine -- both driven
-  through the product's role clients (never raw HTTP, never a copy of the client), on CPU.
-- **Fakes.** Model-level fakes rebuilt from the GPU observation recordings. The generic `fake://` transport
-  stays in the product ([the offline fakes](../concepts/inference.md#the-offline-fakes)); the model-faithful
-  ones live here.
-- **Equivalence and recording.** The equivalence harness (served output against the reference implementation)
-  and the recorder that captures an observation corpus. Both send through the product's role clients.
-- **Jobs.** The release-candidate build, the node bootstrap and the wave runner of [validate a recipe on
-  GPUs](../how-to/validate-a-recipe.md).
+- **Reference cases.** A reference case is one input set together with the output that the reference implementation
+  gives. There is one case per model-card example and per generated stratum (`cases/<recipe-id>/`). A model-card case
+  holds the exact inputs and the quote of the card. Each case is pinned to the commit of its card. The generated cases
+  cover the strata that the budgets care about. The strata are multimodal, short, long-under the budget, long-over the
+  budget, and mixed batches.
+- **Filling the cases.**
+  `python -m rcp_test.case_fill --recipe <id> --reference-python <the family's reference venv>` fills the cases
+  of one recipe. It runs the reference implementation of the recipe over the inputs of every pending case. It writes
+  the outputs of the reference into the YAML of the case. The file gets the `values`, the `status: reproduced` and the
+  fill in the note. The `media/` files of a case with media enter the `media` field of the pairs row. The reference's
+  own mode therefore reads them, and the case fills like a text case. The run-level `instruction` of a case enters the
+  pairs row only when the client of the recipe places it. A recipe that declares `instruction: none` drops the
+  instruction by declaration. The reference therefore reads exactly the inputs that the served request carries. The
+  fill retries on its own a case that the reference refuses. An example is a container that it cannot sample at the
+  pin of the recipe. It records that case as an exception. The reason goes into the report and into the note of the
+  case, and the case stays `pending_gpu`. The fill skips a pending case that the mode cannot fill (`kind: none`, or
+  the kind of another stage). It records the reason for each skipped case and leaves the file untouched. The cuda
+  families fill their cases with the `submit.sh --script casefill` job.
+- **Conformance.** One conformance suite has two targets: a live engine and a fake engine at recipe level. The suite
+  drives both through the role clients of the product. It never uses raw HTTP, and it never uses a copy of the client.
+  It runs on CPU.
+- **Fakes.** A fake replaces a model in a test. The model-level fakes are rebuilt from the GPU observation recordings.
+  The generic `fake://` transport stays in the product ([the offline
+  fakes](../concepts/inference.md#the-offline-fakes)). The model-faithful fakes live here.
+- **Equivalence and recording.** The equivalence harness compares the served output against the reference
+  implementation. The recorder captures an observation corpus, which is the recorded set of exchanges with a model.
+  Both send their requests through the role clients of the product.
+- **Jobs.** The package holds the release-candidate build, the node bootstrap and the wave runner of
+  [validate a recipe on GPUs](../how-to/validate-a-recipe.md).
 
-Conformance and the golden replays run on CPU and offline; GPU work produces observation corpora and never
-runs under pytest.
+Conformance and the golden replays run on CPU and offline. GPU work produces observation corpora, and it never runs
+under pytest.

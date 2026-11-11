@@ -1,42 +1,43 @@
 # The GPU validation ledger
 
-Every shipped recipe is validated on GPUs before a tag: served on its declared engine image, its replies
-compared against its own reference implementation (the model card's published path or the paper's code),
-and its observation corpus recorded. Every *retrieval* variant is compared against its reference that way;
-a judge recipe carries no equivalence reference, so a judge variant is validated by `rcp judge check`
-and the T4 scenarios instead. The corpora whose replay needs them are committed under
-`rcp-test/corpora/`. This page is the release's record of that work — one row per variant:
-the release candidate and the wave whose evidence the row records, the date that wave finished, and the
-behaviour fingerprint the tree computes today (the key a wave's evidence must carry).
+The release validates every shipped recipe on GPUs before a tag. Each recipe is served on its declared engine image,
+and its replies are compared against its own reference implementation. The reference implementation is the published
+path of the model card or the code of the paper. The release also records the observation corpus of the recipe. Every
+*retrieval* variant is compared against its reference in that way. A judge recipe has no equivalence reference, so
+`rcp judge check` and the T4 scenarios validate a judge variant instead. The corpora that a replay needs are
+committed under `rcp-test/corpora/`. This page is the record of that work for the release. It has one row per
+variant. A row gives the release candidate and the wave whose evidence the row records. It also gives the date that
+the wave finished, and the behaviour fingerprint that the tree computes today. That fingerprint is the key that the
+evidence of a wave must carry.
 
-The machine-readable record is each family's `status` block in
-`rcp-vllm/src/rcp_vllm/recipes/<family>/family.yaml` (the `state`, the engine `image`, the `date`
-and the `report` pointer), and the [recipes and serving models](recipes.md) page explains the surface. A
-recipe's behaviour fingerprint keys everything that can change what the model returns — the model revision,
-the engine image and its version floor, the `serve` block, the engine-side plugin code, the tokenizer, the
-template and the request-shaping client fields. A wave's evidence counts for a recipe only when the wave
-ran against the fingerprint the tree computes today.
+The machine-readable record is the `status` block of each family in
+`rcp-vllm/src/rcp_vllm/recipes/<family>/family.yaml`. The block holds the `state`, the engine `image`, the
+`date` and the `report` pointer. The [recipes and serving models](recipes.md) page explains the surface. A recipe's
+behaviour fingerprint is a key over everything that can change what the model returns. The key covers the model
+revision, the engine image and its version floor. It also covers the `serve` block and the engine-side plugin code,
+the tokenizer, the template and the request-shaping client fields. The evidence of a wave counts for a recipe only
+when it ran against the current fingerprint of the tree.
 
 ## The v0.33.0 pin: every row is the wave that ran on it
 
-The pin moved every recipe's `engine.image` to `vllm/vllm-openai:v0.33.0`. The engine image is one of the
-fingerprint's inputs, so every key moved, and **every corpus is recorded again on the 0.33 image (and every
-judge recipe probed again) before any recipe returns to `verified`**. The rows below are that re-record's
-record: 42 are the 0.33 waves' own (rc2 through rc10), 2 are the owner-disposed `topk-embed-v1` variants'
-gate wave, and no row reads `unverified` — a row never claims a wave that did not run, and it is regenerated
-from the wave that ran, never relabelled with a key the wave did not record. A recipe is `verified` only beside the image it pins.
+The pin moved the `engine.image` of every recipe to `vllm/vllm-openai:v0.33.0`. The engine image is one of the inputs
+of the fingerprint, so every key moved. **Every corpus is therefore recorded again on the 0.33 image. Every judge
+recipe is probed again. No recipe returns to `verified` before that work.** The rows below are the record of that
+re-record. 42 are the 0.33 waves' own (rc2 through rc10). 2 are the owner-disposed `topk-embed-v1` variants' gate
+wave; no row reads `unverified`. A row never claims a wave that did not run. The ledger regenerates the row from the
+wave that ran. It is never relabelled with a key that the wave did not record. A recipe is `verified` only beside the
+image that it pins.
 
-A row's key is derived at the **wave's RC commit** — the commit every wave summary records — by checking
-that commit's tree out of this repository and running its own behaviour fingerprint there; the row is
-written only when that key is the key the tree computes today, so a wave that measured another behaviour is
-refused by name rather than recorded. The waves that record an observation corpus also write the key
-themselves, and those recorded keys cross-check the derivation. The ledger and the `status` blocks are
-generated by `python -m rcp_test.jobs.ledger --evidence <mirror> [--write]`, never by hand.
+The key of a row is derived at the **wave's RC commit**. That is the commit that every wave summary records. The
+derivation checks that commit's tree out of this repository, and it runs the behaviour fingerprint of that tree. The
+ledger writes the row only when that key is the key that the tree computes today. A wave that measured another
+behaviour is therefore refused by name, not recorded. The waves that record an observation corpus also write the key
+themselves, and those recorded keys cross-check the derivation. The ledger and the `status` blocks come from
+`python -m rcp_test.jobs.ledger --evidence <mirror> [--write]`. Never write them manually.
 
-The two `topk-embed-v1` variants are the exception the owner holds: their gate failure below is recorded
-evidence, not a pending row, and their state returns to `failed` only from a wave that re-runs that gate.
-They ship only when the owner's explicit disposition list names them, and nothing about the pin changes that
-disposition.
+The owner holds one exception: the two `topk-embed-v1` variants. Their gate failure below is recorded evidence, not a
+pending row. Their state returns to `failed` only from a wave that re-runs that gate. They ship only when the explicit
+disposition list of the owner names them. The pin does not change that disposition.
 
 ## The ledger
 
@@ -89,46 +90,43 @@ disposition.
 
 ## Dispositions
 
-- **`topk-embed-v1-small` and `topk-embed-v1-xsmall` are the owner-disposed gate failure.** Their end-to-end
-  validation does not meet the stage-2 per-token cosine floor on the available engine configurations: bf16
-  and fp16 both fail (and the failure is dtype-independent at the text model's first layer), and fp32 —
-  which clears the vision tower — cannot be served, because the engine's GatedDeltaNet kernels refuse fp32.
-  The engine was
-  also run on its own vendored flash-linear-attention prefill path (`--gdn-prefill-backend triton`), which
-  diverges identically, so the residual is not a selectable kernel. The full measurements — the per-row
-  per-token minima, the per-layer cosines, the three backends, and the text/image split — are in the
-  family's notes. The evidence is keyed honestly: the wave that first measured the failure
-  (`rc0-202610130615`, 2026-10-13) ran at a superseded behaviour fingerprint (`1fdf2847…`, before the
-  plugin-module keying moved it), so the gate was re-run at the current key on 2026-10-14 in the
-  `rc0-202610140620` wave's `plugin-carriers-vllm` sub-wave and failed again with the same signature —
-  stage 1 passes, stage 2's per-token cosine floor fails. The two rows above carry that 2026-10-14 wave.
-  Nothing is deferred past the tag: the gate's disposition stays the owner's explicit decision, recorded in
-  the release notes, and a recipe in this state ships only under that decision, never silently. On the
-  v0.33.0 pin the `gate-topk-embed-v1` wave re-ran the gate on the pinned image (rc2) and failed it again,
-  so the two rows read `failed` beside that wave's date and report — the state the schema has for a gate
-  that failed, never `verified` without a green re-run.
-- **The `embeddinggemma-2` row is the rc2 equivalence wave's**, on the stock `vllm/vllm-openai:v0.33.0`
-  image with the recipe's plugin and its patches; the wave ran the gate at `66f50262a43b…`, the key the tree
-  computes today. The 0.0.1 record was a different one (the waves ran the stock 0.31 image with the fold's
-  backport, and the cell the old page carried was the key the tree computed at `fcb87a51`, not the key that
-  wave recorded); the image is a key, so the pin superseded it and the re-record replaces it. The fold is
-  gone (the parity decision) and the recipe is a patch-only carrier; see
-  [recipes and serving models](recipes.md#engine-side-patches).
-- **One reference case remains `pending_gpu`**: `rcp-test/cases/topk-embed-v1-small/query-cap-1024.yaml`,
-  in the family whose gate the owner dispositioned. Its query renders past the recipe's declared
-  `client.query_max_tokens: 1024`, so the client's fit cuts it, and the case's `expected.kind` is `none`,
-  which carries no values by design: it observes that at-cap query rather than comparing scores, which is
-  also why the case-fill skips it. The video case this bullet used to name,
-  `rcp-test/cases/qwen3-vl-embedding-2b/video-short-single.yaml`, was filled from the reference
-  implementation on cuda on 2026-10-14 and reads `status: reproduced`. These are validation fixtures, not
-  recipe gates.
-- **The ViDoRe retrieval view carries a documented waiver** (`rcp-test/tests/e2e/test_golden_replay.py`):
-  the golden's retrieval view needs ViDoRe page-image embeddings, and no committed corpus of the VL
-  embedder observes a ViDoRe-sourced image yet. The tripwire fails the moment one does, naming the work.
+- **`topk-embed-v1-small` and `topk-embed-v1-xsmall` are the gate failure that the owner dispositioned**. Their
+  end-to-end validation does not meet the stage-2 per-token cosine floor on the available engine configurations. Both
+  bf16 and fp16 fail. The dtype does not change the failure at the first layer of the text model. The fp32 mode clears
+  the vision tower, but it cannot be served: the GatedDeltaNet kernels of the engine refuse fp32. The engine also ran on
+  its own vendored flash-linear-attention prefill path (`--gdn-prefill-backend triton`), and that path diverges in the
+  same way. The residual is therefore not a selectable kernel. The notes of the family hold the full measurements. They
+  give the per-row per-token minima, the per-layer cosines, the three backends and the text/image split. The evidence
+  has the key of the wave that measured it. The wave that first measured the failure (`rc0-202610130615`, 2026-10-13)
+  ran at a superseded behaviour fingerprint (`1fdf2847…`). The plugin-module keying moved it later. The gate was
+  therefore re-run at the current key on 2026-10-14. The re-run was in the `plugin-carriers-vllm` sub-wave of the
+  `rc0-202610140620` wave. It failed again with the same signature: stage 1 passes, and the stage-2 per-token cosine
+  floor fails. The two rows above record that 2026-10-14 wave. Nothing is deferred past the tag. The disposition of the
+  gate stays the explicit decision of the owner, and the release notes record it. A recipe in this state ships only
+  under that decision, never silently. On the v0.33.0 pin the `gate-topk-embed-v1` wave re-ran the gate on the pinned
+  image (rc2) and failed it again. The two rows therefore read `failed` beside the date and the report of that wave.
+  That is the state that the schema has for a gate that failed, and never `verified` without a green re-run.
+- **The `embeddinggemma-2` row belongs to the rc2 equivalence wave**. That wave ran on the stock
+  `vllm/vllm-openai:v0.33.0` image with the plugin and patches of the recipe. It ran the gate at `66f50262a43b…`, which
+  is the key that the tree computes today. The 0.0.1 record was different: the waves ran the stock 0.31 image with the
+  backport of the fold. The cell of the old page held the key that the tree computed at `fcb87a51`. It did not hold the
+  key that the wave recorded. The image is a key, so the pin superseded that record, and the re-record replaces it. The
+  fold is gone (the parity decision), and the recipe is a patch-only carrier. See [recipes and serving
+  models](recipes.md#engine-side-patches).
+- **One reference case remains `pending_gpu`**: `rcp-test/cases/topk-embed-v1-small/query-cap-1024.yaml`, in the
+  family whose gate the owner dispositioned. Its query renders past the declared `client.query_max_tokens: 1024` of
+  the recipe, so the fit of the client cuts it. The `expected.kind` of the case is `none`, which carries no values by
+  design. The case therefore observes that at-cap query instead of comparing scores, and the case-fill skips it for
+  the same reason. The video case that this bullet used to name,
+  `rcp-test/cases/qwen3-vl-embedding-2b/video-short-single.yaml`, was filled from the reference implementation on
+  cuda on 2026-10-14. It reads `status: reproduced`. These are validation fixtures, not recipe gates.
+- **The ViDoRe retrieval view has a documented waiver** (`rcp-test/tests/e2e/test_golden_replay.py`). The
+  retrieval view of the golden needs ViDoRe page-image embeddings. No committed corpus of the VL embedder observes a
+  ViDoRe-sourced image yet. The tripwire fails as soon as one does, and it names the work.
 
 ## What this page is not
 
-It is not the recipes' contract — that is `rcp-vllm/schema/` and the goldens under
-`rcp-test/tests/recipes/golden/`. It is not the observation corpora — those are committed under
-`rcp-test/corpora/` and keyed by the same fingerprints. And it names no infrastructure: the wave
-outputs live in the release's own evidence store, referenced by the family `status` blocks.
+This page is not the contract of the recipes. That contract is `rcp-vllm/schema/` and the goldens under
+`rcp-test/tests/recipes/golden/`. This page is not the observation corpora. Those are committed under
+`rcp-test/corpora/`, and the same fingerprints key them. This page names no infrastructure. The wave outputs live
+in the evidence store of the release, and the family `status` blocks reference them.

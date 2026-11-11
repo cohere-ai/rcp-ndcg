@@ -1,96 +1,99 @@
 # The results record: a compatibility contract
 
-`rcp.result-record.v1` is the public, versioned record of one evaluation row: one record per **system ×
-dataset × metric × cutoff**. It is what a consumer reads instead of the package's internal layout, and it is
-pinned like every other public surface: `schemas/result-record.v1.json` is exported from the pydantic model
-(`rcp.results.ResultRecord`), `tests/contract/snapshots/python_api.json` pins the model's fields, and a
-change to either is a reviewed diff with a CHANGELOG entry. The how-to is
+`rcp.result-record.v1` is the public, versioned record of one evaluation row. There is one record per **system ×
+dataset × metric × cutoff**. A consumer reads this record instead of the internal layout of the package. The record is
+pinned like every other public surface. `schemas/result-record.v1.json` is exported from the pydantic model
+(`rcp.results.ResultRecord`), and `tests/contract/snapshots/python_api.json` pins the fields of the model. A
+change to either one is a reviewed diff with a CHANGELOG entry. The how-to is
 [Export evaluation results](../how-to/export-results.md).
 
 ## Versioning
 
-* Within `v1`, fields are only ever **added**; an added field is optional or has a default, so a reader of the
-  first `v1` keeps reading later `v1` records.
-* A change to an **existing** field's meaning or type is a new schema id (`rcp-ndcg.result-record.v2`), never a
-  silent reinterpretation of `v1`.
-* The `schema` field names the record's version. A sink refuses a record whose schema it does not know:
-  writing a v2 record as v1 would corrupt the file rather than fail.
-* `record_id` is deterministic over `(subject, dataset, metrics)`; it is not a random id, so the same row
-  exported twice has the same id, and a row whose protocol changed has a different one.
+* Within `v1`, fields are only ever **added**. An added field is optional or has a default. A reader of the first `v1`
+  therefore keeps reading later `v1` records.
+* A change to the meaning or the type of an **existing** field is a new schema id (`rcp-ndcg.result-record.v2`). It is
+  never a silent reinterpretation of `v1`.
+* The `schema` field names the version of the record. A sink is a result destination, and it refuses a record whose
+  schema it does not know. A v2 record written as v1 would corrupt the file instead of failing.
+* `record_id` is deterministic over `(subject, dataset, metrics)`. It is not a random id. The same row exported twice
+  therefore has the same id. A row with a changed protocol has a different one.
 
 ## The fields
 
-`ResultRecord` (frozen; unknown fields are refused; `schema` is the serialisation alias of `schema_name`):
+`ResultRecord` is frozen, and it refuses an unknown field. `schema` is the serialisation alias of `schema_name`:
 
 | Field | Type | Notes |
 |---|---|---|
-| `schema` | `"rcp.result-record.v1"` | the version tag |
+| `schema` | `"rcp.result-record.v1"` | the version tag of the record |
 | `record_id` | `str` | `record_identity(subject, dataset, metrics)`, a SHA-256 hex digest |
-| `created_at` | `datetime` | timezone-aware; a naive datetime is refused |
-| `subject` | `ResultSubject` | what the row is about |
-| `dataset` | `ResultDataset \| null` | the dataset and the scoring convention |
-| `metrics` | `list[ResultMetric]` | the metric rows (one per exported row) |
-| `artifacts` | `list[ResultArtifact]` | what the row was computed from |
-| `provenance` | `dict[str, Any]` | exporter-owned: code version, config digest, environment |
+| `created_at` | `datetime` | it must carry a timezone; a naive datetime is refused |
+| `subject` | `ResultSubject` | the subject of the row |
+| `dataset` | `ResultDataset \| null` | the dataset and its scoring convention |
+| `metrics` | `list[ResultMetric]` | the metric rows; one row for each exported row |
+| `artifacts` | `list[ResultArtifact]` | the inputs that the row was computed from |
+| `provenance` | `dict[str, Any]` | the exporter owns this field: the code version, the config digest and the environment |
 
-`ResultSubject`: `kind` (`"system"`, `"run"` or `"calibration"`), `name`, `system` (the `Rankings` system
-value), `run_id`, `identity` (the subject's content digest, when known), `labels` (free-form provenance labels
-such as `{"model": "org/model"}`; never a host or a bucket).
+`ResultSubject` holds `kind` (`"system"`, `"run"` or `"calibration"`), `name`, `system`, `run_id` and `identity`.
+`system` is the system value of the `Rankings`. `identity` is the content digest of the subject, when it is known. The
+record also holds `labels`: free-form provenance labels such as `{"model": "org/model"}`. A label is never a host or a
+bucket.
 
-`ResultDataset`: `name`, `subset` (`"default"`), `split` (`"test"`), `task`, `revision`, `protocol` (the preset
-name, e.g. `"mteb"`, `"nanobeir"`, `"plain"`), `protocol_spec`, `gains_source` (`"gains"`, `"calibration"`,
-`"dataset"` or `"none"`). A run's manifest records the subset, split and task the data was read at, and a report
-written by `eval score --out` records them in its `inputs`, so an export states the real provenance; the defaults
-apply when the source declares none.
+`ResultDataset` holds `name`, `subset` (`"default"`), `split` (`"test"`), `task`, `revision` and `protocol`.
+`protocol` is the preset name, for example `"mteb"`, `"nanobeir"` or `"plain"`. It also holds `protocol_spec` and
+`gains_source` (`"gains"`, `"calibration"`, `"dataset"` or `"none"`). The manifest of a run records the subset, the
+split and the task that the data was read at. A report written by `eval score --out` records them in its `inputs`, so
+an export states the real provenance. The defaults apply when the source declares none.
 
-`ResultMetric`: `metric`, `k`, `value` (or `null` when the metric is undefined for the row), `num_queries`,
-`num_datasets`, `ci_low`, `ci_high`, `dataset` (the dataset of a per-dataset mean; `null` for the summary row).
+`ResultMetric` holds `metric`, `k`, `value` (or `null` when the metric is undefined for the row), `num_queries`,
+`num_datasets`, `ci_low` and `ci_high`. It also holds `dataset`: the dataset of a per-dataset mean, or `null` for the
+summary row.
 
-`ResultArtifact`: `role` (`"rankings"`, `"report"`, `"manifest"`, `"calibration"`, `"judgements"` or `"log"`),
-`uri`, `sha256`, `schema_name`, `media_type`.
+`ResultArtifact` holds `role` (`"rankings"`, `"report"`, `"manifest"`, `"calibration"`, `"judgements"` or `"log"`),
+`uri`, `sha256`, `schema_name` and `media_type`.
 
 ## Protocol and comparability
 
-A number only means what its scoring convention says it means. `ResultDataset.protocol_spec` is the full
-[`Protocol`](../concepts/protocols.md): the qrel gain (`linear` or `exponential`), the tie rule (`doc_id_desc`,
-`group_mean` or `input_order`), `restrict_to_candidates`, `drop_identical_ids` and `round_digits`. The ideal
-DCG follows from the metric and that protocol:
+A number has the meaning that its scoring convention gives it. `ResultDataset.protocol_spec` is the full
+[`Protocol`](../concepts/protocols.md). It holds the qrel gain (`linear` or `exponential`), the tie rule
+(`doc_id_desc`, `group_mean` or `input_order`), `restrict_to_candidates`, `drop_identical_ids` and `round_digits`. The
+ideal DCG follows from the metric and from that protocol:
 
-* qrel-nDCG sorts the query's **positive qrels** (after `qrel_gain` maps a grade to a gain);
+* qrel-nDCG sorts the **positive qrels** of the query, after `qrel_gain` maps a grade to a gain;
 * RCP-nDCG and Count-nDCG sort **all** of the query's gains;
-* `restrict_to_candidates` decides which scored documents enter the ranking (the judged pool) and
-  `drop_identical_ids` removes the document whose id equals the query id.
+* `restrict_to_candidates` decides which scored documents enter the ranking (the judged pool). `drop_identical_ids`
+  removes the document whose id equals the query id.
 
-So a record can state a convention the package itself did not score: an importer of a run scored as linear
+A record can therefore state a convention that the package did not score itself. An importer of a run scored as linear
 integer-qrel nDCG with `doc_id_desc` ties writes
-`protocol_spec=Protocol(name="bright", ties="doc_id_desc", qrel_gain="linear", round_digits=5)`. Two records
-that differ only in the protocol — the qrel gain, the tie rule, the pool restriction — are **different
-records**: `record_id` covers the whole protocol, and a consumer groups rows for comparison by `(dataset.name,
-dataset.revision, dataset.protocol, dataset.protocol_spec)` rather than by the metric label alone.
+`protocol_spec=Protocol(name="bright", ties="doc_id_desc", qrel_gain="linear", round_digits=5)`. Two records that
+differ only in the protocol are **different records**. The protocol covers the qrel gain, the tie rule and the pool
+restriction. `record_id` covers the whole protocol, and a consumer groups rows for comparison by
+`(dataset.name, dataset.revision, dataset.protocol, dataset.protocol_spec)`, not by the metric label alone.
 
-The gains source is part of comparability too: `"dataset"` (the released gains), `"calibration"` (a fitted
-calibration), `"gains"` (passed in) or `"none"`. The same metric under a different gains table is not the same
-number, and the record states which table it came from.
+The gains source is part of comparability too. It is `"dataset"` (the released gains), `"calibration"` (a fitted
+calibration), `"gains"` (passed in) or `"none"`. The same metric under a different gains table is not the same number.
+The record states which table it came from.
 
-The report a record is built from carries the same conventions. `EvalReport` holds the per-query, per-dataset and
-summary tables for every system, metric and cutoff it scored, the protocol it was scored under
-(`report.protocol`), the gains table it read (`report.gains_source`, the four values above) and, for a report
-written by `rcp eval score --out`, its input files (`report.inputs`). `value(system, metric, k)` reads one
-summary value and `leaderboard(metric, k)` the wide table: a row per system, a column per dataset, the summary as
-`mean`, best first. A `(metric, k)` the report never computed is refused by all four: `value` with a `DataError`
-naming the system, metric and cutoff it asked for, and `leaderboard`, `compare` and `sensitivity` with one naming
-the cutoffs the report has, so a wrong cutoff never reads as an empty table or as a message about shared queries.
+The report that a record is built from carries the same conventions. `EvalReport` holds the per-query, per-dataset and
+summary tables for every system, metric and cutoff that it scored. It holds the protocol that the report was scored
+under (`report.protocol`). It also holds the gains table that it read (`report.gains_source`, one of the four values
+above). For a report written by `rcp eval score --out`, it also holds the input files (`report.inputs`).
+`value(system, metric, k)` reads one summary value. `leaderboard(metric, k)` reads the wide table. The table has a row
+for each system and a column for each dataset. Its summary row is `mean`, best first. All four methods refuse a
+`(metric, k)` that the report never computed. `value` raises a `DataError` that names the system, the metric and the
+cutoff that it asked for. `leaderboard`, `compare` and `sensitivity` raise one that names the cutoffs that the report
+has. A wrong cutoff therefore never reads as an empty table or as a message about shared queries.
 
-Comparisons are made over the queries two systems share: `compare` gives, per pair of systems, the difference
-(B minus A), a paired t-test, a query-clustered bootstrap interval and the queries where RCP-nDCG and qrel-nDCG
-disagree in sign, and the paper's `sensitivity` is the per-dataset share of all system pairs whose paired t-test
-over their shared queries is significant at `alpha`, averaged over the datasets. Both read a report, so a
-comparison cannot mix scoring conventions: the protocol is the report's.
+Comparisons are made over the queries that two systems share. For each pair of systems, `compare` gives the difference
+(B minus A), a paired t-test and a query-clustered bootstrap interval. It also gives the queries where RCP-nDCG and
+qrel-nDCG disagree in sign. The paper's `sensitivity` is the per-dataset share of the system pairs. A pair counts when
+its paired t-test over the shared queries is significant at `alpha`. That share is averaged over the datasets. Both
+methods read a report, so a comparison cannot mix scoring conventions. The protocol is the protocol of the report.
 
 ## The sink contract
 
-A sink consumes records; it never reads a run. It is registered under the `rcp.results` entry-point group,
-its constructor's first parameter after `self` is `uri`, its `emit` refuses a record whose schema it does not
-know, and `flush` is called once after the last record. The shared check is
-`rcp.testing.results_conformance(sink)`; the built-in sinks (`jsonl`, `parquet`, `null`) run through it in
-the package's own tests, and `rcp results sinks` lists what is installed.
+A sink consumes records, and it never reads a run. The sink is registered under the `rcp.results` entry-point
+group. Its constructor takes `uri` as its first parameter after `self`. Its `emit` refuses a record whose schema it
+does not know. The caller calls `flush` one time after the last record. The shared check is
+`rcp.testing.results_conformance(sink)`. The built-in sinks (`jsonl`, `parquet`, `null`) run through it in the
+tests of the package. `rcp results sinks` lists the installed sinks.
