@@ -406,6 +406,37 @@ def test_a_plugin_rename_cannot_move_a_fingerprint(tmp_path: Path, monkeypatch: 
     assert before["plugin_sha256.rcp_ndcg_vllm.models"].startswith("sha256:")
 
 
+def test_a_product_rename_cannot_move_a_plugin_fingerprint() -> None:
+    """The plugin sources name the product too, and the recorded bytes spell its package ``rcp_ndcg`` and its
+    distribution ``rcp-ndcg``: a dotted reference and a code span name the package, a sibling distribution's
+    package keeps the recorded prefix, and a bare word in prose names the distribution.  A module whose
+    docstring the product's rename swept therefore hashes to its recorded value, and the recorded bytes are a
+    fixed point of the sweep.  The fingerprint's own tag and the plugin's two names are not the product's."""
+    from rcp_test.fingerprint import _canonical_plugin_source
+
+    pairs = [
+        # a dotted reference: the importable package
+        (
+            b"one home in the client (:func:`rcp.data.postprocess.skip_keep_mask`)",
+            b"one home in the client (:func:`rcp_ndcg.data.postprocess.skip_keep_mask`)",
+        ),
+        # a code span naming the package on its own
+        (b"with ``--no-deps`` and ``rcp`` is absent there", b"with ``--no-deps`` and ``rcp_ndcg`` is absent there"),
+        # a sibling distribution's package
+        (
+            b"the check (``rcp_test.observe.corpus``) expects",
+            b"the check (``rcp_ndcg_test.observe.corpus``) expects",
+        ),
+        # a bare word in prose: the distribution
+        (b"measures that delta, and rcp transfers float16", b"measures that delta, and rcp-ndcg transfers float16"),
+        # not the product's names: the fingerprint's own tag, the plugin's distribution and its package
+        (b"``rcp-fp/4``, ``rcp-vllm``, ``rcp_vllm``", b"``rcp-fp/4``, ``rcp-ndcg-vllm``, ``rcp_ndcg_vllm``"),
+    ]
+    for current, recorded in pairs:
+        assert _canonical_plugin_source(current) == recorded
+        assert _canonical_plugin_source(recorded) == recorded
+
+
 def test_the_plugin_module_hashes_never_import_a_package_init(monkeypatch: pytest.MonkeyPatch) -> None:
     """Resolving the plugin modules must not execute a package ``__init__``: the hashes are read by path, so
     a module whose package init pulls the engine stack still hashes on a CPU-only tree with no engine

@@ -38,6 +38,7 @@ import gzip
 import hashlib
 import importlib.util
 import json
+import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -88,7 +89,7 @@ request packing (``batch_size``) and the media caps are in.
 
 The plugin inputs are keyed in the **recorded spelling** of the distribution's own name
 (:data:`_CANONICAL_PLUGIN_PACKAGE`): a module's key is that package plus its path below the package, and
-its source is hashed with every current spelling of the package and distribution names mapped onto the
+its source is hashed with every current spelling of the plugin's and the product's names mapped onto the
 recorded ones. A rename of the distribution therefore adds one line to the alias map and moves no recorded
 fingerprint -- it does not change any canonical value, so the schema stays 4. A change to a module's code
 (the paths, the imports, the bodies) still moves the key."""
@@ -113,6 +114,30 @@ _PLUGIN_ENV_ALIASES: tuple[str, ...] = ("RCP_VLLM_",)
 """Every current spelling of the distribution's environment-variable prefix, mapped onto the recorded
 ``RCP_NDCG_VLLM_``: the plugin source carries the prefix in ``patches/__init__.py`` and ``models/__init__.py``,
 so an environment-variable sweep is a name change like the package's and must not move a recorded key."""
+
+_CANONICAL_PRODUCT_PACKAGE = "rcp_ndcg"
+"""The product package's recorded spelling. A keyed plugin module's docstrings name the product's own
+modules (``:func:`rcp_ndcg.data.postprocess.skip_keep_mask` ``), so the product's rename is a spelling the
+canonicalisation must map like the plugin's."""
+
+_CANONICAL_PRODUCT_DISTRIBUTION = "rcp-ndcg"
+"""The product distribution's recorded spelling (see above)."""
+
+_PRODUCT_NAME_RULES: tuple[tuple[bytes, bytes], ...] = (
+    # Today the product's package and its distribution are both spelled ``rcp``, so the bare token is
+    # ambiguous; each rule reads the context the recorded sources used it in. A dotted reference
+    # (``rcp.data.postprocess``) and a code span (``rcp``) name the package.
+    (rb"(?<![\w.-])rcp(?=[.`])", _CANONICAL_PRODUCT_PACKAGE.encode()),
+    # A sibling distribution's package keeps the recorded ``rcp_ndcg_`` prefix: ``rcp_test.observe.corpus``.
+    (rb"(?<![\w.-])rcp_(?!ndcg)", f"{_CANONICAL_PRODUCT_PACKAGE}_".encode()),
+    # A bare word in prose names the distribution: ``and rcp transfers float16``. A keyed plugin module
+    # imports no product code (the engine image installs the wheel with ``--no-deps``), so a bare ``rcp``
+    # in its source is prose, never an import.
+    (rb"(?<![\w.-])rcp(?![\w.-])", _CANONICAL_PRODUCT_DISTRIBUTION.encode()),
+)
+"""Every current spelling of the *product's* names, mapped onto the recorded ones, in order. Applied to a
+plugin module's source after the plugin's own names. The recorded bytes are a fixed point of the sweep, and
+so is ``rcp-fp`` (the fingerprint's own tag), which is neither name."""
 
 CLIENT_FIELDS: dict[str, str] = {
     # request: the field changes the bytes the client sends (and with them what the model returns)
@@ -227,12 +252,15 @@ def _canonical(value: Any) -> str:
 
 
 def _canonical_plugin_source(data: bytes) -> bytes:
-    """The plugin module source with every current spelling of the distribution's own name mapped onto the
-    recorded one.
+    """The plugin module source with every current spelling of the plugin's and the product's names mapped
+    onto the recorded ones.
 
     The canonical spelling is the one the committed corpora's ``plugin_sha256`` values were taken over, so the
     same code under a renamed package hashes to the same value: a rename moves no recorded fingerprint. The
-    bytes are read, never imported; a code change still moves the hash.
+    plugin's names map first (:data:`_PLUGIN_PACKAGE_ALIASES`, :data:`_PLUGIN_DISTRIBUTION_ALIASES`), then the
+    product's (:data:`_PRODUCT_NAME_RULES`) -- a module's docstrings name the product's own modules, so a
+    sweep of the product's name moves the hash just as a sweep of the plugin's does. The bytes are read, never
+    imported; a code change still moves the hash.
     """
     for alias in _PLUGIN_PACKAGE_ALIASES:
         data = data.replace(alias.encode(), _CANONICAL_PLUGIN_PACKAGE.encode())
@@ -240,6 +268,8 @@ def _canonical_plugin_source(data: bytes) -> bytes:
         data = data.replace(alias.encode(), _CANONICAL_PLUGIN_DISTRIBUTION.encode())
     for alias in _PLUGIN_ENV_ALIASES:
         data = data.replace(alias.encode(), b"RCP_NDCG_VLLM_")
+    for pattern, replacement in _PRODUCT_NAME_RULES:
+        data = re.sub(pattern, replacement, data)
     return data
 
 
