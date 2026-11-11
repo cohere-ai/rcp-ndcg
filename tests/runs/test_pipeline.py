@@ -61,7 +61,7 @@ class TestARun:
         }
         assert {row["system"] for row in report["summary"]} == {"candidates", "judge"}
         # The manifest names the system of every number, and leaves out the judge's own order (1 by construction).
-        assert manifest.metrics["candidates/rcp@10"] == candidates[("rcp", 10)]
+        assert manifest.metrics["candidates/rcp_ndcg@10"] == candidates[("rcp_ndcg", 10)]
         assert not any(key.startswith("judge/") or "/" not in key for key in manifest.metrics)
         comparison = json.loads((finished / "metrics" / "comparison.json").read_text(encoding="utf-8"))
         assert [(pair["system_a"], pair["system_b"]) for pair in comparison["pairs"]] == [("candidates", "judge")]
@@ -1168,7 +1168,7 @@ class TestEvaluationSystems:
 
         systems = {key.split("/")[0] for key in manifest.metrics}
         assert systems == {"candidates", "forward", "reverse", "picked"}
-        assert manifest.metrics["picked/rcp@10"] == manifest.metrics["reverse/rcp@10"]
+        assert manifest.metrics["picked/rcp_ndcg@10"] == manifest.metrics["reverse/rcp_ndcg@10"]
         with pytest.raises(DataError, match="holds no system 'other'"):
             Pipeline.resume(run_dir, overrides=[f"evaluation.systems={{x: '{both}#other'}}"]).run()
 
@@ -1184,7 +1184,7 @@ class TestEvaluationSystems:
 
         manifest = Pipeline.resume(run_dir, overrides=[f"evaluation.systems={{a: {plain}, b: {tagged}}}"]).run()
 
-        assert manifest.metrics["b/rcp@10"] == manifest.metrics["a/rcp@10"]
+        assert manifest.metrics["b/rcp_ndcg@10"] == manifest.metrics["a/rcp_ndcg@10"]
 
 
 class TestFailures:

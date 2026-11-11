@@ -10,7 +10,7 @@
   },
   "gains_source": "dataset",
   "metrics": [
-    "rcp",
+    "rcp_ndcg",
     "qrel_ndcg"
   ],
   "k": [
@@ -21,7 +21,7 @@
       "system": "system",
       "dataset": "nanobeir",
       "query_id": "test-religion-grcrgshwbr-pro03a",
-      "metric": "rcp",
+      "metric": "rcp_ndcg",
       "k": 10,
       "value": 0.7822838779610906
     },
@@ -29,7 +29,7 @@
       "system": "system",
       "dataset": "nanobeir",
       "query_id": "PLAIN-2051",
-      "metric": "rcp",
+      "metric": "rcp_ndcg",
       "k": 10,
       "value": 0.9394042844350838
     },
@@ -37,7 +37,7 @@
       "system": "system",
       "dataset": "nanobeir",
       "query_id": "5cd7b83eb30797aa8bf49b4b7a3f6a433aca4a75",
-      "metric": "rcp",
+      "metric": "rcp_ndcg",
       "k": 10,
       "value": 0.9189039073099308
     },
@@ -70,7 +70,7 @@
     {
       "system": "system",
       "dataset": "nanobeir",
-      "metric": "rcp",
+      "metric": "rcp_ndcg",
       "k": 10,
       "value": 0.8801973565687017,
       "num_queries": 3
@@ -87,7 +87,7 @@
   "summary": [
     {
       "system": "system",
-      "metric": "rcp",
+      "metric": "rcp_ndcg",
       "k": 10,
       "value": 0.8801973565687017,
       "ci_low": null,

@@ -134,7 +134,7 @@ class NotANumber(MeanAveragePrecision):
 class CollidingRcp(Metric):
     """A plugin that publishes a shipped metric's name: the one duplicate-name policy must refuse it."""
 
-    name = "rcp"
+    name = "rcp_ndcg"
     k_required = True
 
     def score(

@@ -295,7 +295,7 @@ def test_the_warning_reaches_the_saved_calibration_its_show_and_the_eval_report(
     text = CliRunner().invoke(calibration_group, ["show", "--calibration", str(tmp_path / "cal")]).stdout
     assert "warning INVALID_WINDOWS" in text
 
-    report = evaluate(world.rankings, dataset=world.dataset, gains=loaded, metrics=["rcp"], bootstrap=0)
+    report = evaluate(world.rankings, dataset=world.dataset, gains=loaded, metrics=["rcp_ndcg"], bootstrap=0)
     assert [w.code for w in report.warnings if w.code == "INVALID_WINDOWS"] == ["INVALID_WINDOWS"]
 
 

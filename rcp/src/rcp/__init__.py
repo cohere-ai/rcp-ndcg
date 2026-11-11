@@ -7,7 +7,7 @@ The facade, ``import rcp``::
     rcp.load_rankings(path, *, format="auto", dataset=None) -> Rankings
     # evaluation (no LLM)
     rcp.evaluate(rankings, *, suite=None, dataset=None, gains=None, protocol=None, k=10, metrics=...) -> EvalReport
-    rcp.compare(report, *, baseline=None, metric="rcp", ...) -> Comparison
+    rcp.compare(report, *, baseline=None, metric="rcp_ndcg", ...) -> Comparison
     # first stage and reranking
     rcp.retrieve(dataset, retriever, *, depth=150) -> Rankings
     rcp.rerank(dataset, rankings, reranker, *, depth=150) -> Rankings

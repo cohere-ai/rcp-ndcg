@@ -44,7 +44,7 @@ def _fixture() -> tuple[Dataset, Rankings]:
 def test_the_shipped_three_start_the_registry(monkeypatch: pytest.MonkeyPatch) -> None:
     install_metrics(monkeypatch)
 
-    assert METRICS == ("rcp", "qrel_ndcg", "count_ndcg")
+    assert METRICS == ("rcp_ndcg", "qrel_ndcg", "count_ndcg")
     assert registered_metrics() == METRICS, "the shipped tuple is the registry's start"
     for name in METRICS:
         assert issubclass(metric_class(name), Metric)
@@ -88,19 +88,19 @@ def test_a_plugin_that_ignores_the_cutoff_is_scored_once(monkeypatch: pytest.Mon
 
 
 def test_the_shipped_metrics_are_scored_through_the_registry(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A plugin that takes ``rcp`` makes the shipped name ambiguous: the refusal is the one policy's, not a
+    """A plugin that takes ``rcp_ndcg`` makes the shipped name ambiguous: the refusal is the one policy's, not a
     silent choice of the built-in (which is what scoring the built-ins directly would do)."""
-    install_metrics(monkeypatch, metric_entry("rcp", "tests.eval._metrics:CollidingRcp"))
+    install_metrics(monkeypatch, metric_entry("rcp_ndcg", "tests.eval._metrics:CollidingRcp"))
     dataset, _ = _fixture()
     rankings = Rankings.from_scores({"q0": {"a": 1.0}}, system="s")
 
     with pytest.raises(ConfigError, match="more than one installed distribution") as caught:
-        metric_class("rcp")
+        metric_class("rcp_ndcg")
     message = str(caught.value)
     assert "rcp.eval.metrics:RcpNdcg" in message and "tests.eval._metrics:CollidingRcp" in message
     assert registered_metrics() == METRICS, "the listing names each name once: the collision is not listed twice"
     with pytest.raises(ConfigError, match="more than one installed distribution"):
-        evaluate(rankings, dataset=dataset, metrics=["rcp"], gains=dataset.qrels, bootstrap=0)
+        evaluate(rankings, dataset=dataset, metrics=["rcp_ndcg"], gains=dataset.qrels, bootstrap=0)
 
 
 def test_a_plugin_whose_name_disagrees_with_its_entry_point_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:

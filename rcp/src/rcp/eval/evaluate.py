@@ -181,7 +181,7 @@ class EvalReport(BaseModel):
         """The systems, in the order of the rankings."""
         return list(dict.fromkeys(row.system for row in self.summary))
 
-    def value(self, system: str, metric: str = "rcp", k: int | None = None) -> float | None:
+    def value(self, system: str, metric: str = "rcp_ndcg", k: int | None = None) -> float | None:
         """The summary value of one system.
 
         ``k`` may be omitted when the metric was scored at one cutoff (the report's own, or ``k=0`` for a
@@ -205,7 +205,7 @@ class EvalReport(BaseModel):
         columns = list(type(rows[0]).model_fields) if rows else list(_TABLE_ROWS[table].model_fields)
         return pd.DataFrame([row.model_dump() for row in rows], columns=columns)
 
-    def leaderboard(self, metric: str = "rcp", k: int | None = None) -> pd.DataFrame:
+    def leaderboard(self, metric: str = "rcp_ndcg", k: int | None = None) -> pd.DataFrame:
         """The wide table of one metric: a row per system, a column per dataset, and the summary as ``mean``.
 
         ``mean`` is the protocol's aggregate (the unweighted mean over datasets), so it equals :meth:`value`.
@@ -261,7 +261,7 @@ def evaluate(
     gains: Mapping[str, Mapping[str, float]] | Any | None = None,
     protocol: str | Protocol | None = None,
     k: int | Sequence[int] = 10,
-    metrics: Sequence[str] = ("rcp", "qrel_ndcg"),
+    metrics: Sequence[str] = ("rcp_ndcg", "qrel_ndcg"),
     count_gains: Mapping[str, Mapping[str, float]] | None = None,
     systems: Sequence[str] | None = None,
     bootstrap: int = 1000,
@@ -280,7 +280,7 @@ def evaluate(
         protocol: A :data:`~rcp_core.protocol.PROTOCOLS` name or a :class:`~rcp_core.protocol.Protocol`;
             defaults to the dataset's (a suite's) protocol, else ``"plain"``.
         k: One cutoff or several.
-        metrics: Which metrics to compute: the shipped ``"rcp"``, ``"qrel_ndcg"``, ``"count_ndcg"``, or the name
+        metrics: Which metrics to compute: the shipped ``"rcp_ndcg"``, ``"qrel_ndcg"``, ``"count_ndcg"``, or the name
             of an installed ``rcp.metrics`` plugin. A plugin is scored on the dataset's qrels, at every cutoff
             when its ``k_required`` is true and once (at ``k=0``) when it is false.
         count_gains: The Count-nDCG gains (:func:`rcp_core.count_gain` per document), required for
@@ -339,7 +339,7 @@ def evaluate(
     _refuse_undivided(rankings, dataset)
     selected = _selected_systems(rankings, systems)
 
-    rcp_gains, source = _resolve_gains(gains, dataset) if "rcp" in requested else (None, "none")
+    rcp_gains, source = _resolve_gains(gains, dataset) if "rcp_ndcg" in requested else (None, "none")
     if "count_ndcg" in requested:
         # The gains are validated where they are scored: a qrel-only run that carries count gains for a later
         # run reads them as it left them, exactly as gains= on a qrel-only run reads the RCP ones.
@@ -361,11 +361,11 @@ def evaluate(
     labels: dict[str, dict[str, Mapping[str, Mapping[str, float]]]] = {}
     for part in dataset.parts:
         for name in requested:
-            if name == "rcp" and rcp_gains is not None:
-                labels.setdefault("rcp", {})[part.name] = _gains_for(rcp_gains[part.name], part, dataset)
+            if name == "rcp_ndcg" and rcp_gains is not None:
+                labels.setdefault("rcp_ndcg", {})[part.name] = _gains_for(rcp_gains[part.name], part, dataset)
             elif name == "count_ndcg" and count_gains is not None:
                 labels.setdefault("count_ndcg", {})[part.name] = _gains_for(count_gains, part, dataset)
-            elif name not in ("rcp", "count_ndcg"):
+            elif name not in ("rcp_ndcg", "count_ndcg"):
                 labels.setdefault(name, {})[part.name] = part.qrels
 
     computed = [name for name in requested if name in labels]

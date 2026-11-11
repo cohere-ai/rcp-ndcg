@@ -106,6 +106,22 @@ CATALOG = Path("rcp-vllm/README.md")
 RECIPES = Path("rcp-vllm/src/rcp_vllm/recipes")
 """The shipped recipes' root, relative to the checkout root."""
 
+SOURCE_DIRS = (
+    "rcp-core",
+    "rcp-ndcg-core",
+    "rcp",
+    "rcp-ndcg",
+    "rcp-vllm",
+    "rcp-ndcg-vllm",
+    "rcp-test",
+    "rcp-ndcg-test",
+)
+"""Every package source directory the key derivation reads, relative to the RC commit's tree.
+
+Both spellings of each renamed package: a wave records the commit it ran at, and the commits before a rename
+carry the old directory (a directory the commit predates is inert on the path).
+"""
+
 VALIDATION_KINDS = ("equivalence", "record", "gate")
 """The wave kinds whose evidence is a recipe's own validation (``equivalence-<family>``,
 ``record-<family>``, ``gate-<family>``).  Every other kind -- ``parity-*``, ``*-probe``, ``all-retrieval``,
@@ -115,15 +131,25 @@ _KEYS_SCRIPT = """
 import json, sys
 from pathlib import Path
 
-try:  # the tree's own spelling: rcp_vllm after the rename, rcp_ndcg_vllm in the commits before it
-    from rcp_vllm.recipe import default_recipes_root, iter_recipes
-except ImportError:
+# The tree's own spelling of the serving package: rcp_ndcg_vllm in the commits before the rename, rcp_vllm
+# after it.  The old spelling is tried first because only it can be the tree's: it is never installed, so it
+# imports exactly when `rc_keys` put that tree's source directory on the path.
+try:
     from rcp_ndcg_vllm.recipe import default_recipes_root, iter_recipes
+except ImportError:
+    from rcp_vllm.recipe import default_recipes_root, iter_recipes
 
-from rcp_test.fingerprint import behaviour_fingerprint
+# The same for the harness whose fingerprint rule the tree ran: rcp_ndcg_test before the rename, rcp_test after.
+try:
+    from rcp_ndcg_test.fingerprint import behaviour_fingerprint
+except ImportError:
+    from rcp_test.fingerprint import behaviour_fingerprint
 
 tree = Path(sys.argv[1])
+# The tree's own goldens, under the same spelling (the tokenizer SHA-256 is the fingerprint's one file input).
 golden = tree / "rcp-test" / "tests" / "recipes" / "golden"
+if not golden.is_dir():  # a pre-rename tree carries the harness, and so its goldens, under the old spelling
+    golden = tree / "rcp-ndcg-test" / "tests" / "recipes" / "golden"
 keys, errors = {}, {}
 for recipe in iter_recipes(default_recipes_root()):
     try:
@@ -357,6 +383,15 @@ def current_keys(repo_root: str | Path, recipes: Mapping[str, Recipe]) -> dict[s
     return keys
 
 
+def _source_paths(tree: Path) -> list[Path]:
+    """The ``PYTHONPATH`` entries the key derivation at ``tree`` runs with: every package's source directory.
+
+    Inputs: the extracted tree of an RC commit.  Outputs: the ``src`` directory of every entry of
+    :data:`SOURCE_DIRS`, in that order (a directory the commit predates is inert).  Units: none.
+    """
+    return [tree / name / "src" for name in SOURCE_DIRS]
+
+
 def rc_keys(commit: str, repo_root: str | Path) -> tuple[dict[str, str], dict[str, str]]:
     """The behaviour keys the tree at one commit computes: the derivation that makes a wave's row its own.
 
@@ -376,15 +411,7 @@ def rc_keys(commit: str, repo_root: str | Path) -> tuple[dict[str, str], dict[st
                 "the wave's key cannot be derived -- fetch the history or re-run the wave"
             )
         subprocess.run(["tar", "-x", "-C", str(tree)], input=archive.stdout, check=True)
-        sources = [tree / "rcp-core" / "src", tree / "rcp-ndcg-core" / "src", tree / "rcp" / "src"]
-        # Both spellings of the serving package's source: the wave commits before the rename carry
-        # `rcp-ndcg-vllm`, the ones after it `rcp-vllm` (a missing entry on the path is inert).
-        sources += [
-            tree / "rcp-vllm" / "src",
-            tree / "rcp-ndcg-vllm" / "src",
-            tree / "rcp-test" / "src",
-        ]
-        environment = {**os.environ, "PYTHONPATH": os.pathsep.join(str(path) for path in sources)}
+        environment = {**os.environ, "PYTHONPATH": os.pathsep.join(str(path) for path in _source_paths(tree))}
         run = subprocess.run(
             [sys.executable, "-c", _KEYS_SCRIPT, str(tree)], capture_output=True, text=True, env=environment
         )

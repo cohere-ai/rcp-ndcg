@@ -33,7 +33,7 @@ subset: add `--subset <name>`. No rankings file yet? Path 2 produces one from a 
 rcp eval score --rankings my_system.parquet --suite nanobeir --json
 ```
 
-Read `data.summary`: one row per system and metric (`rcp`, `qrel_ndcg`) with `value`, `ci_low`, `ci_high`.
+Read `data.summary`: one row per system and metric (`rcp_ndcg`, `qrel_ndcg`) with `value`, `ci_low`, `ci_high`.
 `data.per_dataset` holds the mean per dataset. `--metrics count_ndcg` adds the rubric-only baseline: its gains
 come from the rubric windows, so pass their store with `--judgements <store>` (repeatable). The per-query values stay out of stdout: `--per-query` adds them,
 `--fields summary` keeps only the named fields, and `--out report.json` writes the full report (what `eval compare

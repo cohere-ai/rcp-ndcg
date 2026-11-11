@@ -1368,7 +1368,7 @@
         }
       },
       "metric": {
-        "default": "rcp",
+        "default": "rcp_ndcg",
         "envvar": null,
         "help": null,
         "hidden": false,
@@ -1749,7 +1749,7 @@
       },
       "metrics": {
         "default": [
-          "rcp",
+          "rcp_ndcg",
           "qrel_ndcg"
         ],
         "envvar": null,
@@ -1766,7 +1766,7 @@
         "secondary_opts": [],
         "type": {
           "choices": [
-            "rcp",
+            "rcp_ndcg",
             "qrel_ndcg",
             "count_ndcg"
           ],
@@ -3901,7 +3901,7 @@
         "secondary_opts": [],
         "type": {
           "choices": [
-            "rcp",
+            "rcp_ndcg",
             "qrel_ndcg"
           ],
           "name": "choice"

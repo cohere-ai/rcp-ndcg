@@ -48,7 +48,7 @@ print(dataset.subset, dataset.split, dataset.provenance.revision[:8])
 scores = {query_id: {doc_id: -rank for rank, doc_id in enumerate(pool)}
           for query_id, pool in dataset.candidates.items()}
 report = evaluate(Rankings.from_scores(scores, system="pool-order"), dataset=dataset)
-print(report.value("pool-order", "rcp"), report.value("pool-order", "qrel_ndcg"))
+print(report.value("pool-order", "rcp_ndcg"), report.value("pool-order", "qrel_ndcg"))
 ```
 
 `load_dataset("suite:nanobeir")` loads every task of a suite, and `evaluate(rankings, suite="nanobeir")` scores

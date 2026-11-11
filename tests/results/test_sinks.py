@@ -41,7 +41,7 @@ def _record(metrics: list[ResultMetric] | None = None) -> ResultRecord:
     subject = ResultSubject(kind="system", name="mine", system="mine", run_id="20260101-000000-tiny-ab12cd")
     dataset = ResultDataset(name="toy", protocol="plain", protocol_spec=Protocol(name="plain", ties="group_mean"))
     if metrics is None:
-        metrics = [ResultMetric(metric="rcp", k=10, value=0.75, num_queries=2)]
+        metrics = [ResultMetric(metric="rcp_ndcg", k=10, value=0.75, num_queries=2)]
     return ResultRecord(
         record_id=record_identity(subject, dataset, metrics),
         created_at=datetime(2026, 1, 2, tzinfo=UTC),
@@ -170,7 +170,7 @@ def test_the_parquet_sink_writes_one_row_per_metric(tmp_path: Path) -> None:
     sink.emit(
         _record(
             metrics=[
-                ResultMetric(metric="rcp", k=10, value=0.75, num_queries=2),
+                ResultMetric(metric="rcp_ndcg", k=10, value=0.75, num_queries=2),
                 ResultMetric(metric="qrel_ndcg", k=5, value=0.25, num_queries=2, dataset="toy"),
             ]
         )
@@ -180,7 +180,7 @@ def test_the_parquet_sink_writes_one_row_per_metric(tmp_path: Path) -> None:
     table = pq.read_table(out)
     assert table.num_rows == 2
     rows = table.to_pylist()
-    assert [row["metric"] for row in rows] == ["rcp", "qrel_ndcg"]
+    assert [row["metric"] for row in rows] == ["rcp_ndcg", "qrel_ndcg"]
     assert [row["k"] for row in rows] == [10, 5]
     assert [row["dataset_name"] for row in rows] == ["toy", "toy"]
     assert [row["subject_name"] for row in rows] == ["mine", "mine"]
@@ -238,4 +238,4 @@ def test_a_sink_refuses_a_value_that_is_not_a_record() -> None:
 
 def test_a_metric_needs_a_non_negative_cutoff() -> None:
     with pytest.raises(ValidationError):
-        ResultMetric(metric="rcp", k=0, value=0.5)
+        ResultMetric(metric="rcp_ndcg", k=0, value=0.5)

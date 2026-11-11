@@ -221,8 +221,8 @@
           "title": "K"
         },
         "metric": {
-          "default": "rcp",
-          "description": "The metric compared: any metric the report holds, a plugin's included (the report's `metrics`: `rcp`, `qrel_ndcg`, `count_ndcg`, or a name registered under `rcp.metrics`).",
+          "default": "rcp_ndcg",
+          "description": "The metric compared: any metric the report holds, a plugin's included (the report's `metrics`: `rcp_ndcg`, `qrel_ndcg`, `count_ndcg`, or a name registered under `rcp.metrics`).",
           "title": "Metric",
           "type": "string"
         },
@@ -413,7 +413,7 @@
           "description": "Metrics to compute (repeatable).",
           "items": {
             "enum": [
-              "rcp",
+              "rcp_ndcg",
               "qrel_ndcg",
               "count_ndcg"
             ],

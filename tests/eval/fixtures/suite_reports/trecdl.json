@@ -10,7 +10,7 @@
   },
   "gains_source": "dataset",
   "metrics": [
-    "rcp",
+    "rcp_ndcg",
     "qrel_ndcg"
   ],
   "k": [
@@ -21,7 +21,7 @@
       "system": "system",
       "dataset": "trecdl",
       "query_id": "359349",
-      "metric": "rcp",
+      "metric": "rcp_ndcg",
       "k": 10,
       "value": 0.983275128858023
     },
@@ -38,7 +38,7 @@
     {
       "system": "system",
       "dataset": "trecdl",
-      "metric": "rcp",
+      "metric": "rcp_ndcg",
       "k": 10,
       "value": 0.983275128858023,
       "num_queries": 1
@@ -55,7 +55,7 @@
   "summary": [
     {
       "system": "system",
-      "metric": "rcp",
+      "metric": "rcp_ndcg",
       "k": 10,
       "value": 0.983275128858023,
       "ci_low": null,

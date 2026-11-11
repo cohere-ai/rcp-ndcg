@@ -82,9 +82,9 @@ def test_the_cli_runs_judges_calibrates_and_evaluates(world: dict[str, Path]) ->
     assert [(step["name"], step["status"]) for step in status["steps"]] == [
         ("tournament", "completed"), ("rubric", "completed"), ("calibrate", "completed"), ("evaluate", "completed"),
     ]  # fmt: skip
-    assert status["metrics"]["candidates/rcp@10"] > 0
+    assert status["metrics"]["candidates/rcp_ndcg@10"] > 0
     assert {name for name, exists in shown["artifacts"].items() if not exists} == {"jobs"}  # it ran in-process
-    assert {row["metric"] for row in scored["summary"]} == {"rcp", "qrel_ndcg"}
+    assert {row["metric"] for row in scored["summary"]} == {"rcp_ndcg", "qrel_ndcg"}
     assert scored["gains_source"] == "calibration"
     assert calibration["mode"] == "tournament" and calibration["queries"] == 2
     assert [(pair["system_a"], pair["system_b"]) for pair in compared["pairs"]] == [("candidates", "judge")]
@@ -146,7 +146,7 @@ def test_the_facade_runs_the_same_flow(world: dict[str, Path], tmp_path: Path) -
     assert projected.calls > 0 and projected.input_tokens > 0
     assert isinstance(judged, rcp.JudgementSet) and len(judged) > 0
     assert isinstance(calibration, rcp.Calibration) and calibration.mode == "tournament"
-    assert isinstance(report, rcp.EvalReport) and report.value("candidates", "rcp", 3) > 0
+    assert isinstance(report, rcp.EvalReport) and report.value("candidates", "rcp_ndcg", 3) > 0
     assert isinstance(run, rcp.Run) and run.status().status == "completed"
     assert isinstance(estimate, rcp.CostEstimate) and estimate.calls > 0
     assert {"candidates", "calibration", "report", "log"} <= set(run.artifacts())

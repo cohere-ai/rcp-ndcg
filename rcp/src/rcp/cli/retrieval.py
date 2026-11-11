@@ -264,7 +264,7 @@ class RetrievalSweepRequest(BaseModel):
     revision: str | None = Field(default=None, description="The Hub revision of the data.")
     depth: int = Field(default=150, ge=1, description="Documents scored per query.")
     k: list[int] = Field(default_factory=lambda: [10], description="Evaluation cutoffs (repeatable).")
-    metrics: list[Literal["rcp", "qrel_ndcg"]] | None = Field(
+    metrics: list[Literal["rcp_ndcg", "qrel_ndcg"]] | None = Field(
         default=None,
         description="Metrics to score (repeatable); default: rcp and qrel_ndcg when the dataset has "
         "released gains, else qrel_ndcg alone (RCP-nDCG needs a calibration, which the sweep does not take).",
@@ -313,11 +313,11 @@ def retrieval_sweep(request: RetrievalSweepRequest) -> RetrievalSweepResult:
         from rcp.support.logging import get_logger
 
         dataset = load_dataset(request.dataset, subset=request.subset, revision=request.revision)
-        metrics: list[Literal["rcp", "qrel_ndcg"]] | None = list(request.metrics) if request.metrics else None
+        metrics: list[Literal["rcp_ndcg", "qrel_ndcg"]] | None = list(request.metrics) if request.metrics else None
         if metrics is None:
             # The documented example names no metrics, and a BEIR dataset has no released gains: scoring
             # rcp would refuse the command after the per-k rankings were already written.
-            metrics = ["rcp", "qrel_ndcg"] if dataset.gains else ["qrel_ndcg"]
+            metrics = ["rcp_ndcg", "qrel_ndcg"] if dataset.gains else ["qrel_ndcg"]
             if not dataset.gains:
                 get_logger(__name__).warning(
                     "%s has no released gains: scoring qrel_ndcg alone (RCP-nDCG needs calibrated gains, which "

@@ -179,7 +179,7 @@ def test_a_calibration_gives_rcp_ndcg_and_a_report_to_compare(scored: dict) -> N
     scored = scored["document"]
 
     assert scored["data"]["gains_source"] == "calibration"
-    assert _summary(scored, "rcp", 10, "reverse") > _summary(scored, "rcp", 10, "forward")
+    assert _summary(scored, "rcp_ndcg", 10, "reverse") > _summary(scored, "rcp_ndcg", 10, "forward")
     assert compared["data"]["schema"] == "rcp.comparison.v1"
     (pair,) = compared["data"]["pairs"]
     assert (pair["system_a"], pair["system_b"]) == ("forward", "reverse") and pair["delta"] > 0
@@ -618,7 +618,7 @@ def test_eval_score_help_lists_the_registered_metric_plugins(monkeypatch: pytest
 
     assert result.exit_code == 0, result.output
     assert "--metric" in result.output
-    assert "Registered: rcp, qrel_ndcg, count_ndcg, map." in " ".join(result.output.split())
+    assert "Registered: rcp_ndcg, qrel_ndcg, count_ndcg, map." in " ".join(result.output.split())
 
 
 def test_metric_scores_a_plugin_alongside_the_shipped_metrics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

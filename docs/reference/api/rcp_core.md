@@ -242,7 +242,7 @@ class MediaRef(pydantic.main.BaseModel)
 literal_alias
 
 ```text
-MetricName = 'rcp' | 'qrel_ndcg' | 'count_ndcg'
+MetricName = 'rcp_ndcg' | 'qrel_ndcg' | 'count_ndcg'
 ```
 
 ## `Modality`
@@ -482,5 +482,5 @@ qrel_gain(grade: float, scheme: Literal['linear', 'exponential'] = 'linear') -> 
 function — One query's nDCG@k under a protocol.
 
 ```text
-score_query(scores: Mapping[str, float], gains: Mapping[str, float], *, protocol: str | Protocol, k: int = 10, metric: MetricName = 'rcp', candidates: Sequence[str] | None = None, excluded: Collection[str] = [], query_id: str | None = None) -> float
+score_query(scores: Mapping[str, float], gains: Mapping[str, float], *, protocol: str | Protocol, k: int = 10, metric: MetricName = 'rcp_ndcg', candidates: Sequence[str] | None = None, excluded: Collection[str] = [], query_id: str | None = None) -> float
 ```

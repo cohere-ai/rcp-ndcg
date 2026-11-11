@@ -259,7 +259,7 @@ def explain(
         raise DataError("explain needs the rankings and data behind the report; use a report returned by evaluate()")
     part = _part(data, dataset, query_id)
     labels = report._inputs["labels"]  # {metric: {part: {query_id: {doc_id: label}}}}
-    gains = labels.get("rcp", {}).get(part.name, {}).get(query_id, {})
+    gains = labels.get("rcp_ndcg", {}).get(part.name, {}).get(query_id, {})
     delta_gains = gains or {
         d: g for d, g in labels.get("qrel_ndcg", {}).get(part.name, {}).get(query_id, {}).items() if g > 0
     }  # a qrel-only report: the deltas compare by the grades the query has (the display gains stay the RCP ones)

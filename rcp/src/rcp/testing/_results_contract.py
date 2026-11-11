@@ -115,7 +115,7 @@ def _sample_record() -> ResultRecord:
     """A small valid record (one system, one dataset, one metric) the conformance emits."""
     subject = ResultSubject(kind="system", name="conformance", system="conformance")
     dataset = ResultDataset(name="conformance")
-    metric = ResultMetric(metric="rcp", k=10, value=0.5, num_queries=1)
+    metric = ResultMetric(metric="rcp_ndcg", k=10, value=0.5, num_queries=1)
     return ResultRecord(
         record_id=record_identity(subject, dataset, [metric]),
         created_at=datetime(2026, 1, 1, tzinfo=UTC),

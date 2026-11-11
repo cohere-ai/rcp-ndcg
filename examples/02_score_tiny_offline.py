@@ -25,7 +25,7 @@ rankings = rcp.load_rankings(TINY / "systems.jsonl")  # two systems: bm25 and re
 
 report = rcp.evaluate(rankings, dataset=dataset, gains=gains, k=5, bootstrap=200)
 for system in rankings.systems:
-    rcp_score, qrel_ndcg = report.value(system, "rcp"), report.value(system, "qrel_ndcg")
+    rcp_score, qrel_ndcg = report.value(system, "rcp_ndcg"), report.value(system, "qrel_ndcg")
     print(f"{system:10s} RCP-nDCG@5 {rcp_score:.3f}   qrel-nDCG@5 {qrel_ndcg:.3f}")
 
 comparison = rcp.compare(report, baseline="bm25", bootstrap=200)

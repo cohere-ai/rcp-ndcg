@@ -32,7 +32,7 @@ from tests.results._sinks import inject_sinks
 def _record() -> ResultRecord:
     subject = ResultSubject(kind="system", name="mine", system="mine")
     dataset = ResultDataset(name="toy")
-    metrics = [ResultMetric(metric="rcp", k=10, value=0.5, num_queries=2)]
+    metrics = [ResultMetric(metric="rcp_ndcg", k=10, value=0.5, num_queries=2)]
     return ResultRecord(
         record_id=record_identity(subject, dataset, metrics),
         created_at=datetime(2026, 1, 2, tzinfo=UTC),

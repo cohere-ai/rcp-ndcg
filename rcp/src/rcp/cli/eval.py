@@ -43,7 +43,7 @@ from rcp.eval import (
 from rcp.runs.pipeline import REFERENCE_SYSTEMS
 
 #: What ``eval score`` computes; Count-nDCG needs count gains, which its rubric judgement stores supply.
-ScoreMetric = Literal["rcp", "qrel_ndcg", "count_ndcg"]
+ScoreMetric = Literal["rcp_ndcg", "qrel_ndcg", "count_ndcg"]
 
 
 class EvalScoreRequest(BaseModel):
@@ -67,7 +67,7 @@ class EvalScoreRequest(BaseModel):
     )
     k: list[int] = Field(default_factory=lambda: [10], description="Cutoffs (repeatable).")
     metrics: list[ScoreMetric] = Field(
-        default_factory=lambda: ["rcp", "qrel_ndcg"], description="Metrics to compute (repeatable)."
+        default_factory=lambda: ["rcp_ndcg", "qrel_ndcg"], description="Metrics to compute (repeatable)."
     )
     metric: list[str] = Field(
         default_factory=list,
@@ -354,9 +354,9 @@ class EvalCompareRequest(BaseModel):
     run: str | None = Field(default=None, description="A run directory (its systems, scored with its calibration).")
     baseline: str | None = Field(default=None, description="Compare every system against this one.")
     metric: str = Field(
-        default="rcp",
+        default="rcp_ndcg",
         description="The metric compared: any metric the report holds, a plugin's included (the report's "
-        "`metrics`: `rcp`, `qrel_ndcg`, `count_ndcg`, or a name registered under `rcp.metrics`).",
+        "`metrics`: `rcp_ndcg`, `qrel_ndcg`, `count_ndcg`, or a name registered under `rcp.metrics`).",
     )
     k: int | None = Field(default=None, ge=1, description="The cutoff (may be omitted when the report has one).")
     alpha: float = Field(default=0.05, gt=0, lt=1, description="Significance level; the interval covers 1 - alpha.")

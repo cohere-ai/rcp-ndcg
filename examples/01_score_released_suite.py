@@ -21,5 +21,5 @@ rerankers = [s for s in rankings.systems if "judge" not in s]  # the file also h
 report = rcp.evaluate(rankings, dataset=dataset, k=10, bootstrap=0)
 print(f"{TASK} under the {dataset.protocol} protocol")
 print(f"{'reranker':42s} {'RCP-nDCG@10':>12s} {'qrel-nDCG@10':>13s}")
-for system in sorted(rerankers, key=lambda s: -report.value(s, "rcp")):
-    print(f"{system:42s} {report.value(system, 'rcp'):12.4f} {report.value(system, 'qrel_ndcg'):13.4f}")
+for system in sorted(rerankers, key=lambda s: -report.value(s, "rcp_ndcg")):
+    print(f"{system:42s} {report.value(system, 'rcp_ndcg'):12.4f} {report.value(system, 'qrel_ndcg'):13.4f}")

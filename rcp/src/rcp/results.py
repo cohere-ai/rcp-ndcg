@@ -122,7 +122,7 @@ class ResultMetric(BaseModel):
     """One metric value of one row: the headline number and its interval.
 
     Attributes:
-        metric: ``"rcp"``, ``"qrel_ndcg"``, ``"count_ndcg"`` or a metric an exporter owns.
+        metric: ``"rcp_ndcg"``, ``"qrel_ndcg"``, ``"count_ndcg"`` or a metric an exporter owns.
         k: The cutoff.
         value: The value, or ``None`` when the metric is undefined for the row.
         num_queries: The queries with a defined value.

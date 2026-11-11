@@ -123,7 +123,7 @@ def compare(
     report: EvalReport,
     *,
     baseline: str | None = None,
-    metric: str = "rcp",
+    metric: str = "rcp_ndcg",
     k: int | None = None,
     alpha: float = 0.05,
     bootstrap: int = 10_000,
@@ -180,7 +180,7 @@ def compare(
         if baseline is not None
         else list(itertools.combinations(compared, 2))
     )
-    other = "qrel_ndcg" if metric == "rcp" else "rcp" if metric == "qrel_ndcg" else None
+    other = "qrel_ndcg" if metric == "rcp_ndcg" else "rcp_ndcg" if metric == "qrel_ndcg" else None
     # The sign flips are a bonus: a metric the report lists that has no values at this cutoff (it matched no
     # labelled query) drops out of them, where the requested metric above is refused.
     other_values = _values(report, other, k) if other is not None and _has_cutoff(report, other, k) else None
@@ -198,7 +198,7 @@ def compare(
     )
 
 
-def sensitivity(report: EvalReport, *, metric: str = "rcp", k: int | None = None, alpha: float = 0.05) -> float:
+def sensitivity(report: EvalReport, *, metric: str = "rcp_ndcg", k: int | None = None, alpha: float = 0.05) -> float:
     """How often a metric separates systems, the paper's sensitivity (appendix B).
 
     Per dataset, the share of all system pairs whose paired t-test over their shared queries has ``p < alpha`` (a
@@ -340,7 +340,7 @@ def _sign_flips(values: Values, other: Values, a: str, b: str, metric: str) -> l
             except KeyError:
                 continue
             if delta * delta_other < 0:
-                rcp, qrel = (delta, delta_other) if metric == "rcp" else (delta_other, delta)
+                rcp, qrel = (delta, delta_other) if metric == "rcp_ndcg" else (delta_other, delta)
                 flips.append(SignFlip(dataset=dataset, query_id=query_id, delta_rcp_ndcg=rcp, delta_qrel_ndcg=qrel))
     return sorted(flips, key=lambda f: -abs(f.delta_rcp_ndcg - f.delta_qrel_ndcg))
 
