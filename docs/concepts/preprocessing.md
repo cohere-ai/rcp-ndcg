@@ -377,18 +377,19 @@ reads them, with `max_images` and `max_videos` above 0.
 
 ### Memory, concurrency and the engine's cost
 
-Three existing settings bound what a media pass costs. The client holds a query's prepared pages and frames
-for as long as that query runs. A pass whose media is inlined therefore runs one query at a time. A container
-is not inlined. The client keeps only its reference, and it reads the bytes while it lowers one request. A
-container pass therefore runs at the judge's `concurrency`, which bounds the requests in flight.
-`RCP_NDCG_VIDEO_CACHE_SIZE` bounds the encoded bytes that it keeps, at 16 encoded containers per worker by
-default. `RCP_NDCG_MAX_VIDEO_BYTES` refuses a larger container before the request is sent, at 64 MiB by
-default.
+Three settings bound what a media pass costs, one per way the pass holds media. The client holds a query's
+prepared pages and frames for as long as that query runs. A pass that inlines media therefore runs one query
+at a time. A container travels as a reference: preparation keeps only that ref. The wire reads its bytes when
+it lowers a request. A container pass therefore runs at the judge's `concurrency`, which bounds the requests
+in flight. `RCP_NDCG_VIDEO_CACHE_SIZE` bounds how many encoded containers one worker keeps, 16 by default.
+`RCP_NDCG_MAX_VIDEO_BYTES` refuses a container over 64 MiB before a send. That cap trusts the container's
+recorded `num_bytes`, so it is not a hard byte bound. A `data:` container is the exception: its bytes are the
+reference itself. A pass of them runs one query at a time.
 
-The engine side is a separate cost. The engine decodes each clip at native resolution. Its memory therefore
-grows with the requests in flight, the clips per request and the clips' duration. Lower `concurrency` or
-`max_videos` to bound it. The other option is to serve the clips as frames (`wire: frames`) and let the client
-hold them.
+The engine side is a separate cost. The engine decodes each clip at native resolution. Its memory grows with
+the requests in flight and the clips per request. It also grows with each clip's resolution and duration.
+Lower `concurrency` or `max_videos` to bound it. The other option is to serve the clips as frames
+(`wire: frames`) and let the client hold them.
 
 ```python
 from rcp.data import ImagePolicy
