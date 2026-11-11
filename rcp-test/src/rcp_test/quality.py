@@ -57,7 +57,7 @@ __all__ = [
 QUALITY_TOLERANCE = 0.005
 """The T3 gate: within 0.5 points of nDCG@10 per subset (a 0-to-1 scale)."""
 
-METRICS: tuple[str, ...] = ("rcp", "qrel_ndcg")
+METRICS: tuple[str, ...] = ("rcp_ndcg", "qrel_ndcg")
 """The metrics compared at k = 10 (RCP-nDCG@10 and qrel-nDCG@10)."""
 
 TASK_MATRIX: tuple[dict[str, Any], ...] = (
@@ -319,7 +319,7 @@ def served_commands(task: QualityTask, recipe: Recipe, engine_url: str, work_dir
     commands.append(
         [
             "rcp", "eval", "score", "--rankings", str(rankings), "--suite", task.suite, "--subset", task.subset,
-            "--revision", task.revision, "--metrics", "rcp", "--metrics", "qrel_ndcg", "--k", "10",
+            "--revision", task.revision, "--metrics", "rcp_ndcg", "--metrics", "qrel_ndcg", "--k", "10",
             "--out", str(work / "scores.json"), "--json",
         ]
     )  # fmt: skip
@@ -355,7 +355,7 @@ def served_scores(report_path: str | Path, subset: str) -> dict[str, float]:
     return values
 
 
-_MTEB_KEYS = {"qrel_ndcg": "ndcg_at_10", "rcp": "ndcg_float_at_10"}
+_MTEB_KEYS = {"qrel_ndcg": "ndcg_at_10", "rcp_ndcg": "ndcg_float_at_10"}
 """mteb's names of the two metrics: ``ndcg_at_10`` over the integer qrels and ``ndcg_float_at_10`` over the
 released continuous gains (``rcp.eval.mteb``; the retrieval view reports only the integer-qrels metric)."""
 
@@ -536,7 +536,7 @@ def run_quality(
     for metric in METRICS:
         if not reference.get(metric) and not served.get(metric):
             continue
-        if metric == "rcp" and not reference.get(metric) and all(task.view == "retrieval" for task in tasks):
+        if metric == "rcp_ndcg" and not reference.get(metric) and all(task.view == "retrieval" for task in tasks):
             # mteb's retrieval view reports the integer-qrels metric only (gains exist for the pooled documents):
             # the served RCP-nDCG@10 is listed, not gated -- said so in the table, never a silent pass.
             listed = comparison_rows(served.get(metric, {}), {})

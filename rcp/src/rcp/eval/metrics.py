@@ -1,6 +1,6 @@
 """The metric seam: the ``rcp.metrics`` entry-point group, the shipped nDCGs and the plugin contract.
 
-The three nDCGs the package ships (``rcp``, ``qrel_ndcg``, ``count_ndcg``) are the registry's first members,
+The three nDCGs the package ships (``rcp_ndcg``, ``qrel_ndcg``, ``count_ndcg``) are the registry's first members,
 registered at import, so selecting one behaves exactly as it did before the seam. Another metric is one class
 in a package that publishes it under the group::
 
@@ -15,7 +15,7 @@ that does is scored at every requested ``k``; one that does not is scored once, 
 
 The lookup is :mod:`rcp.support.entrypoints`'s one policy: a name provided by more than one installed
 distribution is refused, naming the providers. The shipped three are entries of the group too (synthesised here,
-because they ship inside this package), so a plugin that publishes ``rcp`` is refused by the same policy rather
+because they ship inside this package), so a plugin that publishes ``rcp_ndcg`` is refused by the same policy rather
 than silently replacing the built-in.
 """
 
@@ -34,7 +34,7 @@ from rcp.support.entrypoints import load_entry_point, provider_of, registered_na
 METRICS_GROUP = "rcp.metrics"
 """The entry-point group a metric plugin publishes its class under."""
 
-METRICS: tuple[MetricName, ...] = ("rcp", "qrel_ndcg", "count_ndcg")
+METRICS: tuple[MetricName, ...] = ("rcp_ndcg", "qrel_ndcg", "count_ndcg")
 """The shipped metrics, and the registry's first members (``rcp.eval.METRICS``)."""
 
 
@@ -113,8 +113,8 @@ class _ShippedNdcg(Metric):
 class RcpNdcg(_ShippedNdcg):
     """RCP-nDCG: the calibrated gains in ``[0, 1]``."""
 
-    name = "rcp"
-    metric = "rcp"
+    name = "rcp_ndcg"
+    metric = "rcp_ndcg"
 
 
 class QrelNdcg(_ShippedNdcg):

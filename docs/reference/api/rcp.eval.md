@@ -110,7 +110,7 @@ class EvalReport(pydantic.main.BaseModel)
 constant
 
 ```text
-METRICS = ['rcp', 'qrel_ndcg', 'count_ndcg']
+METRICS = ['rcp_ndcg', 'qrel_ndcg', 'count_ndcg']
 ```
 
 ## `METRICS_GROUP`
@@ -344,7 +344,7 @@ class SystemExplanation(pydantic.main.BaseModel)
 function — Compare the systems of a report pairwise: delta (B minus A), the paired t-test (the paper's), bootstrap interval.
 
 ```text
-compare(report: EvalReport, *, baseline: str | None = None, metric: str = 'rcp', k: int | None = None, alpha: float = 0.05, bootstrap: int = 10000, seed: int = 0, systems: Sequence[str] | None = None) -> Comparison
+compare(report: EvalReport, *, baseline: str | None = None, metric: str = 'rcp_ndcg', k: int | None = None, alpha: float = 0.05, bootstrap: int = 10000, seed: int = 0, systems: Sequence[str] | None = None) -> Comparison
 ```
 
 ## `evaluate`
@@ -352,7 +352,7 @@ compare(report: EvalReport, *, baseline: str | None = None, metric: str = 'rcp',
 function — Score rankings with RCP-nDCG, qrel-nDCG and Count-nDCG under a scoring protocol.
 
 ```text
-evaluate(rankings: Rankings, *, suite: str | None = None, dataset: Dataset | None = None, gains: Mapping[str, Mapping[str, float]] | Any | None = None, protocol: str | Protocol | None = None, k: int | Sequence[int] = 10, metrics: Sequence[str] = ['rcp', 'qrel_ndcg'], count_gains: Mapping[str, Mapping[str, float]] | None = None, systems: Sequence[str] | None = None, bootstrap: int = 1000, seed: int = 0) -> EvalReport
+evaluate(rankings: Rankings, *, suite: str | None = None, dataset: Dataset | None = None, gains: Mapping[str, Mapping[str, float]] | Any | None = None, protocol: str | Protocol | None = None, k: int | Sequence[int] = 10, metrics: Sequence[str] = ['rcp_ndcg', 'qrel_ndcg'], count_gains: Mapping[str, Mapping[str, float]] | None = None, systems: Sequence[str] | None = None, bootstrap: int = 1000, seed: int = 0) -> EvalReport
 ```
 
 ## `explain`
@@ -392,5 +392,5 @@ registered_metrics() -> tuple[str, ...]
 function — How often a metric separates systems, the paper's sensitivity (appendix B).
 
 ```text
-sensitivity(report: EvalReport, *, metric: str = 'rcp', k: int | None = None, alpha: float = 0.05) -> float
+sensitivity(report: EvalReport, *, metric: str = 'rcp_ndcg', k: int | None = None, alpha: float = 0.05) -> float
 ```

@@ -18,7 +18,7 @@ the NanoBEIR retrieval view orders its documents by the model's own recorded vec
 LAST (``_ordered_by_model``) and the NanoBEIR rerank view's corpus order happens to put the gain-best
 last too, so both metrics move whenever a rank moves there. The ViDoRe rerank pin is the other way
 round: its documents are in the rerank corpus's own order, which the model ranks with the gain-best
-FIRST (``rcp@10 = 1.0``) while the qrel-relevant document is second (``qrel_ndcg@10 = 0.6309``).
+FIRST (``rcp_ndcg@10 = 1.0``) while the qrel-relevant document is second (``qrel_ndcg@10 = 0.6309``).
 
 * NanoBEIR-shaped: the retrieval view over two documents (qwen3-embedding-0.6b: the corpus observes
   two distinct prompts, the instructed query and the bare question, so the documents are the bare
@@ -253,18 +253,18 @@ def run_rerank_view(recipe_id: str, row: dict, tmp_path: Path) -> tuple[object, 
 
 
 def score(rankings, system: str, row: dict, tmp_path: Path) -> dict[str, float]:
-    """The two goldens of one run: ``qrel_ndcg@10`` (nDCG@10) and ``rcp@10`` (RCP-nDCG@10)."""
+    """The two goldens of one run: ``qrel_ndcg@10`` (nDCG@10) and ``rcp_ndcg@10`` (RCP-nDCG@10)."""
     from rcp.eval import evaluate
 
     report = evaluate(
         rankings,
         dataset=_dataset(row, tmp_path, "scored"),
         gains=_gains(row),
-        metrics=("rcp", "qrel_ndcg"),
+        metrics=("rcp_ndcg", "qrel_ndcg"),
         k=10,
         bootstrap=0,
     )
-    return {"qrel_ndcg@10": report.value(system, "qrel_ndcg", 10), "rcp@10": report.value(system, "rcp", 10)}
+    return {"qrel_ndcg@10": report.value(system, "qrel_ndcg", 10), "rcp_ndcg@10": report.value(system, "rcp_ndcg", 10)}
 
 
 def _load_goldens() -> dict:
@@ -363,7 +363,7 @@ def test_the_retrieval_golden_ranks_by_the_vectors(tmp_path: Path) -> None:
     row = CASES["nanobeir"]["retrieval"]
     assert len(row["doc_texts"]) >= 2
     pinned = _load_goldens()["nanobeir"]["retrieval"]
-    assert pinned["qrel_ndcg@10"] < 1.0 and pinned["rcp@10"] < 1.0, "the model's order is not the judged order"
+    assert pinned["qrel_ndcg@10"] < 1.0 and pinned["rcp_ndcg@10"] < 1.0, "the model's order is not the judged order"
 
     emulator = emulator_for(row["encoder"])
     query_key, bare_key = _key_of(emulator, INSTRUCTED + row["query_text"]), _key_of(emulator, row["doc_texts"][0])
@@ -376,7 +376,7 @@ def test_the_retrieval_golden_ranks_by_the_vectors(tmp_path: Path) -> None:
     finally:
         emulator.observations = saved
     assert moved["qrel_ndcg@10"] != pytest.approx(pinned["qrel_ndcg@10"], abs=EPSILON), moved
-    assert moved["rcp@10"] != pytest.approx(pinned["rcp@10"], abs=EPSILON), moved
+    assert moved["rcp_ndcg@10"] != pytest.approx(pinned["rcp_ndcg@10"], abs=EPSILON), moved
 
 
 def test_the_vidore_retrieval_view_waiver_holds() -> None:
@@ -436,7 +436,7 @@ def test_the_golden_replay_goes_red_when_a_rerank_score_is_perturbed(tmp_path: P
     finally:
         emulator.observations = perturbed
     assert after["qrel_ndcg@10"] != pytest.approx(before["qrel_ndcg@10"], abs=EPSILON)
-    assert after["rcp@10"] != pytest.approx(before["rcp@10"], abs=EPSILON)
+    assert after["rcp_ndcg@10"] != pytest.approx(before["rcp_ndcg@10"], abs=EPSILON)
 
 
 def replace_score(observation, score: float):

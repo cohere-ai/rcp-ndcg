@@ -928,7 +928,7 @@ class Pipeline:
             gains=gains,
             protocol="plain",
             k=self.config.evaluation.k,
-            metrics=("rcp", "qrel_ndcg") if qrels else ("rcp",),
+            metrics=("rcp_ndcg", "qrel_ndcg") if qrels else ("rcp_ndcg",),
             seed=self.config.seed,
         )
 

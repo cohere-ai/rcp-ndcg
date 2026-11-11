@@ -85,7 +85,7 @@ PROTOCOLS: dict[str, Protocol] = {
 }
 """Named presets: the paper's four suites, mteb's ``ndcg_float_at_k`` rule, and ``plain``; all with group-mean ties."""
 
-MetricName = Literal["rcp", "qrel_ndcg", "count_ndcg"]
+MetricName = Literal["rcp_ndcg", "qrel_ndcg", "count_ndcg"]
 """The three nDCGs; they differ only in their gains (paper, appendix B)."""
 
 
@@ -166,7 +166,7 @@ def score_query(
     *,
     protocol: str | Protocol,
     k: int = 10,
-    metric: MetricName = "rcp",
+    metric: MetricName = "rcp_ndcg",
     candidates: Sequence[str] | None = None,
     excluded: Collection[str] = (),
     query_id: str | None = None,
@@ -175,7 +175,7 @@ def score_query(
 
     Args:
         scores: ``{doc_id: score}`` of the system; higher is better; finite.
-        gains: For ``"rcp"`` and ``"count_ndcg"``, ``{doc_id: gain}`` over the query's judged pool (gains in
+        gains: For ``"rcp_ndcg"`` and ``"count_ndcg"``, ``{doc_id: gain}`` over the query's judged pool (gains in
             ``[0, 1]``); the ideal DCG sorts all of them.  For ``"qrel_ndcg"``, ``{doc_id: grade}``: grades ``> 0``
             are positives, mapped by the protocol's ``qrel_gain``; the ideal DCG sorts all positives.  A gain or
             grade that is not finite is refused, never read as 0.
@@ -192,7 +192,7 @@ def score_query(
 
     Raises:
         ValueError: ``k`` is not positive, a score or a gain is not finite, a gain is negative on the
-            ``rcp``/``count_ndcg`` path (the gain is in ``[0, 1]``; a negative one makes the ideal DCG
+            ``rcp_ndcg``/``count_ndcg`` path (the gain is in ``[0, 1]``; a negative one makes the ideal DCG
             smaller in magnitude than the DCG it normalises), or the protocol cannot score the query (an unknown
             preset, a missing judged pool for a pool-order tie rule).
     """
@@ -211,8 +211,8 @@ def score_query(
             return math.nan
         value = ndcg(ranked, {d: qrel_gain(g, rules.qrel_gain) for d, g in positives.items()}, k=k, ties=rules.ties)
         return value if rules.round_digits is None else round(value, rules.round_digits)
-    if metric not in ("rcp", "count_ndcg"):
-        raise ValueError(f"unknown metric {metric!r}; expected 'rcp', 'qrel_ndcg' or 'count_ndcg'")
+    if metric not in ("rcp_ndcg", "count_ndcg"):
+        raise ValueError(f"unknown metric {metric!r}; expected 'rcp_ndcg', 'qrel_ndcg' or 'count_ndcg'")
     return ndcg(ranked, {doc_id: g for doc_id, g in gains.items() if doc_id not in drop}, k=k, ties=rules.ties)
 
 

@@ -145,10 +145,10 @@ head application and one scoring pass; no model is called again. A per-`k` run t
 arithmetic, from one store.
 
 `--k` is repeatable; with two or more cutoffs the comparison is written at the first one (one report holds
-every cutoff). `--metrics` defaults to `rcp` and `qrel_ndcg` when the dataset carries released gains,
+every cutoff). `--metrics` defaults to `rcp_ndcg` and `qrel_ndcg` when the dataset carries released gains,
 and to `qrel_ndcg` alone when it does not (RCP-nDCG needs a calibration, which the sweep does not take yet);
 the command says so in its log. The documented `beir:data/nfcorpus` example is such a dataset, so it scores
-qrel-nDCG alone unless `--metrics rcp` is passed with a gains source.
+qrel-nDCG alone unless `--metrics rcp_ndcg` is passed with a gains source.
 
 ## Gating every declared k
 

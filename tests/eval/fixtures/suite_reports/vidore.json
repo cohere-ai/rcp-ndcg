@@ -10,7 +10,7 @@
   },
   "gains_source": "dataset",
   "metrics": [
-    "rcp",
+    "rcp_ndcg",
     "qrel_ndcg"
   ],
   "k": [
@@ -21,7 +21,7 @@
       "system": "system",
       "dataset": "vidore",
       "query_id": "query-test-7",
-      "metric": "rcp",
+      "metric": "rcp_ndcg",
       "k": 10,
       "value": 0.8227864051509935
     },
@@ -38,7 +38,7 @@
     {
       "system": "system",
       "dataset": "vidore",
-      "metric": "rcp",
+      "metric": "rcp_ndcg",
       "k": 10,
       "value": 0.8227864051509935,
       "num_queries": 1
@@ -55,7 +55,7 @@
   "summary": [
     {
       "system": "system",
-      "metric": "rcp",
+      "metric": "rcp_ndcg",
       "k": 10,
       "value": 0.8227864051509935,
       "ci_low": null,

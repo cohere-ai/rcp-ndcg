@@ -10,7 +10,7 @@
   },
   "gains_source": "dataset",
   "metrics": [
-    "rcp",
+    "rcp_ndcg",
     "qrel_ndcg"
   ],
   "k": [
@@ -21,7 +21,7 @@
       "system": "system",
       "dataset": "bright",
       "query_id": "aops_1959_IMO_Problems/Problem_1",
-      "metric": "rcp",
+      "metric": "rcp_ndcg",
       "k": 10,
       "value": 0.7371144922902809
     },
@@ -29,7 +29,7 @@
       "system": "system",
       "dataset": "bright",
       "query_id": "TheoremQA_jianyu_xu/Cayley_3.json",
-      "metric": "rcp",
+      "metric": "rcp_ndcg",
       "k": 10,
       "value": 0.943098363224884
     },
@@ -54,7 +54,7 @@
     {
       "system": "system",
       "dataset": "bright",
-      "metric": "rcp",
+      "metric": "rcp_ndcg",
       "k": 10,
       "value": 0.8401064277575825,
       "num_queries": 2
@@ -71,7 +71,7 @@
   "summary": [
     {
       "system": "system",
-      "metric": "rcp",
+      "metric": "rcp_ndcg",
       "k": 10,
       "value": 0.8401064277575825,
       "ci_low": null,

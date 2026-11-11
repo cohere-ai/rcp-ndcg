@@ -280,7 +280,7 @@
           "type": "integer"
         },
         "metric": {
-          "description": "``\"rcp\"``, ``\"qrel_ndcg\"``, ``\"count_ndcg\"`` or a metric an exporter owns.",
+          "description": "``\"rcp_ndcg\"``, ``\"qrel_ndcg\"``, ``\"count_ndcg\"`` or a metric an exporter owns.",
           "title": "Metric",
           "type": "string"
         },

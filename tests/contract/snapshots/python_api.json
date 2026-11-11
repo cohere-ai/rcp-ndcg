@@ -852,7 +852,7 @@
               },
               {
                 "annotation": "str",
-                "default": "rcp",
+                "default": "rcp_ndcg",
                 "kind": "positional_or_keyword",
                 "name": "metric"
               },
@@ -945,7 +945,7 @@
               },
               {
                 "annotation": "str",
-                "default": "rcp",
+                "default": "rcp_ndcg",
                 "kind": "positional_or_keyword",
                 "name": "metric"
               },
@@ -2906,7 +2906,7 @@
           },
           {
             "annotation": "str",
-            "default": "rcp",
+            "default": "rcp_ndcg",
             "kind": "keyword_only",
             "name": "metric"
           },
@@ -3048,7 +3048,7 @@
           {
             "annotation": "Sequence[str]",
             "default": [
-              "rcp",
+              "rcp_ndcg",
               "qrel_ndcg"
             ],
             "kind": "keyword_only",
@@ -9839,7 +9839,7 @@
               },
               {
                 "annotation": "str",
-                "default": "rcp",
+                "default": "rcp_ndcg",
                 "kind": "positional_or_keyword",
                 "name": "metric"
               },
@@ -9932,7 +9932,7 @@
               },
               {
                 "annotation": "str",
-                "default": "rcp",
+                "default": "rcp_ndcg",
                 "kind": "positional_or_keyword",
                 "name": "metric"
               },
@@ -9953,7 +9953,7 @@
         "kind": "constant",
         "type": "tuple",
         "value": [
-          "rcp",
+          "rcp_ndcg",
           "qrel_ndcg",
           "count_ndcg"
         ]
@@ -10624,7 +10624,7 @@
           },
           {
             "annotation": "str",
-            "default": "rcp",
+            "default": "rcp_ndcg",
             "kind": "keyword_only",
             "name": "metric"
           },
@@ -10706,7 +10706,7 @@
           {
             "annotation": "Sequence[str]",
             "default": [
-              "rcp",
+              "rcp_ndcg",
               "qrel_ndcg"
             ],
             "kind": "keyword_only",
@@ -10837,7 +10837,7 @@
           },
           {
             "annotation": "str",
-            "default": "rcp",
+            "default": "rcp_ndcg",
             "kind": "keyword_only",
             "name": "metric"
           },
@@ -24318,7 +24318,7 @@
       "MetricName": {
         "kind": "literal_alias",
         "values": [
-          "rcp",
+          "rcp_ndcg",
           "qrel_ndcg",
           "count_ndcg"
         ]
@@ -25069,7 +25069,7 @@
           },
           {
             "annotation": "MetricName",
-            "default": "rcp",
+            "default": "rcp_ndcg",
             "kind": "keyword_only",
             "name": "metric"
           },
@@ -26061,7 +26061,7 @@
       "MetricName": {
         "kind": "literal_alias",
         "values": [
-          "rcp",
+          "rcp_ndcg",
           "qrel_ndcg",
           "count_ndcg"
         ]
@@ -26230,7 +26230,7 @@
           },
           {
             "annotation": "MetricName",
-            "default": "rcp",
+            "default": "rcp_ndcg",
             "kind": "keyword_only",
             "name": "metric"
           },

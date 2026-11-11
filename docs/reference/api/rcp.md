@@ -568,7 +568,7 @@ calibrate(judgements: JudgementSet | Sequence[JudgementSet], *, mode: Mode = 'au
 function — Compare the systems of a report pairwise: delta (B minus A), the paired t-test (the paper's), bootstrap interval.
 
 ```text
-compare(report: EvalReport, *, baseline: str | None = None, metric: str = 'rcp', k: int | None = None, alpha: float = 0.05, bootstrap: int = 10000, seed: int = 0, systems: Sequence[str] | None = None) -> Comparison
+compare(report: EvalReport, *, baseline: str | None = None, metric: str = 'rcp_ndcg', k: int | None = None, alpha: float = 0.05, bootstrap: int = 10000, seed: int = 0, systems: Sequence[str] | None = None) -> Comparison
 ```
 
 ## `estimate`
@@ -584,7 +584,7 @@ estimate(dataset: Any, candidates: Mapping[str, Sequence[str]] | None, judge: Ju
 function — Score rankings with RCP-nDCG, qrel-nDCG and Count-nDCG under a scoring protocol.
 
 ```text
-evaluate(rankings: Rankings, *, suite: str | None = None, dataset: Dataset | None = None, gains: Mapping[str, Mapping[str, float]] | Any | None = None, protocol: str | Protocol | None = None, k: int | Sequence[int] = 10, metrics: Sequence[str] = ['rcp', 'qrel_ndcg'], count_gains: Mapping[str, Mapping[str, float]] | None = None, systems: Sequence[str] | None = None, bootstrap: int = 1000, seed: int = 0) -> EvalReport
+evaluate(rankings: Rankings, *, suite: str | None = None, dataset: Dataset | None = None, gains: Mapping[str, Mapping[str, float]] | Any | None = None, protocol: str | Protocol | None = None, k: int | Sequence[int] = 10, metrics: Sequence[str] = ['rcp_ndcg', 'qrel_ndcg'], count_gains: Mapping[str, Mapping[str, float]] | None = None, systems: Sequence[str] | None = None, bootstrap: int = 1000, seed: int = 0) -> EvalReport
 ```
 
 ## `fuse`
