@@ -35,10 +35,10 @@ from pathlib import Path
 __all__ = ["check_citation", "check_manifests", "check_pins", "check_wave_commits", "main"]
 
 MANIFESTS = (
-    "rcp/pyproject.toml",
-    "rcp-core/pyproject.toml",
-    "rcp-vllm/pyproject.toml",
-    "rcp-test/pyproject.toml",
+    "packages/rcp/pyproject.toml",
+    "packages/rcp-core/pyproject.toml",
+    "packages/rcp-vllm/pyproject.toml",
+    "packages/rcp-test/pyproject.toml",
 )
 """The four workspace members; all four carry the release version (AGENTS.md: versions move together)."""
 
@@ -102,7 +102,7 @@ def check_pins(root: Path, version: str) -> None:
     lean package pins no sibling -- so the tag pipeline refuses the lockstep pin exactly as ``rc_build.sh``
     and decision 18 already did.
     """
-    core_manifest = root / "rcp/pyproject.toml"
+    core_manifest = root / "packages/rcp/pyproject.toml"
     if not core_manifest.is_file():
         raise SystemExit(f"{core_manifest} is not in this tree: it must pin rcp-core=={version}")
     project = tomllib.loads(core_manifest.read_text(encoding="utf-8"))["project"]
@@ -110,13 +110,15 @@ def check_pins(root: Path, version: str) -> None:
     declared = _declared(project)
     expected = f"=={version}"
     if not _pins_of(runtime, "rcp-core"):
-        raise SystemExit(f"rcp/pyproject.toml does not declare rcp-core: it must pin rcp-core{expected} exactly")
+        raise SystemExit(
+            f"packages/rcp/pyproject.toml does not declare rcp-core: it must pin rcp-core{expected} exactly"
+        )
     pins = _pins_of(declared, "rcp-core")
     if any(pin != expected for pin in pins):
-        raise SystemExit(f"rcp-core must be pinned {expected} exactly in rcp/pyproject.toml; found {pins}")
-    print(f"rcp/pyproject.toml pins rcp-core{expected}")
+        raise SystemExit(f"rcp-core must be pinned {expected} exactly in packages/rcp/pyproject.toml; found {pins}")
+    print(f"packages/rcp/pyproject.toml pins rcp-core{expected}")
 
-    vllm_manifest = root / "rcp-vllm/pyproject.toml"
+    vllm_manifest = root / "packages/rcp-vllm/pyproject.toml"
     if not vllm_manifest.is_file():
         raise SystemExit(f"{vllm_manifest} is not in this tree: the release builds it")
     project = tomllib.loads(vllm_manifest.read_text(encoding="utf-8"))["project"]
@@ -129,10 +131,10 @@ def check_pins(root: Path, version: str) -> None:
     ]
     if siblings:
         raise SystemExit(
-            "rcp-vllm/pyproject.toml must name no sibling package (decision 18: no lockstep "
+            "packages/rcp-vllm/pyproject.toml must name no sibling package (decision 18: no lockstep "
             f"version pin between rcp and rcp-vllm), found {siblings}"
         )
-    print("rcp-vllm/pyproject.toml names no sibling package")
+    print("packages/rcp-vllm/pyproject.toml names no sibling package")
 
 
 def check_wave_commits(root: Path, version: str, waves: Sequence[str], commit: str | None) -> None:

@@ -19,9 +19,9 @@ from tests.docs._markdown import ROOT, code_blocks
 MARKERS = {None, "skip", "network", "example"}
 PAGES = [
     *sorted((ROOT / "docs").rglob("*.md")),
-    ROOT / "rcp-core" / "README.md",
+    ROOT / "packages" / "rcp-core" / "README.md",
     # The test package's README: its snippets run too (one is marked skip: it needs a live engine URL).
-    ROOT / "rcp-test" / "README.md",
+    ROOT / "packages" / "rcp-test" / "README.md",
 ]
 
 
@@ -59,7 +59,7 @@ def test_network_snippets_run(page: Path, tmp_path: Path, monkeypatch: pytest.Mo
         exec(compile(block.text, f"{page.relative_to(ROOT)}:{block.line}", "exec"), {"__name__": "__doc_snippet__"})
 
 
-OTHER_PAGES = [ROOT / "rcp" / "README.md"]
+OTHER_PAGES = [ROOT / "packages" / "rcp" / "README.md"]
 
 
 @pytest.mark.parametrize("page", OTHER_PAGES, ids=lambda p: str(p.relative_to(ROOT)))

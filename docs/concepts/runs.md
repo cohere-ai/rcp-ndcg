@@ -213,7 +213,7 @@ uv export --frozen --no-hashes --no-emit-workspace --no-dev --extra calibrate --
 pip download -r /shared/wheelhouse/<version>/requirements-constraints.txt \
   -c /shared/wheelhouse/<version>/requirements-constraints.txt \
   'rcp-vllm[test]==<version>' 'rcp[hf]==<version>' 'rcp-test==<version>' \
-  $(for lock in rcp-vllm/src/rcp_vllm/recipes/*/reference.lock; do
+  $(for lock in packages/rcp-vllm/src/rcp_vllm/recipes/*/reference.lock; do
       grep -q '^# own-torch: true' "$lock" || printf -- '-r %s ' "$lock";
     done) \
   --dest /shared/wheelhouse/<version> --find-links /shared/wheelhouse/<version> --only-binary :all: \
@@ -221,7 +221,7 @@ pip download -r /shared/wheelhouse/<version>/requirements-constraints.txt \
 # The own-torch families' locks pin a CUDA torch: download them from PyPI alone (PEP 440 orders a
 # ``+cpu`` local version above the plain release, so the CPU index must not see them).
 pip download \
-  $(for lock in rcp-vllm/src/rcp_vllm/recipes/*/reference.lock; do
+  $(for lock in packages/rcp-vllm/src/rcp_vllm/recipes/*/reference.lock; do
       grep -q '^# own-torch: true' "$lock" && printf -- '-r %s ' "$lock";
     done) \
   --dest /shared/wheelhouse/<version> --index-url https://pypi.org/simple

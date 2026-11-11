@@ -1,6 +1,6 @@
 """The paper-reproduction rules in ``experiments/`` on small synthetic inputs (no network, no data download).
 
-The scoring protocol itself is tested in ``tests/core/test_protocol.py``.
+The scoring protocol itself is tested in ``packages/rcp-core/tests/test_protocol.py``.
 """
 
 from __future__ import annotations

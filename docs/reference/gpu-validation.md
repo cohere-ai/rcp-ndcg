@@ -5,13 +5,13 @@ and its replies are compared against its own reference implementation. The refer
 path of the model card or the code of the paper. The release also records the observation corpus of the recipe. Every
 *retrieval* variant is compared against its reference in that way. A judge recipe has no equivalence reference, so
 `rcp judge check` and the T4 scenarios validate a judge variant instead. The corpora that a replay needs are
-committed under `rcp-test/corpora/`. This page is the record of that work for the release. It has one row per
+committed under `packages/rcp-test/corpora/`. This page is the record of that work for the release. It has one row per
 variant. A row gives the release candidate and the wave whose evidence the row records. It also gives the date that
 the wave finished, and the behaviour fingerprint that the tree computes today. That fingerprint is the key that the
 evidence of a wave must carry.
 
 The machine-readable record is the `status` block of each family in
-`rcp-vllm/src/rcp_vllm/recipes/<family>/family.yaml`. The block holds the `state`, the engine `image`, the
+`packages/rcp-vllm/src/rcp_vllm/recipes/<family>/family.yaml`. The block holds the `state`, the engine `image`, the
 `date` and the `report` pointer. The [recipes and serving models](recipes.md) page explains the surface. A recipe's
 behaviour fingerprint is a key over everything that can change what the model returns. The key covers the model
 revision, the engine image and its version floor. It also covers the `serve` block and the engine-side plugin code,
@@ -113,20 +113,20 @@ disposition list of the owner names them. The pin does not change that dispositi
   key that the wave recorded. The image is a key, so the pin superseded that record, and the re-record replaces it. The
   fold is gone (the parity decision), and the recipe is a patch-only carrier. See [recipes and serving
   models](recipes.md#engine-side-patches).
-- **One reference case remains `pending_gpu`**: `rcp-test/cases/topk-embed-v1-small/query-cap-1024.yaml`, in the
+- **One reference case remains `pending_gpu`**: `packages/rcp-test/cases/topk-embed-v1-small/query-cap-1024.yaml`, in the
   family whose gate the owner dispositioned. Its query renders past the declared `client.query_max_tokens: 1024` of
   the recipe, so the fit of the client cuts it. The `expected.kind` of the case is `none`, which carries no values by
   design. The case therefore observes that at-cap query instead of comparing scores, and the case-fill skips it for
   the same reason. The video case that this bullet used to name,
-  `rcp-test/cases/qwen3-vl-embedding-2b/video-short-single.yaml`, was filled from the reference implementation on
+  `packages/rcp-test/cases/qwen3-vl-embedding-2b/video-short-single.yaml`, was filled from the reference implementation on
   cuda on 2026-10-14. It reads `status: reproduced`. These are validation fixtures, not recipe gates.
-- **The ViDoRe retrieval view has a documented waiver** (`rcp-test/tests/e2e/test_golden_replay.py`). The
+- **The ViDoRe retrieval view has a documented waiver** (`packages/rcp-test/tests/e2e/test_golden_replay.py`). The
   retrieval view of the golden needs ViDoRe page-image embeddings. No committed corpus of the VL embedder observes a
   ViDoRe-sourced image yet. The tripwire fails as soon as one does, and it names the work.
 
 ## What this page is not
 
-This page is not the contract of the recipes. That contract is `rcp-vllm/schema/` and the goldens under
-`rcp-test/tests/recipes/golden/`. This page is not the observation corpora. Those are committed under
-`rcp-test/corpora/`, and the same fingerprints key them. This page names no infrastructure. The wave outputs live
+This page is not the contract of the recipes. That contract is `packages/rcp-vllm/schema/` and the goldens under
+`packages/rcp-test/tests/recipes/golden/`. This page is not the observation corpora. Those are committed under
+`packages/rcp-test/corpora/`, and the same fingerprints key them. This page names no infrastructure. The wave outputs live
 in the evidence store of the release, and the family `status` blocks reference them.

@@ -6,10 +6,10 @@ engine per (engine, version, recipe, behaviour fingerprint). The URL host names 
 surrogate. Every reply marks which source it used.
 
 **The committed corpora are the `vllm-0.33.0` recording.** An emulator registers under the version that its
-corpus was recorded on. `rcp-test/corpora/vllm-0.33.0/` was recorded on the v0.33.0 image. The harness resolves
+corpus was recorded on. `packages/rcp-test/corpora/vllm-0.33.0/` was recorded on the v0.33.0 image. The harness resolves
 each recipe's corpus under the engine line its recipe pins. That root is `corpora/<engine>-<version>`, from the
 recipe's `engine.name` and `engine.min_version`. The `fake://vllm-0.33.0/...` host that this page uses is what
-the corpora register under. The superseded `rcp-test/corpora/vllm-0.31.0/` recording is committed beside it as
+the corpora register under. The superseded `packages/rcp-test/corpora/vllm-0.31.0/` recording is committed beside it as
 the earlier line's evidence. No emulator registers under it: a `fake://vllm-0.31.0/...` lookup is refused by
 name. That refusal is the version gate below, not a missing feature.
 
@@ -79,7 +79,7 @@ An observation corpus is raw-first (OBSERVATIONS-SPEC). It has one format and on
 knobs. The pod's Kubernetes Service links ride under the same prefix (the Services are named
 `vllm-service-...`). `rcp_test.observe.provenance` drops them, so no internal address or Service name
 enters a manifest. The repository keeps subsets (`records.jsonl.gz` and an `index.json` that names the full
-corpus) at `rcp-test/corpora/<engine>-<version>/<recipe>/<behaviour-fingerprint>/`. `find_corpora` finds
+corpus) at `packages/rcp-test/corpora/<engine>-<version>/<recipe>/<behaviour-fingerprint>/`. `find_corpora` finds
 them by scanning their manifests. Each subset has its append-only `verification.jsonl` beside the recorded
 files. The shared `_tokenizers/` store vends the `tokenizer.json` files whose SHA-256 the fingerprints hash.
 Thus the whole suite runs offline. The emulators read records through `exchanges_of`. Every derived view
@@ -167,7 +167,7 @@ review before a new corpus replaces the old.
 
 <!-- snippet: skip (a repository checkout with the corpora; the path is the committed recording's) -->
 ```bash
-python -m rcp_test.changes changed --recipes-root rcp-vllm/src/rcp_vllm/recipes \
-    --corpora-root rcp-test/corpora/vllm-0.33.0
+python -m rcp_test.changes changed --recipes-root packages/rcp-vllm/src/rcp_vllm/recipes \
+    --corpora-root packages/rcp-test/corpora/vllm-0.33.0
 python -m rcp_test.changes diff --before <corpus-dir> --after <corpus-dir>
 ```

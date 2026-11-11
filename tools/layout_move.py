@@ -342,8 +342,9 @@ REWRITES: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
 
 STALE: tuple[tuple[str, ...], ...] = (
     # A distribution directory outside the packages/ level, split or together (`rcp/src/rcp` is the
-    # layout the move took away; `packages/rcp/src/rcp` is the one it made).
-    (r"(?<![A-Za-z0-9_./-])(?:rcp-core|rcp-vllm|rcp-test)/",),
+    # layout the move took away; `packages/rcp/src/rcp` is the one it made). The CHANGELOG's released
+    # entries keep the paths they shipped with, like the names above.
+    (r"(?<![A-Za-z0-9_./-])(?:rcp-core|rcp-vllm|rcp-test)/", "CHANGELOG.md"),
     (r"(?<![A-Za-z0-9_./-])rcp/src", "packages/rcp/MANIFEST.in"),
     # The root package's source outside its one new home (its MANIFEST.in spells it relative).
     (r"(?<![\w./-])src/rcp(?![\w-])", "packages/rcp/MANIFEST.in", "MANIFEST.in", "tests/docs/test_packaging.py"),

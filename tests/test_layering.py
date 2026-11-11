@@ -3,8 +3,8 @@
 ``AGENTS.md`` fixes the import order
 (``rcp_core → support → storage → data → inference → retrieval → judging → calibration → eval → runners → runs
 → results → schemas | mcp → cli``, with ``errors`` below ``support``, the facade just above ``results``, and
-``testing`` and ``examples`` above it). This module parses every module under ``rcp/src/rcp/`` and,
-because the order has an innermost end, every module under ``rcp-core/src/rcp_core/`` with :mod:`ast`,
+``testing`` and ``examples`` above it). This module parses every module under ``packages/rcp/src/rcp/`` and,
+because the order has an innermost end, every module under ``packages/rcp-core/src/rcp_core/`` with :mod:`ast`,
 and fails when an import points outward in that order (toward a layer that typically imports this one). In the
 product tree an eager import -- module-level, outside ``if TYPE_CHECKING:`` -- is what counts; in the core tree
 the rule is the strict one, every scope included, because the innermost layer may import nothing from the product
@@ -26,11 +26,11 @@ from pathlib import Path
 
 import pytest
 
-SRC = Path(__file__).resolve().parents[1] / "rcp/src/rcp"
+SRC = Path(__file__).resolve().parents[1] / "packages/rcp/src/rcp"
 #: The innermost tree: no module of the core may import the product, so the charter's order has an innermost
 #: end (``AGENTS.md``, Layout and layering).  Nothing parsed the core's own tree before, so a lazy or eager
 #: ``rcp`` import there passed the whole suite.
-CORE_SRC = Path(__file__).resolve().parents[1] / "rcp-core/src/rcp_core"
+CORE_SRC = Path(__file__).resolve().parents[1] / "packages/rcp-core/src/rcp_core"
 
 #: The layers, from the one every module may import to the one that may import everything; the charter of
 #: ``AGENTS.md`` (Layout and layering), with the two single-file modules it does not name placed where the
@@ -164,8 +164,8 @@ def _is_type_checking(statement: ast.stmt) -> bool:
 def outward_imports() -> list[str]:
     """Every outward import of the two trees the charter orders, allow-listed ones excepted.
 
-    ``rcp/src/rcp`` is checked for **eager** imports only (the charter exempts a lazy one: its cost
-    is paid when it runs, not when its layer is imported); ``rcp-core/src/rcp_core`` is checked at
+    ``packages/rcp/src/rcp`` is checked for **eager** imports only (the charter exempts a lazy one: its cost
+    is paid when it runs, not when its layer is imported); ``packages/rcp-core/src/rcp_core`` is checked at
     **every** scope, because the innermost layer may import nothing from the product at all.
     """
     findings: list[str] = []
@@ -191,7 +191,7 @@ def outward_imports() -> list[str]:
                     continue
                 if target in _ALLOW_LIST.get(module, frozenset()):
                     continue
-                findings.append(f"rcp/src/rcp/{path.relative_to(SRC)}:{line}: {layer} -> {target} (outward)")
+                findings.append(f"packages/rcp/src/rcp/{path.relative_to(SRC)}:{line}: {layer} -> {target} (outward)")
     # The innermost end of the order: no module of the core may import the product, so the core's own tree is
     # walked with the same resolution at every scope -- a function-body ``from rcp.storage import ...`` is
     # the same cycle the moment it runs, and skipping it left the finding's own exemplar green.
@@ -208,7 +208,8 @@ def outward_imports() -> list[str]:
                 if target == "rcp_core":
                     continue
                 findings.append(
-                    f"rcp-core/src/rcp_core/{path.relative_to(CORE_SRC)}:{line}: rcp_core -> {target} (outward)"
+                    f"packages/rcp-core/src/rcp_core/{path.relative_to(CORE_SRC)}:{line}: "
+                    f"rcp_core -> {target} (outward)"
                 )
     return findings
 
@@ -233,8 +234,8 @@ def test_a_relative_import_across_layers_is_checked(tmp_path: Path, monkeypatch:
     (tmp_path / "data" / "beyond.py").write_text("from ....retrieval import anything\n", encoding="utf-8")
     monkeypatch.setattr(sys.modules[__name__], "SRC", tmp_path)
 
-    # every finding is prefixed with the checkout's own rcp/src/rcp, whatever SRC reads now
-    assert outward_imports() == ["rcp/src/rcp/data/broken.py:1: data -> retrieval (outward)"]
+    # every finding is prefixed with the checkout's own packages/rcp/src/rcp, whatever SRC reads now
+    assert outward_imports() == ["packages/rcp/src/rcp/data/broken.py:1: data -> retrieval (outward)"]
 
 
 def test_a_top_level_module_that_is_not_placed_fails_loudly(monkeypatch: pytest.MonkeyPatch) -> None:

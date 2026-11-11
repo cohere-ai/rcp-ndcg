@@ -41,7 +41,7 @@ if __name__ == "__main__":
 
 def _vllm_src() -> str:
     """The vllm package's ``src`` (it sits outside the root uv workspace): put it on the path for the test."""
-    return str(ROOT / "rcp-vllm" / "src")
+    return str(ROOT / "packages" / "rcp-vllm" / "src")
 
 
 def _recipe_blocks(page: Path):
@@ -122,7 +122,7 @@ def test_the_ledger_fingerprint_column_is_the_tree_today() -> None:
 
     # The tokenizer bytes are pinned by the recipe's revision: the golden records their SHA-256 (the key's
     # one input that needs a file the tree does not carry), so the key recomputes offline.
-    golden = ROOT / "rcp-test" / "tests" / "recipes" / "golden"
+    golden = ROOT / "packages" / "rcp-test" / "tests" / "recipes" / "golden"
     page = (ROOT / "docs" / "reference" / "gpu-validation.md").read_text(encoding="utf-8")
     row = re.compile(r"^\| `([^`]+)` \| [^|]+ \| [^|]+ \| [^|]+ \| [^|]+ \| `([0-9a-f]+)…` \|", re.MULTILINE)
     cells = dict(row.findall(page))

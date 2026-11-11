@@ -54,7 +54,7 @@ def _image_urls(text: str) -> list[str]:
 
 
 def test_readme_html_sources_are_absolute() -> None:
-    text = _COMMENTS.sub("", prose((ROOT / "rcp" / "README.md").read_text(encoding="utf-8")))
+    text = _COMMENTS.sub("", prose((ROOT / "packages" / "rcp" / "README.md").read_text(encoding="utf-8")))
     sources = _attribute_urls(text)
     assert sources, "the README is expected to embed images"
     relative = [url for url in sources if not url.startswith((*ABSOLUTE, "#"))]
@@ -62,7 +62,7 @@ def test_readme_html_sources_are_absolute() -> None:
 
 
 def test_readme_markdown_links_are_absolute() -> None:
-    text = (ROOT / "rcp" / "README.md").read_text(encoding="utf-8")
+    text = (ROOT / "packages" / "rcp" / "README.md").read_text(encoding="utf-8")
     targets = links(text) + _image_urls(text)
     assert targets, "the README is expected to carry links"
     relative = [target for target in targets if not target.startswith((*ABSOLUTE, "#"))]
@@ -73,9 +73,9 @@ def test_readme_images_are_pinned_to_the_release_tag() -> None:
     """An image on PyPI is fetched from the tag the release published, never from a moving ``main``."""
     import tomllib
 
-    manifest = tomllib.loads((ROOT / "rcp" / "pyproject.toml").read_text(encoding="utf-8"))
+    manifest = tomllib.loads((ROOT / "packages" / "rcp" / "pyproject.toml").read_text(encoding="utf-8"))
     tag = f"v{manifest['project']['version']}"
-    text = _COMMENTS.sub("", prose((ROOT / "rcp" / "README.md").read_text(encoding="utf-8")))
+    text = _COMMENTS.sub("", prose((ROOT / "packages" / "rcp" / "README.md").read_text(encoding="utf-8")))
     raw = [
         url for url in _attribute_urls(text) + _image_urls(text) if url.startswith("https://raw.githubusercontent.com/")
     ]

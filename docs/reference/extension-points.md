@@ -662,7 +662,7 @@ A key is an opaque string. The package's own keys are `/`-separated and prefix-s
   fresh for. A key whose source does not exist would never be served.
 
 Two implementations ship: `MemoryCacheStore` for tests, and `UriCacheStore` over the URI cache's own entries.
-`tests/storage/test_cache_store.py` holds `assert_cache_store_contract`, one contract checked over both
+`packages/rcp/tests/storage/test_cache_store.py` holds `assert_cache_store_contract`, one contract checked over both
 implementations; a downstream runs it over its own keys.
 
 ### A minimal store

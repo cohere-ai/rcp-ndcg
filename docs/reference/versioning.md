@@ -142,7 +142,7 @@ repository is that output, committed, and `tests/contract` pins it byte for byte
 | Version | Home | Bumps when |
 |---|---|---|
 | the package version | all four `pyproject.toml` files, `rcp --version` | a public-surface change (minor) or an addition (patch), as the rules above say |
-| a recipe's `schema_version` | `rcp-vllm/src/rcp_vllm/recipes/*/family.yaml` | the recipe file format changes in an incompatible way |
+| a recipe's `schema_version` | `packages/rcp-vllm/src/rcp_vllm/recipes/*/family.yaml` | the recipe file format changes in an incompatible way |
 | the behaviour fingerprint rule | `rcp_test.fingerprint.FINGERPRINT_SCHEMA` (`rcp-fp/4`) | the input set or the canonicalisation of the fingerprint changes |
 | the corpus schemas | `rcp_test.corpus` (`rcp-ndcg.observation-corpus/1`, `RECORD_SCHEMA`, `NORMALISATION_VERSION`) | the corpus format, the record shape or the normalisation rule changes |
 | an artifact tag | `schemas/*.v1.json` | that artifact changes in an incompatible way |

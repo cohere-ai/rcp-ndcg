@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import re
@@ -17,7 +18,7 @@ from packaging.version import Version
 
 from tests.docs._markdown import ROOT
 
-PYPROJECT = tomllib.loads((ROOT / "rcp" / "pyproject.toml").read_text(encoding="utf-8"))
+PYPROJECT = tomllib.loads((ROOT / "packages" / "rcp" / "pyproject.toml").read_text(encoding="utf-8"))
 EXTRAS = PYPROJECT["project"]["optional-dependencies"]
 
 
@@ -72,7 +73,7 @@ def test_every_runtime_dependency_is_imported_somewhere() -> None:
     """A declared dependency nothing imports is weight on every install."""
     sources = "\n".join(
         path.read_text(encoding="utf-8")
-        for folder in ("rcp/src", "rcp-core", "rcp-vllm", "experiments", "examples")
+        for folder in ("packages/rcp/src", "packages/rcp-core", "packages/rcp-vllm", "experiments", "examples")
         for path in (ROOT / folder).rglob("*.py")
     )
     # distribution -> the module it provides, where the names differ; fsspec protocols load their backend lazily.
@@ -206,7 +207,7 @@ def _release_tree(
     for package, version in versions.items():
         if package == "rcp-vllm":
             continue  # written from the vllm parameter below (or left absent)
-        directory = tree / package
+        directory = tree / "packages" / package
         directory.mkdir(parents=True)
         if package == "rcp":
             body = f'[project]\nname = "rcp"\nversion = "{version}"\n{declaration}\n'
@@ -214,8 +215,8 @@ def _release_tree(
             body = f'[project]\nname = "{package}"\nversion = "{version}"\n'
         (directory / "pyproject.toml").write_text(body, encoding="utf-8")
     if vllm is not None:
-        (tree / "rcp-vllm").mkdir(parents=True, exist_ok=True)
-        (tree / "rcp-vllm" / "pyproject.toml").write_text(vllm, encoding="utf-8")
+        (tree / "packages" / "rcp-vllm").mkdir(parents=True, exist_ok=True)
+        (tree / "packages" / "rcp-vllm" / "pyproject.toml").write_text(vllm, encoding="utf-8")
     (tree / "CITATION.cff").write_text(f"cff-version: 1.2.0\nversion: {versions['rcp']}\n", encoding="utf-8")
     return tree
 
@@ -488,7 +489,7 @@ def test_both_distributions_ship_the_license_and_the_notice() -> None:
     (ContextualAI's CC-BY-NC-SA-4.0 and Jina AI's CC-BY-NC-4.0 files, Perplexity AI's MIT file), so its
     ``license-files`` carries ``LICENSES/*.txt``; the other three stay Apache-2.0 only.
     """
-    folders = [ROOT / "rcp", ROOT / "rcp-core", ROOT / "rcp-vllm", ROOT / "rcp-test"]
+    folders = [ROOT / "packages" / name for name in ("rcp", "rcp-core", "rcp-vllm", "rcp-test")]
     for folder in folders:
         project = tomllib.loads((folder / "pyproject.toml").read_text(encoding="utf-8"))["project"]
         expected = ["LICENSE", "NOTICE"]
@@ -504,7 +505,7 @@ def test_both_distributions_ship_the_license_and_the_notice() -> None:
 
 #: Repository paths NOTICE names (its upstream paths, such as ``src/transformers/...``, are not checked).
 _NOTICE_PATH = re.compile(
-    r"(?<![\w./-])((?:rcp/src/rcp|src/rcp|rcp-vllm/src|rcp-test/tests|tests"
+    r"(?<![\w./-])((?:packages/rcp/src/rcp|src/rcp|packages/rcp-vllm/src|packages/rcp-test/tests|tests"
     r"|experiments|packages)/[A-Za-z0-9_./-]+\.(?:py|jinja))\b"
 )
 
@@ -517,25 +518,25 @@ _THIRD_PARTY_HEADER = re.compile(r"Folded from|SPDX-FileCopyrightText|Copyright 
 #: (a model card's usage code, a checkpoint's remote code, vLLM internals), so NOTICE must name it. Every
 #: template and every vendored module of a recipe directory is added automatically below.
 _DERIVED_RECIPE_AND_PLUGIN_FILES = (
-    "rcp-test/tests/fixtures/recipes/fixture-vl-embed/reference.py",
+    "packages/rcp-test/tests/fixtures/recipes/fixture-vl-embed/reference.py",
     # the family references (decision 34: one reference file per family, parameterised by variant)
-    "rcp-vllm/src/rcp_vllm/recipes/ctxl-rerank-v2-instruct-multilingual/reference.py",
-    "rcp-vllm/src/rcp_vllm/recipes/harrier-oss-v1/reference.py",
-    "rcp-vllm/src/rcp_vllm/recipes/jina-reranker-v3/reference.py",
-    "rcp-vllm/src/rcp_vllm/recipes/qwen3-embedding/reference.py",
-    "rcp-vllm/src/rcp_vllm/recipes/qwen3-reranker/reference.py",
-    "rcp-vllm/src/rcp_vllm/recipes/qwen3-vl-embedding/reference.py",
-    "rcp-vllm/src/rcp_vllm/recipes/qwen3-vl-reranker/reference.py",
-    "rcp-vllm/src/rcp_vllm/recipes/topk-embed-v1/reference.py",
-    "rcp-vllm/src/rcp_vllm/recipes/zerank/reference.py",
-    "rcp-vllm/src/rcp_vllm/models/pplx/chunk_rule.py",
-    "rcp-vllm/src/rcp_vllm/models/pplx/hf_config.py",
-    "rcp-vllm/src/rcp_vllm/models/pplx/model.py",
-    "rcp-vllm/src/rcp_vllm/models/pplx/pooler.py",
-    "rcp-vllm/src/rcp_vllm/models/pplx/pooling_core.py",
-    "rcp-vllm/src/rcp_vllm/models/topk/config.py",
-    "rcp-vllm/src/rcp_vllm/models/topk/model.py",
-    "rcp-vllm/src/rcp_vllm/models/topk/weights.py",
+    "packages/rcp-vllm/src/rcp_vllm/recipes/ctxl-rerank-v2-instruct-multilingual/reference.py",
+    "packages/rcp-vllm/src/rcp_vllm/recipes/harrier-oss-v1/reference.py",
+    "packages/rcp-vllm/src/rcp_vllm/recipes/jina-reranker-v3/reference.py",
+    "packages/rcp-vllm/src/rcp_vllm/recipes/qwen3-embedding/reference.py",
+    "packages/rcp-vllm/src/rcp_vllm/recipes/qwen3-reranker/reference.py",
+    "packages/rcp-vllm/src/rcp_vllm/recipes/qwen3-vl-embedding/reference.py",
+    "packages/rcp-vllm/src/rcp_vllm/recipes/qwen3-vl-reranker/reference.py",
+    "packages/rcp-vllm/src/rcp_vllm/recipes/topk-embed-v1/reference.py",
+    "packages/rcp-vllm/src/rcp_vllm/recipes/zerank/reference.py",
+    "packages/rcp-vllm/src/rcp_vllm/models/pplx/chunk_rule.py",
+    "packages/rcp-vllm/src/rcp_vllm/models/pplx/hf_config.py",
+    "packages/rcp-vllm/src/rcp_vllm/models/pplx/model.py",
+    "packages/rcp-vllm/src/rcp_vllm/models/pplx/pooler.py",
+    "packages/rcp-vllm/src/rcp_vllm/models/pplx/pooling_core.py",
+    "packages/rcp-vllm/src/rcp_vllm/models/topk/config.py",
+    "packages/rcp-vllm/src/rcp_vllm/models/topk/model.py",
+    "packages/rcp-vllm/src/rcp_vllm/models/topk/weights.py",
 )
 
 
@@ -552,13 +553,13 @@ def test_the_notice_attributes_every_third_party_recipe_and_plugin_file() -> Non
     file is named in NOTICE.  The embeddinggemma-2 fold is deleted, so no model file carries a
     third-party header today; a new folded file is collected by the same scan and must be attributed."""
     notice = (ROOT / "NOTICE").read_text(encoding="utf-8")
-    recipes = ROOT / "rcp-vllm" / "src" / "rcp_vllm" / "recipes"
+    recipes = ROOT / "packages" / "rcp-vllm" / "src" / "rcp_vllm" / "recipes"
     automatic = {
         path.relative_to(ROOT).as_posix()
         for path in recipes.glob("*/*")
         if path.suffix == ".jinja" or (path.suffix == ".py" and path.name != "reference.py")
     }
-    models = ROOT / "rcp-vllm" / "src" / "rcp_vllm" / "models"
+    models = ROOT / "packages" / "rcp-vllm" / "src" / "rcp_vllm" / "models"
     folded = {
         path.relative_to(ROOT).as_posix()
         for path in models.rglob("*.py")
@@ -584,8 +585,16 @@ DEPENDENCY_GATES = {
     "datasets": "mteb",  # the join gate's mteb 2.21 query path builds a datasets.Dataset
     "transformers": "mteb",  # mteb's own dependency (uv.lock)
     "mcp": "direct:mcp",
-    "rcp_vllm": "direct:./rcp-vllm",  # example 09; the sibling installs from the checkout
+    "rcp_vllm": "direct:./packages/rcp-vllm",  # example 09; the sibling installs from the checkout
 }
+
+
+def _the_offline_suite() -> list[Path]:
+    """Every test module one pytest process collects offline: the root tree and the two distribution trees
+    it was split into. ``packages/rcp-test/tests`` and ``packages/rcp-vllm/tests`` run in their own
+    processes (their own jobs), so their gates and marks are not this suite's."""
+    trees = (ROOT / "tests", ROOT / "packages" / "rcp" / "tests", ROOT / "packages" / "rcp-core" / "tests")
+    return sorted(path for tree in trees for path in tree.rglob("*.py"))
 
 
 def test_every_dependency_gate_in_tests_opens_in_ci() -> None:
@@ -597,7 +606,7 @@ def test_every_dependency_gate_in_tests_opens_in_ci() -> None:
     from rcp.errors import EXTRA_FOR_MODULE
 
     found = set()
-    for path in sorted((ROOT / "tests").rglob("*.py")):
+    for path in sorted(_the_offline_suite()):
         found.update(re.findall(r"importorskip\(\s*[\"']([A-Za-z0-9_]+)", path.read_text(encoding="utf-8")))
     assert found == set(DEPENDENCY_GATES), f"gates and the table disagree: {sorted(found ^ set(DEPENDENCY_GATES))}"
     core = {Requirement(spec).name.lower() for spec in PYPROJECT["project"]["dependencies"]}
@@ -648,7 +657,7 @@ def _index_installed_spec(command: str) -> str | None:
     """The ``rcp-vllm`` spec one install command would resolve from an index, or ``None``.
 
     A spec is index-resolved exactly when it is the bare package name (optionally with extras) and the
-    command is not editable: ``rcp-vllm``. A path (``./rcp-vllm``) or a built wheel
+    command is not editable: ``rcp-vllm``. A path (``./packages/rcp-vllm``) or a built wheel
     (``dist/rcp_vllm-0.0.1-py3-none-any.whl``) carries a separator or suffix and installs this
     checkout's bytes; ``-e`` makes even the bare name an editable install of the checkout.
     """
@@ -664,7 +673,7 @@ def _index_installed_spec(command: str) -> str | None:
 
 def test_every_ci_install_of_the_serving_recipes_package_is_local() -> None:
     """Every CI job that installs ``rcp-vllm`` installs THIS checkout's package, never an index
-    release: editable (``-e``), a local path (``./rcp-vllm``) or the wheel built in the same run
+    release: editable (``-e``), a local path (``./packages/rcp-vllm``) or the wheel built in the same run
     (the ``wheel-smoke`` job's ``dist/rcp_vllm-*.whl``).
 
     The recipes live beside the package in the checkout (the layout move made them package data), so
@@ -680,7 +689,7 @@ def test_every_ci_install_of_the_serving_recipes_package_is_local() -> None:
     assert _index_installed_spec("uv pip install 'rcp-vllm[test]'") == "rcp-vllm[test]"
     # ...and the local forms it must accept really are accepted.
     assert _index_installed_spec("uv pip install -e rcp-core -e rcp -e 'rcp-vllm[test]'") is None
-    assert _index_installed_spec("uv pip install mcp ./rcp-vllm") is None
+    assert _index_installed_spec("uv pip install mcp ./packages/rcp-vllm") is None
     wheel_install = "uv pip install --python v/bin/python dist/rcp_vllm-0.0.1-py3-none-any.whl"
     assert _index_installed_spec(wheel_install) is None
 
@@ -701,9 +710,9 @@ def test_every_ci_install_of_the_serving_recipes_package_is_local() -> None:
 def test_the_folded_models_test_suites_run_in_ci() -> None:
     """Every folded-model test suite runs in a CI job (six topk and three pplx modules executed nowhere
     before this). The plugins fold into rcp-vllm (layout-move item 3); their tests live under
-    ``rcp-vllm/tests/models`` and run in the vllm-plugins job's own venv."""
+    ``packages/rcp-vllm/tests/models`` and run in the vllm-plugins job's own venv."""
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert "rcp-vllm/tests/models" in ci, "a CI job must collect the folded models' test suites"
+    assert "packages/rcp-vllm/tests/models" in ci, "a CI job must collect the folded models' test suites"
 
 
 def test_the_notice_summary_names_every_licence_its_entries_name() -> None:
@@ -732,13 +741,13 @@ def test_the_pydantic_floor_covers_the_config_keys_the_code_uses() -> None:
     """
     sources = "\n".join(
         path.read_text(encoding="utf-8")
-        for folder in ("rcp/src", "rcp-core/src")
+        for folder in ("packages/rcp/src", "packages/rcp-core/src")
         for path in (ROOT / folder).rglob("*.py")
     )
     used = [key for key in PYDANTIC_211_KEYS if key in sources]
     assert used, "the scan found no pydantic 2.11 config keys; update this test if the models changed"
     for member in ("rcp-core", "rcp", "rcp-vllm", "rcp-test"):
-        manifest = tomllib.loads((ROOT / member / "pyproject.toml").read_text(encoding="utf-8"))
+        manifest = tomllib.loads((ROOT / "packages" / member / "pyproject.toml").read_text(encoding="utf-8"))
         requirements = [Requirement(spec) for spec in manifest["project"]["dependencies"]]
         pydantic = [req for req in requirements if req.name.lower() == "pydantic"]
         assert len(pydantic) == 1, f"{member} declares pydantic {len(pydantic)} times"
@@ -749,12 +758,12 @@ def test_the_pydantic_floor_covers_the_config_keys_the_code_uses() -> None:
 def test_every_member_build_directory_is_ignored() -> None:
     """An in-tree build (``pip wheel ./rcp``) leaves ``build/`` output behind.
 
-    ``/rcp*/build/`` covers all four members -- the main distribution's directory carries no hyphen to
-    match, so a narrower pattern would leave its build output in ``git status`` and in ``git add -A``.
+    ``/packages/*/build/`` covers all four members under the one member level, so a narrower pattern would
+    leave a build's output in ``git status`` and in ``git add -A``.
     """
     for member in ("rcp", "rcp-core", "rcp-vllm", "rcp-test"):
         result = subprocess.run(
-            ["git", "check-ignore", "-q", f"{member}/build/lib/x.py"], cwd=ROOT, capture_output=True
+            ["git", "check-ignore", "-q", f"packages/{member}/build/lib/x.py"], cwd=ROOT, capture_output=True
         )
         assert result.returncode == 0, f"{member}/build/ is not ignored"
 
@@ -789,7 +798,7 @@ def test_the_wheel_build_fixture_fails_in_ci_instead_of_skipping(tmp_path: Path)
             sys.executable,
             "-m",
             "pytest",
-            "rcp-vllm/tests/models/test_wheel_contract.py"
+            "packages/rcp-vllm/tests/models/test_wheel_contract.py"
             "::test_the_wheel_is_pure_python_and_declares_only_the_image_deps",
             "-q",
             "-p",
@@ -810,7 +819,7 @@ def test_the_vllm_plugins_job_fetches_the_offline_builds_requirements() -> None:
     wheel build's requirements in the uv cache.
 
     The fixtures build the wheel with ``uv build --offline``; the isolated build resolves
-    ``setuptools>=77`` and ``wheel`` (``rcp-vllm/pyproject.toml``'s build-system requires), the lock
+    ``setuptools>=77`` and ``wheel`` (``packages/rcp-vllm/pyproject.toml``'s build-system requires), the lock
     holds no ``wheel`` and setup-uv prunes cached wheels before saving, so the job must fetch them itself
     before the model tests run.
     """
@@ -839,8 +848,8 @@ def test_the_gated_job_type_checks_with_the_integrations_installed() -> None:
 def test_every_network_marked_test_file_runs_in_a_network_enabled_job() -> None:
     """A network-marked test file no CI job opens is dead coverage: it skips everywhere and reports green.
 
-    The check was dead in CI once (``tests/test_cases_package.py``); this keeps that fix from being the
-    last one. Each marked file must be named by a step of a ci.yml job that sets
+    The check was dead in CI once (``packages/rcp-test/tests/test_cases_package.py``); this keeps that fix
+    from being the last one. Each marked file must be named by a step of a ci.yml job that sets
     ``RCP_NDCG_NETWORK_TESTS=1`` (a step env or an export in the step's shell).
     """
     workflow = __import__("yaml").safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
@@ -856,7 +865,7 @@ def test_every_network_marked_test_file_runs_in_a_network_enabled_job() -> None:
             enabled_runs.extend(str(step.get("run", "")) for step in steps)
     marked = [
         path.relative_to(ROOT).as_posix()
-        for path in sorted((ROOT / "tests").rglob("*.py"))
+        for path in sorted(itertools.chain((ROOT / "tests").rglob("*.py"), (ROOT / "packages").rglob("*.py")))
         if re.search(r"^\s*@?pytest\.mark\.network\b", path.read_text(encoding="utf-8"), re.M)
     ]
     assert marked, "no network-marked test file found; update this test if the markers changed"

@@ -27,7 +27,7 @@ runs per that package's README.
 
 - `rcp-core` (`rcp_core`): the metric, the gains, the scoring protocols, the public records and
   the IRT estimators. numpy and pydantic only; torch is imported lazily inside `irt/` and nowhere else.
-- `rcp/src/rcp`: the pipeline and the CLI. Imports point inward only, in this order:
+- `packages/rcp/src/rcp`: the pipeline and the CLI. Imports point inward only, in this order:
    `rcp_core → support → storage → data → inference → retrieval → judging → calibration → eval → runners → runs → results → schemas | mcp → cli`.
   Eager imports have no cycles; `schemas` and `mcp` import the CLI's command table lazily, to describe and serve it.
   The product reads six entry-point groups, one per extension seam: `rcp.runners` (job execution),
@@ -49,7 +49,7 @@ Before adding a helper, `git grep` for an existing one. A second implementation 
 | The gain `g(theta)`, pass probabilities, item and query parameters | `rcp_core.gain`, `rcp_core.schemas` |
 | Calibration (with or without the tournament, pooled judges), scoring and insertion of documents | `rcp.calibration` over `rcp_core.irt` |
 | Judging: the client, the schedules, the judgement store, cost estimates | `rcp.judging` |
-| Prompts (tournament, rubric, vision and video variants) | `rcp/src/rcp/judging/prompts/`, loaded by name |
+| Prompts (tournament, rubric, vision and video variants) | `packages/rcp/src/rcp/judging/prompts/`, loaded by name |
 | Text, image and video preprocessing, caps and chunking | `rcp.data.text_policy` (the text policy, chunking, `Preprocessing`), `rcp.data.resolution` (image and video policies), `rcp.data.prepare` (media sent to a judge), `rcp.data.templates` |
 | The geometry a checkpoint's processor recomputes (the smart resize, the fixed point) | `rcp.data.resolution`. Declared exception: `rcp_vllm/recipes/*/reference.py` are dependency-free reference subprocesses that must not import the product (no reference's `reference.in` pins a workspace distribution, so none can), so a family's reference mirrors the product's rule where the engine's own processor is the thing being checked; the mirror is a recorded copy, validated against the product on GPU (the equivalence waves) |
 | Judge/role text budgets, templates and their cut policy | `rcp.data.text_budget` (the fit), `rcp.data.census` (the cut record and census), `rcp.storage.census` (the census files' record I/O), `rcp.data.templates` |
@@ -119,7 +119,7 @@ returns typed results and raises typed errors from `rcp.errors`.
 ## Releasing
 
 Push a tag `v<version>` whose version is that of all four `pyproject.toml` files (`rcp/`,
-`rcp-core/`, `rcp-vllm/` and the unpublished `rcp-test/`; the root manifest is the uv workspace
+`packages/rcp-core/`, `packages/rcp-vllm/` and the unpublished `packages/rcp-test/`; the root manifest is the uv workspace
 only). `.github/workflows/release.yml` builds the three published distributions (one `--package` per member of
 the four-member workspace; `rcp-test` is never built), checks each version against the
 tag, that `rcp` pins `rcp-core==<version>`, and `requirements-constraints.txt` against the lock (the

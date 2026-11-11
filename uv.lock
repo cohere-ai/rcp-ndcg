@@ -19,7 +19,7 @@ members = [
 ]
 
 [manifest.dependency-groups]
-dev = [{ name = "rcp-test", editable = "rcp-test" }]
+dev = [{ name = "rcp-test", editable = "packages/rcp-test" }]
 
 [[package]]
 name = "adlfs"
@@ -2705,7 +2705,7 @@ wheels = [
 [[package]]
 name = "rcp"
 version = "0.0.1"
-source = { editable = "rcp" }
+source = { editable = "packages/rcp" }
 dependencies = [
     { name = "bm25s" },
     { name = "click" },
@@ -2799,9 +2799,9 @@ requires-dist = [
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.5" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rcp", extras = ["calibrate", "hf"], marker = "extra == 'dev'", editable = "rcp" },
-    { name = "rcp-core", editable = "rcp-core" },
-    { name = "rcp-vllm", marker = "extra == 'vllm'", editable = "rcp-vllm" },
+    { name = "rcp", extras = ["calibrate", "hf"], marker = "extra == 'dev'", editable = "packages/rcp" },
+    { name = "rcp-core", editable = "packages/rcp-core" },
+    { name = "rcp-vllm", marker = "extra == 'vllm'", editable = "packages/rcp-vllm" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "s3fs", marker = "extra == 's3'", specifier = ">=2025.3.0" },
     { name = "scipy", specifier = ">=1.15" },
@@ -2815,7 +2815,7 @@ provides-extras = ["s3", "azure", "hf", "http", "mteb", "calibrate", "data", "vl
 [[package]]
 name = "rcp-core"
 version = "0.0.1"
-source = { editable = "rcp-core" }
+source = { editable = "packages/rcp-core" }
 dependencies = [
     { name = "numpy" },
     { name = "pydantic" },
@@ -2839,7 +2839,7 @@ provides-extras = ["irt"]
 [[package]]
 name = "rcp-test"
 version = "0.0.1"
-source = { editable = "rcp-test" }
+source = { editable = "packages/rcp-test" }
 dependencies = [
     { name = "numpy" },
     { name = "pydantic" },
@@ -2859,15 +2859,15 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.11" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rcp", editable = "rcp" },
-    { name = "rcp-vllm", editable = "rcp-vllm" },
+    { name = "rcp", editable = "packages/rcp" },
+    { name = "rcp-vllm", editable = "packages/rcp-vllm" },
 ]
 provides-extras = ["test"]
 
 [[package]]
 name = "rcp-vllm"
 version = "0.0.1"
-source = { editable = "rcp-vllm" }
+source = { editable = "packages/rcp-vllm" }
 dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },

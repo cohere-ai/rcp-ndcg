@@ -490,9 +490,9 @@ def entry_point_groups(path: Path) -> set[str]:
 def collect_packaging() -> dict[str, Any]:
     projects = {}
     for pyproject in (
-        REPO / "rcp" / "pyproject.toml",
-        REPO / "rcp-core/pyproject.toml",
-        REPO / "rcp-vllm/pyproject.toml",
+        REPO / "packages" / "rcp" / "pyproject.toml",
+        REPO / "packages/rcp-core/pyproject.toml",
+        REPO / "packages/rcp-vllm/pyproject.toml",
     ):
         data = tomllib.loads(pyproject.read_text())["project"]
         projects[data["name"]] = {
@@ -500,7 +500,11 @@ def collect_packaging() -> dict[str, Any]:
             "entry_points": {group: sorted(eps) for group, eps in data.get("entry-points", {}).items()},
         }
     read_groups = set()
-    for base in (REPO / "rcp" / "src", REPO / "rcp-core/src", REPO / "rcp-vllm/src"):
+    for base in (
+        REPO / "packages" / "rcp" / "src",
+        REPO / "packages" / "rcp-core" / "src",
+        REPO / "packages" / "rcp-vllm" / "src",
+    ):
         for path in base.rglob("*.py"):
             read_groups |= entry_point_groups(path)
     return {

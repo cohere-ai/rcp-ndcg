@@ -110,7 +110,7 @@ What to look out for:
 - **Sampling is declared, not inherited.** A self-hosted recipe declares its checkpoint's own
   `generation_config.json` sampling at the pinned revision. Examples: Gemma 4's `top_p` 0.95/`top_k` 64, the
   Qwen3.x judges' 0.95/20, Qwen3.5-397B's temperature 0.6. When the config declares none, the recipe declares
-  greedy `temperature 0.0`. `rcp-test/tests/recipes/test_judge_sampling.py` pins the table. What the
+  greedy `temperature 0.0`. `packages/rcp-test/tests/recipes/test_judge_sampling.py` pins the table. What the
   recipe declares is what crosses the wire. The sampling settings are content fields of the judgement family.
 - **The prompt is the family.** The tournament and rubric prompts define the judgement family, with a parse
   version. A changed prompt is a new family and never pools with the shipped one. Every criterion is fixed:

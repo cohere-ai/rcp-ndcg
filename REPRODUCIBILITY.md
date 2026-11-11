@@ -11,7 +11,7 @@ paper's leaderboards, the human contest study and the comparisons with external 
 and no credentials.
 
 ```bash
-pip install ./rcp-core ./rcp     # or: uv sync
+pip install ./packages/rcp-core ./packages/rcp     # or: uv sync
 pip install -r experiments/requirements.txt
 python experiments/fetch_data.py                 # the public datasets, at pinned revisions (about 150 MB)
 python experiments/run_all.py
@@ -62,7 +62,7 @@ v3; text only) and Qwen3.6-27B (TREC-DL); gpt-oss-120b was the second judge on N
   variants (small and xsmall), the ones the owner's disposition names, are the 2 shipped with status failed;
   no recipe reads `status: unverified`: a row is only ever the wave that ran, so a recipe whose wave has not
   landed claims nothing rather than borrowing another image's evidence; see the
-  [`rcp-vllm` README](rcp-vllm/README.md).
+  [`rcp-vllm` README](packages/rcp-vllm/README.md).
 - The paper's judges ship the same way: `--judge recipe:<id>` (or `judge: recipe:<id>` in a run config) reads
   the recipe's client block, and `rcp-vllm serve <id>` builds its engine command; the package itself keeps
   only the hosted `gpt5_hosted` vendor profile. The paper's

@@ -5,7 +5,7 @@ datasets. They call no LLM. They need no GPU and no credentials. The installed p
 folder. Run the scripts from a checkout of the repository:
 
 ```bash
-pip install ./rcp-core ./rcp     # or: uv sync
+pip install ./packages/rcp-core ./packages/rcp     # or: uv sync
 pip install -r experiments/requirements.txt
 python experiments/fetch_data.py                 # the public datasets, at pinned revisions (about 150 MB)
 python experiments/run_all.py                    # every check; exits 1 if a value falls outside its tolerance
