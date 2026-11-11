@@ -6,10 +6,12 @@ engine per (engine, version, recipe, behaviour fingerprint). The URL host names 
 surrogate. Every reply marks which source it used.
 
 **The committed corpora are the `vllm-0.33.0` recording.** An emulator registers under the version that its
-corpus was recorded on. `rcp-test/corpora/vllm-0.33.0/` was recorded on the v0.33.0 image.
-The `fake://vllm-0.33.0/...` host that this page uses is what the corpora register under. A `vllm-0.31.0`
-lookup is refused by name: the earlier recording is not committed. This is the version gate below, not a
-missing feature.
+corpus was recorded on. `rcp-test/corpora/vllm-0.33.0/` was recorded on the v0.33.0 image. The harness resolves
+each recipe's corpus under the engine line its recipe pins. That root is `corpora/<engine>-<version>`, from the
+recipe's `engine.name` and `engine.min_version`. The `fake://vllm-0.33.0/...` host that this page uses is what
+the corpora register under. The superseded `rcp-test/corpora/vllm-0.31.0/` recording is committed beside it as
+the earlier line's evidence. No emulator registers under it: a `fake://vllm-0.31.0/...` lookup is refused by
+name. That refusal is the version gate below, not a missing feature.
 
 ## Selecting an emulator
 

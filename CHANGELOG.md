@@ -37,7 +37,7 @@ every reader still accepts it. All four distributions carry the tag version; `rc
   subscriber that raises is logged once and never fails the run, and a run with no subscriber emits nothing
   and records the same manifest. A step `run cancel` stopped reports `cancelled` in `detail.status`.
 - **The run manifest holds every dataset and suite a run read, and the producer's own visibility statement** (the
-  run manifest's added `v1` fields): `RunManifest` gains five optional fields, and `schemas/run-manifest.v1.json`
+  run manifest's added `v1` fields): `RunManifest` gains four optional fields, and `schemas/run-manifest.v1.json`
   carries them. `path` is the run directory the manifest was last written in, which `RunManifest.save` records;
   the `steps` artifact paths are relative to it, so a manifest read away from its run directory resolves them.
   `datasets` is one `DatasetEntry` per source the run read: the `dataset` provenance (`name`, `revisions`,
@@ -49,7 +49,9 @@ every reader still accepts it. All four distributions carry the tag version; `rc
   interprets). `dataset` stays the run's primary dataset. Each field is optional with a default, so a manifest
   written by the first `v1` validates unchanged, and the reader still refuses a field it does not know.
   `rcp run` writes `path` and the primary `dataset`; a downstream producer writes `datasets`, `suites` and
-  `rows`. The new [run manifest](docs/reference/run-manifest.md) page states every field.
+  `rows`. The new [run manifest](docs/reference/run-manifest.md) page states every field. The embedded `Usage`
+  record is closed in every exported schema that carries it (`additionalProperties: false`, the model's
+  `extra="forbid"`), as the shipped reader already was.
 - **The serving recipes are a declared extra, and the three kept modules say why they stay** (the four hygiene
   items of the downstream-surface work): `rcp` declares `vllm = ["rcp-vllm"]`, so `pip install "rcp[vllm]"`
   installs the sibling a `recipe:` config needs, a `recipe:` config without it is refused naming that install
@@ -96,8 +98,9 @@ every reader still accepts it. All four distributions carry the tag version; `rc
   family's `client.tokenizer` for that one size. A sibling without an override keeps the family's tokenizer, or
   the `model@revision` that the loader injects when the family names none. The load validates the override
   exactly as the family-level field: a non-empty string, refused with the field named. The whitelist refusal
-  names the widened list, and `rcp-vllm/schema/recipe.schema.json` and `family.schema.json` describe the new
-  member. A key outside the list is still refused. Nothing about a size's behaviour changes silently.
+  names the widened list, and `rcp-vllm/schema/family.schema.json` describes the new member (the resolved
+  recipe's own schema needs nothing: its `client` block is free-form data). A key outside the list is still
+  refused. Nothing about a size's behaviour changes silently.
 - **An embedding config declares the quantized representations a run consumes** (the quantized-embedding
   surface): `EmbeddingEndpoint.embedding_types` takes `int8`, `uint8` or `binary`. `schemas/run-config.v1.json`
   and `schemas/index.v1.json` carry the field. The new module `rcp.data.quantize` holds the one implementation of
@@ -537,13 +540,13 @@ every reader still accepts it. All four distributions carry the tag version; `rc
   the backend module to the patch's keyed set, move the plugin recipes' fingerprints (the shared
   `rcp_ndcg_vllm.patches` module is one of the hashed inputs), so the 13 plugin goldens were regenerated;
   the committed corpora keep their pre-deletion keys until their re-record.
-- **The engine pin moves to vLLM v0.33.0, and no recipe claims a wave on it**: every one of the 24 families
-  pins `vllm/vllm-openai:v0.33.0` with `min_version: "0.33.0"`, the version guard accepts the 0.33 line, the
-  pooler config the serve argv renders gains `enable_flash_late_interaction` (the engine's own default, inert
-  for every recipe: the late-interaction scores are computed client-side), and every recipe's `sources`
-  citations the pin rewrote were checked against the tag (a sweep for the cited identifiers, not a re-read:
-  two defects were found and fixed by the release's citation check — `gemma-4-12b`'s `gemma4_mm.py` line
-  range carried the old ranges appended after the re-read ones, and a 0.31-era checkout sha `d0d6e5f3a` was
+- **The engine pin moves to vLLM v0.33.0, and the waves re-verified 42 of the 44 variants on it**: every one of
+  the 24 families pins `vllm/vllm-openai:v0.33.0` with `min_version: "0.33.0"`, the version guard accepts the
+  0.33 line, the pooler config the serve argv renders gains `enable_flash_late_interaction` (the engine's own
+  default, inert for every recipe: the late-interaction scores are computed client-side), and every recipe's
+  `sources` citations the pin rewrote were checked against the tag (a sweep for the cited identifiers, not a
+  re-read: two defects were found and fixed by the release's citation check — `gemma-4-12b`'s `gemma4_mm.py`
+  line range carried the old ranges appended after the re-read ones, and a 0.31-era checkout sha `d0d6e5f3a` was
   labelled `v0.33.0` in `zerank` — the other two families cite it as the checkout it is). The engine image is part of the
   behaviour fingerprint, so every recipe's key moved: the pin sets every variant to `status: unverified`, a
   recipe returns to `verified` only from a wave that re-recorded its corpus on the 0.33 image, and the 44 recipe goldens (and their redactions file)
@@ -556,8 +559,10 @@ every reader still accepts it. All four distributions carry the tag version; `rc
   (vllm-project/vllm#48039, vLLM v0.32.0), so the derived `--max-num-batched-tokens` now covers sixteen
   recipes instead of nine. The verified fake engines gate on the engine version: a corpus recorded on another
   engine version is refused by name, never replayed, and the public `fake://` engine host moves to
-  `fake://vllm-0.33.0/<recipe>` (the committed corpora are re-recorded and renamed with the waves; until
-  then a 0.31 corpus under the 0.33 host is the refusal). The two `topk-embed-v1` variants are the only
+  `fake://vllm-0.33.0/<recipe>` (the waves re-recorded the corpora under `corpora/vllm-0.33.0/`, the harness
+  resolves each recipe's corpus under the engine line its recipe pins, and the superseded
+  `corpora/vllm-0.31.0/` recording stays committed beside it as evidence: a 0.31 corpus under the 0.33 host is
+  the refusal). The two `topk-embed-v1` variants are the only
   `failed` recipes, and the owner's explicit disposition for 0.1.0 names exactly those two: their end-to-end
   validation does not meet the stage-2 per-token cosine floor on the available engine configurations (bf16 and
   fp16 both fail, and fp32 cannot be served because the engine's GatedDeltaNet kernels refuse it), the gate
@@ -567,7 +572,7 @@ every reader still accepts it. All four distributions carry the tag version; `rc
   1→2 migration; a record without the stamp reads as "stamp unavailable", never invented), every exchange
   carries the engine version the running engine reported, and `verify_corpus` refuses a corpus whose records
   name another engine. A manifest re-keyed over a 0.31 recording is refused by name instead of reading
-  `unchanged`; the twelve committed `vllm-0.31.0` recordings still read until the waves re-record them, and an
+  `unchanged`; the committed `vllm-0.31.0` recordings still read (their records carry no stamp), and an
   unstamped corpus under a 0.33 manifest is refused.
 - **`ctxl-rerank-v2-instruct-multilingual-6b` serves `float32`** (the 1b/2b's own dtype): on the v0.33 engine
   the 6b's bf16 numerics put one document's relative delta at 0.0653 against the family's 0.05 gate (served
