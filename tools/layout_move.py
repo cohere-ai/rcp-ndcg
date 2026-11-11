@@ -74,23 +74,38 @@ SPLIT_REGENERATED: frozenset[str] = frozenset({"pyproject.toml"})
 """A move source the pyproject split writes back as the workspace manifest: with the destination in
 place and the source carrying no [project] table, the move is done and the pair is no conflict."""
 
-EXEMPT: frozenset[str] = frozenset({"tools/layout_move.py", "tests/test_layout_move.py"})
+EXEMPT: frozenset[str] = frozenset(
+    {
+        "tools/layout_move.py",
+        "tests/test_layout_move.py",
+        # The fingerprint canonicalisation is the other transform that must spell the old names: its
+        # table maps them onto the recorded spelling, and its tests assert the mapping.
+        "rcp-test/src/rcp_test/fingerprint.py",
+        "rcp-test/tests/test_fingerprint.py",
+        "rcp-test/tests/test_wave_plugin_wheel.py",
+    }
+)
 """Files the rewrite sweep and the stale scan skip: this transform and its test declare the old
-paths in their tables and fixtures."""
+paths in their tables and fixtures, and so does the behaviour fingerprint's canonicalisation, whose
+whole purpose is to map a current spelling onto the recorded one."""
 
 EXEMPT_PREFIXES: tuple[str, ...] = (
     "handover/",
     "rcp-test/corpora/",
     "rcp-test/pairs/",
     "rcp-test/src/rcp_test/fixtures/cases/",
+    "rcp-test/tests/recipes/golden/",
 )
 """Path prefixes the sweep and the stale scan skip: handover/ is temporary scaffolding (deleted in one
 commit before the release), and its workstream reports describe the tree as it was when written; the
 observation corpora -- the recipe keyings and the pairs corpus -- are the GPU waves' records, keyed by
-the tree that recorded them (PLAN section 8); and a case's expected values are derived from its input
-texts, so a renamed text there re-records evidence. The engine-side plugin modules under models/ and
-patches/ were exempt while their bytes were a fingerprint input a layout move had no reason to touch;
-the rename moves the module names themselves, so their re-record is declared with the rest of it."""
+the tree that recorded them (PLAN section 8); a case's expected values are derived from its input
+texts, so a renamed text there re-records evidence; and a recipe golden is a recorded keying too -- its
+``fingerprint.inputs`` name the plugin's modules in the spelling the wave recorded, which is why the
+fingerprint canonicalises that spelling instead of the golden being rewritten. The engine-side plugin
+modules under models/ and patches/ were exempt while their bytes were a fingerprint input a layout move
+had no reason to touch; the rename moves the module names themselves, so their re-record is declared
+with the rest of it."""
 
 EXEMPT_SUFFIXES: tuple[str, ...] = (".jinja",)
 """File suffixes the sweep and the stale scan skip: a recipe template's bytes are a behaviour-fingerprint
@@ -263,6 +278,8 @@ def _apply_rewrites(text: str, name: Path) -> tuple[str, list[str]]:
             "vllm-module",
         ) and name.as_posix() == ("rcp-test/src/rcp_test/jobs/ledger.py"):
             continue  # its source list names pre-rename trees' layouts as data, never a live path
+        if rule == "main-name" and name.as_posix() == "tests/judging/test_store.py":
+            continue  # its parametrize list spells both identity tags as data: a pre-rename store carries the old one
         if rule.startswith("test-") and name.as_posix() == "tests/docs/test_changelog.py":
             continue  # it pins the shipped 0.0.1 entry's harness homes as names, never live paths
         if rule == "root-src" and name.name == "MANIFEST.in":

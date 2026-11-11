@@ -128,7 +128,9 @@ calibration (`rcp.calibration.v1`) and every other exported schema.
 0.0.1 moved the tag from `rcp-ndcg.<name>.v1` to `rcp.<name>.v1`; the run layout's own tag
 (`rcp-ndcg.run-layout.v1`) is not a schema id and did not move. An artifact written before the move carries the
 old spelling, and every reader accepts both. A new artifact carries the new spelling. A judgement store keeps
-the tag it was created with, so resuming an old store writes no file its own code would then refuse.
+the tag it was created with, so a resume writes its identity back under that tag and never migrates the file in
+place. The judgement records a resume appends do carry the new tag, so the code of that day opens the store and
+then refuses a record it does not know: finish an old store with a new install, or start a new one.
 `rcp schema export --out DIR` writes them all; the repository's `schemas/` is that output, committed, and
 `tests/contract` pins it byte for byte.
 

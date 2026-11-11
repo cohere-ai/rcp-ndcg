@@ -134,7 +134,9 @@ def test_every_model_that_tags_its_payload_has_an_exported_schema() -> None:
                     tagged[tag] = f"{obj.__module__}.{obj.__qualname__}"
     missing = {tag: where for tag, where in tagged.items() if tag not in exported}
     assert not missing, missing
-    assert len({exported[tag] for tag in tagged}) >= 4, tagged  # the walk found the payload records
+    # The walk finds 15 distinct payload records today; a floor near that count bites on a regression that
+    # silently stopped finding most of them, where a floor of 4 would not.
+    assert len({exported[tag] for tag in tagged}) >= 10, tagged
 
 
 def _runner_sections_of_the_docs() -> list[tuple[str, dict]]:

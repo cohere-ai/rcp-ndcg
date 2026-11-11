@@ -330,7 +330,18 @@ def test_the_move_table_names_the_root_package(source: str, destination: str) ->
     assert module.OPTIONAL_SOURCES == frozenset(
         {"packages/rcp-ndcg-test", "rcp-ndcg-test", "rcp-test/src/rcp_ndcg_test"}
     )
-    assert module.EXEMPT == frozenset({"tools/layout_move.py", "tests/test_layout_move.py"})
+    assert module.EXEMPT == frozenset(
+        {
+            # The transforms that must spell the old names: this one (its table is the move) and the
+            # behaviour fingerprint's canonicalisation (its table maps a current spelling onto the
+            # recorded one), each with the tests that assert the table.
+            "tools/layout_move.py",
+            "tests/test_layout_move.py",
+            "rcp-test/src/rcp_test/fingerprint.py",
+            "rcp-test/tests/test_fingerprint.py",
+            "rcp-test/tests/test_wave_plugin_wheel.py",
+        }
+    ), "a new exemption is a transform's table, never a file that could be rewritten"
 
 
 def test_the_checkout_is_in_the_target_layout() -> None:

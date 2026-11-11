@@ -284,8 +284,8 @@ class JudgementStore:
 
         A store written before the rename carries ``rcp-ndcg.judgement-store.v1``, and the code of that day reads
         that tag alone (an equality check), so a pass resumed into it writes the identity back under the same tag:
-        resuming a store never migrates it in place. A missing or torn file -- which :meth:`identities` reads as a
-        new store -- gets the current tag.
+        resuming a store never migrates it in place. A missing or zero-byte file -- which :meth:`identities` reads
+        as a new store -- gets the current tag; a file that is not JSON is refused before any write.
         """
         try:
             payload = json.loads(self.identity_path.read_text(encoding="utf-8"))
