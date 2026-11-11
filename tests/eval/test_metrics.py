@@ -98,8 +98,20 @@ def test_the_shipped_metrics_are_scored_through_the_registry(monkeypatch: pytest
         metric_class("rcp")
     message = str(caught.value)
     assert "rcp.eval.metrics:RcpNdcg" in message and "tests.eval._metrics:CollidingRcp" in message
+    assert registered_metrics() == METRICS, "the listing names each name once: the collision is not listed twice"
     with pytest.raises(ConfigError, match="more than one installed distribution"):
         evaluate(rankings, dataset=dataset, metrics=["rcp"], gains=dataset.qrels, bootstrap=0)
+
+
+def test_a_plugin_whose_name_disagrees_with_its_entry_point_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The entry-point name is the metric name: a class that calls itself something else is refused, so a
+    report's metric name always resolves back to the class that scored it."""
+    install_metrics(monkeypatch, metric_entry("misnamed", "tests.eval._metrics:MeanAveragePrecision"))
+
+    with pytest.raises(ConfigError, match="must agree") as caught:
+        metric_class("misnamed")
+
+    assert "'misnamed'" in str(caught.value) and "'map'" in str(caught.value), "both names are in the message"
 
 
 def test_an_unknown_metric_names_the_registered_ones(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -179,3 +191,17 @@ def test_a_plugin_value_that_is_undefined_does_not_warn_about_qrels(monkeypatch:
 
     assert report.warnings == []
     assert report.value("s", "map") is None, "no relevant document: the value is undefined, not 0"
+
+
+def test_a_plugin_value_of_nan_is_undefined_not_a_value(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``nan`` is the contract's other spelling of undefined: the row drops out as ``None``, with no warning,
+    where ``inf`` and a non-number are refused. Pinned because :meth:`rcp.eval.Metric.score` promises it."""
+    install_metrics(monkeypatch, metric_entry("nan_value", "tests.eval._metrics:NanValue"))
+    dataset, rankings = _fixture()
+
+    report = evaluate(rankings, dataset=dataset, metrics=["nan_value"], k=[1], bootstrap=0)
+
+    assert report.warnings == []
+    assert report.value("oracle", "nan_value") is None
+    assert {(row.metric, row.value) for row in report.summary} == {("nan_value", None)}
+    assert {row.num_queries for row in report.summary} == {0}, "a NaN row is no value, not a value of NaN"

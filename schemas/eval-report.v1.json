@@ -410,7 +410,7 @@
       "description": "The input files, when the command line recorded them (ReportInputs); ``None`` from Python."
     },
     "k": {
-      "description": "The cutoffs.",
+      "description": "The cutoffs requested. A metric whose ``k_required`` is false is scored once, at ``k=0`` (\"no cutoff\"), so its rows carry ``k=0`` while this keeps the cutoffs the caller asked for.",
       "items": {
         "type": "integer"
       },

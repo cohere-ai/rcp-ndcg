@@ -222,12 +222,7 @@
         },
         "metric": {
           "default": "rcp",
-          "description": "The metric compared.",
-          "enum": [
-            "rcp",
-            "qrel_ndcg",
-            "count_ndcg"
-          ],
+          "description": "The metric compared: any metric the report holds, a plugin's included (the report's `metrics`: `rcp`, `qrel_ndcg`, `count_ndcg`, or a name registered under `rcp.metrics`).",
           "title": "Metric",
           "type": "string"
         },

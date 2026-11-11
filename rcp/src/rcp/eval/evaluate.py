@@ -150,7 +150,8 @@ class EvalReport(BaseModel):
         gains_source: Where the RCP gains came from: ``"gains"`` (passed in), ``"calibration"`` (its ``gains()``),
             ``"dataset"`` (the released gains), or ``"none"`` (RCP-nDCG not computed).
         metrics: The metrics computed.
-        k: The cutoffs.
+        k: The cutoffs requested. A metric whose ``k_required`` is false is scored once, at ``k=0`` ("no
+            cutoff"), so its rows carry ``k=0`` while this keeps the cutoffs the caller asked for.
         per_query: Every value, one row per (system, dataset, query, metric, k).
         per_dataset: The mean per (system, dataset, metric, k).
         summary: The aggregate per (system, metric, k), with its bootstrap interval.
