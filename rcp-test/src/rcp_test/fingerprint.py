@@ -110,11 +110,6 @@ corpora recorded."""
 _PLUGIN_DISTRIBUTION_ALIASES: tuple[str, ...] = ("rcp-vllm",)
 """Every current spelling of the distribution name, mapped onto :data:`_CANONICAL_PLUGIN_DISTRIBUTION`."""
 
-_PLUGIN_ENV_ALIASES: tuple[str, ...] = ("RCP_VLLM_",)
-"""Every current spelling of the distribution's environment-variable prefix, mapped onto the recorded
-``RCP_NDCG_VLLM_``: the plugin source carries the prefix in ``patches/__init__.py`` and ``models/__init__.py``,
-so an environment-variable sweep is a name change like the package's and must not move a recorded key."""
-
 _CANONICAL_PRODUCT_PACKAGE = "rcp_ndcg"
 """The product package's recorded spelling. A keyed plugin module's docstrings name the product's own
 modules (``:func:`rcp_ndcg.data.postprocess.skip_keep_mask` ``), so the product's rename is a spelling the
@@ -266,8 +261,6 @@ def _canonical_plugin_source(data: bytes) -> bytes:
         data = data.replace(alias.encode(), _CANONICAL_PLUGIN_PACKAGE.encode())
     for alias in _PLUGIN_DISTRIBUTION_ALIASES:
         data = data.replace(alias.encode(), _CANONICAL_PLUGIN_DISTRIBUTION.encode())
-    for alias in _PLUGIN_ENV_ALIASES:
-        data = data.replace(alias.encode(), b"RCP_NDCG_VLLM_")
     for pattern, replacement in _PRODUCT_NAME_RULES:
         data = re.sub(pattern, replacement, data)
     return data
