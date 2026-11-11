@@ -19,11 +19,14 @@ Every other module (for example `rcp.cli`, `rcp.storage`, `rcp.support`, `rcp.da
 submodules of `retrieval`, `judging`, `calibration`, `runs` and `runners`) is internal and may change without notice. A
 pull request that changes `tests/contract/snapshots/` or `schemas/` must add an entry here; CI checks it.
 
-Every artifact schema carries its own version (`rcp-ndcg.<name>.v1`), bumped only when that artifact changes
-incompatibly, independently of the package version. All four distributions carry the tag version; `rcp` pins
+Every artifact schema carries its own version (`rcp.<name>.v1`), bumped only when that artifact changes
+incompatibly, independently of the package version. `rcp-ndcg.<name>.v1` is the spelling from before 0.1.0, and
+every reader still accepts it. All four distributions carry the tag version; `rcp` pins
 `rcp-core==<version>`; `rcp-vllm` pins no sibling; `rcp-test` is never published.
 
 ## Unreleased
+
+## 0.1.0 — 2026-11-11
 
 ### Public surface
 
@@ -76,7 +79,7 @@ incompatibly, independently of the package version. All four distributions carry
 - **The `schema list` id description states the id the command emits**: `rcp.cli.schema.SchemaInfo.id` said
   `rcp-ndcg.<name>.v1`; the exported `rcp.schema-list.v1` now says `rcp.<name>.v1`.
 
-### Changed
+### Changed — the rename
 
 - **The core distribution is `rcp-core` and its package is `rcp_core`**: the `rcp-ndcg-core` distribution and
   the `rcp_ndcg_core` package are renamed, the `rcp-ndcg` pin moves to `rcp-core==<version>`, and there is no
