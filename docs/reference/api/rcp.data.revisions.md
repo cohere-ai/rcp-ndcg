@@ -35,7 +35,7 @@ dataset_local_locations(uri: str, options: Mapping[str, Any] | None = None) -> d
 
 ## `dataset_uri_revision`
 
-function — The resolved commit of a Hub dataset URI (``hf://org/repo[/subset][@rev]``, ``suite:<name>``), else ``None``.
+function — The resolved commit of a dataset URI (``hf://org/repo[/subset][@rev]``, ``suite:<name|path>``), else ``None``.
 
 ```text
 dataset_uri_revision(uri: str | None, revision: str | None = None) -> dict[str, Any] | None

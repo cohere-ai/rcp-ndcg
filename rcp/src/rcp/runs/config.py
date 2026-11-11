@@ -98,13 +98,15 @@ class DatasetSource(BaseModel):
         return load_dataset(self.uri, subset=self.subset, revision=self.revision, **self.options)
 
     def identity(self) -> dict[str, Any]:
-        """What names the data: the source and, for a Hub dataset, the commit it resolves to now.
+        """What names the data: the source, the commit it resolves to now, and the bytes nothing pins.
 
         A local source has no commit, so its *content* names it: the digest of the files the reader reads (the
         dataset location and every local ``*_uri`` option; the rule and its one home are
         :func:`rcp.data.revisions.dataset_content_digest`), so an edited ``rows.jsonl`` makes every step
-        that read it stale on resume -- retrieve, rerank and the judging steps alike.  Hub and suite sources
-        are pinned by their resolved commit and carry no content digest (the commit *is* the content).
+        that read it stale on resume -- retrieve, rerank and the judging steps alike. A Hub dataset and a shipped
+        suite are pinned by their resolved commit and carry no content digest (the commit *is* the content). A
+        suite file outside the package pins nothing unless it declares a full commit. Its bytes enter the
+        identity too: an edited downstream ``suite.yaml`` is another dataset.
         """
         from rcp.data.revisions import dataset_uri_revision
 
@@ -113,10 +115,9 @@ class DatasetSource(BaseModel):
         # hashes the same).
         payload = redact_dataset_payload(self.model_dump(mode="json", exclude_defaults=True))
         commit = dataset_uri_revision(self.uri, self.revision)
-        if commit is not None:
-            return {**payload, "resolved": commit}
+        identity = {**payload, "resolved": commit} if commit is not None else dict(payload)
         content = self.content_digest()
-        return {**payload, "content": content} if content else payload
+        return {**identity, "content": content} if content else identity
 
     def content_digest(self) -> dict[str, str]:
         """``{name: digest}`` of the local files this source reads (empty for a remote or unreadable one).

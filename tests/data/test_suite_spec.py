@@ -258,6 +258,66 @@ def test_an_unknown_suite_name_is_still_refused() -> None:
         load_dataset("suite:not-a-suite")
 
 
+class TestTheSuiteIdentity:
+    """A ``suite:`` URI is named by the definition it reads: the commit its repository resolves to, and -- when
+    the file pins nothing -- its own bytes, so an edited downstream suite never reuses stale work."""
+
+    def test_editing_a_downstream_suite_moves_the_identity(self, tmp_path, hub: object) -> None:
+        from rcp.runs.config import DatasetSource
+
+        directory = tmp_path / "my-suite"
+        _write_suite(directory)
+        source = DatasetSource(uri=f"suite:{directory}")
+        before = source.identity()
+
+        _write_suite(directory, subsets=[FROZEN_SUITES["nanobeir"][1][0], FROZEN_SUITES["nanobeir"][1][1]])
+        after = source.identity()
+
+        assert after != before, "an edited suite.yaml is another dataset"
+        assert after["resolved"]["repo"] == FROZEN_SUITES["nanobeir"][0], "the file's repository is resolved"
+        assert after["content"]["dataset"] != before["content"]["dataset"]
+
+    def test_a_suite_pinned_to_a_commit_is_named_by_its_repository_and_revision(self, tmp_path) -> None:
+        from rcp.runs.config import DatasetSource
+
+        pin = "a" * 40
+        directory = tmp_path / "pinned"
+        _write_suite(directory, revision=pin)
+        source = DatasetSource(uri=f"suite:{directory}")
+
+        identity = source.identity()
+
+        assert identity["resolved"] == {
+            "repo": FROZEN_SUITES["nanobeir"][0],
+            "commit": pin,
+            "verified": True,
+        }
+        assert "content" not in identity, "a full commit pins the data: the file's own bytes are not in the identity"
+
+        # The same definition, written another way: a whitespace edit is not a new dataset.
+        (directory / "suite.yaml").write_text(
+            f"# the same suite, written another way\n"
+            f"name: my-suite\n"
+            f"repo: {FROZEN_SUITES['nanobeir'][0]}\n"
+            f"protocol: plain\n"
+            f"revision: {pin}\n"
+            f"gains: false\n"
+            f"subsets:\n  - {FROZEN_SUITES['nanobeir'][1][0]}\n",
+            encoding="utf-8",
+        )
+        assert source.identity() == identity
+
+    def test_a_shipped_suite_is_named_by_its_repository_and_commit(self, hub: object) -> None:
+        from rcp.runs.config import DatasetSource
+
+        identity = DatasetSource(uri="suite:trecdl").identity()
+
+        assert identity == {
+            "uri": "suite:trecdl",
+            "resolved": {"repo": FROZEN_SUITES["trecdl"][0], "commit": SHA, "verified": True},
+        }, "the four shipped suites are package data: their identity is the repository at its commit"
+
+
 def test_a_suite_file_with_a_wrong_kind_is_refused(tmp_path) -> None:
     directory = tmp_path / "not-a-suite"
     _write_suite(directory, kind="dataset")
