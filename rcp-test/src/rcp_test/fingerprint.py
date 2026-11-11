@@ -138,6 +138,7 @@ CLIENT_FIELDS: dict[str, str] = {
     "use_activation": "request",  # sent in the /rerank body
     "listwise": "request",  # one N-passage request instead of one request per pair
     "embed_dtype": "request",  # sent in the /pooling body
+    "embedding_types": "request",  # the vector the client asks for: int8, uint8 or binary changes what returns
     "image_processor": "request",  # the client resizes the media it sends
     "image_policy": "request",
     "video_policy": "request",
@@ -553,7 +554,7 @@ def fingerprint_inputs(recipe: Recipe, *, tokenizer_sha256_value: str | None = N
     inputs["template_file"] = _template_file_sha(recipe)
     inputs["tokenizer_sha256"] = tokenizer_sha256_value or tokenizer_sha256(recipe)
     client = recipe.client
-    unclassified = sorted(set(client) - set(CLIENT_FIELDS))
+    unclassified = sorted((set(client) | set(_CLIENT_MODELS[recipe.role].model_fields)) - set(CLIENT_FIELDS))
     if unclassified:
         raise HarnessError(
             f"recipe {recipe.id}: the client fields {unclassified} are not classified in "
