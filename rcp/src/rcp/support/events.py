@@ -59,8 +59,10 @@ class RunEvent(BaseModel):
         usage: A judging step's counts, as ``rcp.inference.types.Usage`` serialises them (``requests``,
             ``failed_requests``, ``input_tokens``, ``output_tokens``, ``cached_input_tokens``); ``None`` on every
             phase but ``usage``.
-        detail: What the phase carries: a finished step's ``status`` and ``duration_s`` (seconds), a failed
-            step's ``error`` (the manifest's redacted description), nothing on the other phases.
+        detail: What the phase carries: a finished step's ``status`` and ``duration_s`` (seconds); a failed
+            step's ``error`` (the manifest's redacted description), plus ``status`` (``failed``, or ``cancelled``
+            when ``run cancel`` stopped the run mid-step) on every path but a refused store identity, which keeps
+            the records it had; nothing on the other phases.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")

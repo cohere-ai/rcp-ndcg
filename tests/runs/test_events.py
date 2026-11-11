@@ -15,7 +15,8 @@ from typing import Any
 
 import pytest
 
-from rcp.runs import Pipeline, RunStatus, StepStatus
+from rcp.errors import IdentityError
+from rcp.runs import Pipeline, RunManifest, RunStatus, StepStatus
 from rcp.support import events
 from rcp.support.events import Emitter, RunEvent
 from tests.runs.conftest import STEPS, tiny_config
@@ -110,6 +111,34 @@ class TestTheSequence:
         assert record is not None and record.usage is not None
         assert usage.usage == record.usage.model_dump()
 
+    def test_a_subscriber_sees_the_manifest_the_step_already_wrote(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The event is emitted after the record is final, not before it.
+
+        A subscriber that reads ``manifest.json`` while it is called must find the step it is being told about
+        already written. Emitting before the write would still pass every assertion about the event's own
+        fields, so the ordering is pinned here, from the subscriber's side.
+        """
+        runs = tmp_path / "runs"
+        seen: list[tuple[str, str | None]] = []
+
+        def subscribe(event: RunEvent) -> None:
+            manifest_path = next(runs.glob("*/manifest.json"), None)
+            recorded = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path else {}
+            steps = {step["name"]: step["status"] for step in recorded.get("steps", [])}
+            seen.append((event.phase, steps.get(event.step)))
+
+        monkeypatch.setattr("rcp.runs.pipeline.Emitter.installed", classmethod(lambda cls: Emitter([subscribe])))
+        Pipeline(tiny_config(data), runs_dir=str(runs)).run()
+
+        finished = [status for phase, status in seen if phase == "step_finished"]
+        assert finished, seen
+        assert all(status == "completed" for status in finished), seen
+        # `step_started` is emitted after the step is recorded as running, so its status is already there.
+        started = [status for phase, status in seen if phase == "step_started"]
+        assert started and all(status == "running" for status in started), seen
+
     def test_a_failed_step_emits_step_failed_and_the_run_stops(
         self, data: Path, tmp_path: Path, received: list[RunEvent]
     ) -> None:
@@ -124,9 +153,63 @@ class TestTheSequence:
             ("step_failed", "evaluate"),
         ]
         assert received[-1].detail["error"].startswith("MissingInputError: ")
+        assert received[-1].detail["status"] == "failed"
         assert pipeline.manifest.status is RunStatus.FAILED
         record = pipeline.manifest.step("evaluate")
         assert record is not None and record.status is StepStatus.FAILED
+
+    def test_a_cancelled_judging_step_says_cancelled_and_still_reports_its_usage(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, received: list[RunEvent]
+    ) -> None:
+        """``run cancel`` during a judging step: the closing event says ``cancelled``, not ``failed``, and the
+        usage event still reports what the step asked the judge before it stopped."""
+        from rcp.judging import JudgeClient
+        from rcp.judging.client import BackendUnavailableError
+
+        pipeline = Pipeline(tiny_config(data, steps=["tournament"]), runs_dir=str(tmp_path / "runs"))
+        complete = JudgeClient.complete
+        answered = []
+
+        async def stopped_midway(self, request):
+            if len(answered) >= 3:
+                on_disk = RunManifest.load(pipeline.layout)
+                on_disk.status = RunStatus.CANCELLED
+                on_disk.save(pipeline.layout)
+                raise BackendUnavailableError("the job was stopped")
+            answered.append(request)
+            return await complete(self, request)
+
+        monkeypatch.setattr(JudgeClient, "complete", stopped_midway)
+        with pytest.raises(BackendUnavailableError):
+            pipeline.run()
+
+        assert [(event.phase, event.step) for event in received] == [
+            ("step_started", "tournament"),
+            ("step_failed", "tournament"),
+            ("usage", "tournament"),
+        ]
+        assert received[1].detail["status"] == "cancelled"
+        assert received[2].usage is not None and received[2].usage["requests"] >= 3
+
+    def test_a_refused_store_identity_emits_step_failed(
+        self, finished: Path, tmp_path: Path, received: list[RunEvent]
+    ) -> None:
+        """A judging step that refuses another identity closes with ``step_failed``: the refusal reaches a
+        subscriber, and the run keeps the records it had."""
+        import shutil
+
+        run_dir = Path(shutil.copytree(finished, tmp_path / finished.name))
+        with pytest.raises(IdentityError):
+            Pipeline.resume(run_dir, overrides=["rubric.seed=7"]).run()
+
+        assert [(event.phase, event.step) for event in received] == [
+            ("step_started", "rubric"),
+            ("step_failed", "rubric"),
+            ("usage", "rubric"),
+        ]
+        assert received[1].detail["error"].startswith("IdentityError: ")
+        record = RunManifest.load(run_dir).step("rubric")
+        assert record is not None and record.status is StepStatus.COMPLETED
 
     def test_a_step_a_resume_skips_emits_nothing(
         self, finished: Path, tmp_path: Path, received: list[RunEvent]

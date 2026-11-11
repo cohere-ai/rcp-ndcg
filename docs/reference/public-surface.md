@@ -9,9 +9,9 @@ made, and the deprecation path -- are on
 `rcp.support.api_docs.PUBLIC_MODULES` names the public modules: `rcp_core` and its documented
 submodules, the `rcp` facade and the packages the docs present as API (`calibration`, `data`,
 `data.preprocess`, `data.revisions`, `errors`, `eval`, `eval.mteb`, `examples`, `inference`, `judging`,
-`results`, `retrieval`, `runners`, `runs`, `testing`), and `rcp_vllm.recipe` (the serving package's
-recipe module). Every other module is internal: it may change without a CHANGELOG entry, and only the names a
-public module lists in `__all__` are part of the surface.
+`results`, `retrieval`, `runners`, `runs`, `support.events`, `testing`), and `rcp_vllm.recipe` (the serving
+package's recipe module). Every other module is internal: it may change without a CHANGELOG entry, and only the
+names a public module lists in `__all__` are part of the surface.
 
 The surface is pinned as data in `tests/contract/snapshots/`: `python_api.json` (each public name with its
 signature and pydantic fields), `cli.json` (commands, options, defaults), `mcp_tools.json`, `exit_codes.json`

@@ -22,10 +22,10 @@ versions. The normative spelling of every name below lives in the repository, no
   `rcp-vllm` recipe schemas (`tests/contract/snapshots/vllm_cli.json`).
 
 Everything else is internal and may change without notice: `rcp.cli`, `rcp.storage`,
-`rcp.support`, `rcp.data.io`, the submodules of `retrieval`, `judging`, `calibration`, `runs` and
-`runners`, the rest of `rcp_vllm`, and all of the unpublished `rcp-test`. A change to a public name,
-flag, exit code or schema is a reviewed diff against the snapshot and gets a CHANGELOG entry; a pull request
-that changes either without one fails CI.
+`rcp.data.io`, `rcp.support` except `rcp.support.events`, the submodules of `retrieval`, `judging`,
+`calibration`, `runs` and `runners`, the rest of `rcp_vllm`, and all of the unpublished `rcp-test`. A change
+to a public name, flag, exit code or schema is a reviewed diff against the snapshot and gets a CHANGELOG entry;
+a pull request that changes either without one fails CI.
 
 ## The 0.0.1 freeze
 

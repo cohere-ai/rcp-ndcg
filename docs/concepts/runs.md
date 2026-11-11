@@ -483,7 +483,7 @@ four phases, one event each:
 |---|---|---|
 | `step_started` | the step is recorded as running, before its work | `{}` |
 | `step_finished` | the step completed and its record is written | `{"status": "completed", "duration_s": <seconds>}` |
-| `step_failed` | the step raised, was interrupted or cancelled, or a judging step refused its store's identity | `{"error": "<the manifest's redacted description>"}` |
+| `step_failed` | the step raised, was interrupted or cancelled, or a judging step refused its store's identity | `{"error": "<the manifest's redacted description>", "status": "failed"}` — `"cancelled"` when `run cancel` stopped it |
 | `usage` | a step reported judge usage, right after the event that closed it | `{}`; the counts are in `usage` |
 
 The event is `RunEvent(run_id, step, phase, at, usage, detail)`: the run's id, the step's name, the phase, when it

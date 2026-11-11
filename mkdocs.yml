@@ -78,6 +78,7 @@ nav:
           - "rcp.retrieval": reference/api/rcp.retrieval.md
           - "rcp.runners": reference/api/rcp.runners.md
           - "rcp.runs": reference/api/rcp.runs.md
+          - "rcp.support.events": reference/api/rcp.support.events.md
           - "rcp.testing": reference/api/rcp.testing.md
           - "rcp_vllm.recipe": reference/api/rcp_vllm.recipe.md
 
