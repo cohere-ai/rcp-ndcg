@@ -374,6 +374,19 @@ value is an assumption, not a bound, and no text is ever cut on it.
 A prompt with images or video is refused (`CapabilityError`) unless the judge config declares that the model reads
 them (`max_images`, `max_videos` above 0).
 
+### Memory, concurrency and the engine's cost
+
+Three existing settings bound what a media pass costs. The client holds a query's prepared pages and frames for
+as long as that query runs, so a pass whose media is inlined runs one query at a time. A container is not
+inlined: the client keeps only its reference and reads the bytes while it lowers one request. A container pass
+therefore runs at the judge's `concurrency`, which bounds the requests in flight, and `RCP_NDCG_VIDEO_CACHE_SIZE`
+(16 encoded containers per worker by default) bounds the encoded bytes it keeps. `RCP_NDCG_MAX_VIDEO_BYTES` (64
+MiB by default) refuses a larger container before the request is sent.
+
+The engine side is a separate cost. The engine decodes each clip at native resolution, so its memory grows with
+the requests in flight, the clips per request and the clips' duration. Lower `concurrency` or `max_videos` to
+bound it, or serve the clips as frames (`wire: frames`) and let the client hold them.
+
 ```python
 from rcp.data import ImagePolicy
 
