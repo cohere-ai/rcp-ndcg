@@ -138,8 +138,9 @@ REWRITES: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     # identifier (`\nrcp_ndcg` is the module, `delta_rcp_ndcg` and `rcp_ndcg10` are the metric's).
     ("main-module", r"(?:(?<!\w)|(?<=\\[ntr]))rcp_ndcg(?!\w)", "rcp", None),
     # The serving distribution and its import package (`rcp-ndcg-vllm` -> `rcp-vllm`,
-    # `rcp_ndcg_vllm` -> `rcp_vllm`). The fingerprint moves with the name: `serve.plugin` and the
-    # plugin's module names are inputs, so every corpus a plugin recipe recorded is stale.
+    # `rcp_ndcg_vllm` -> `rcp_vllm`). `serve.plugin` and the plugin's module names are fingerprint
+    # inputs, but the fingerprint keys them in the recorded spelling (`rcp_test.fingerprint`), so the
+    # rename moves no recorded key: no plugin recipe's corpus is stale and no wave re-runs for it.
     ("vllm-name", r"(?<![\w-])rcp-ndcg-vllm\b", "rcp-vllm", None),
     ("vllm-module", r"(?<!\w)rcp_ndcg_vllm\b", "rcp_vllm", None),
     # The unpublished harness's distribution and import names drop `ndcg`. `test-name`'s lookbehind

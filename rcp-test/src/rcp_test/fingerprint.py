@@ -38,6 +38,7 @@ import gzip
 import hashlib
 import importlib.util
 import json
+import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -88,7 +89,7 @@ request packing (``batch_size``) and the media caps are in.
 
 The plugin inputs are keyed in the **recorded spelling** of the distribution's own name
 (:data:`_CANONICAL_PLUGIN_PACKAGE`): a module's key is that package plus its path below the package, and
-its source is hashed with every current spelling of the package and distribution names mapped onto the
+its source is hashed with every current spelling of the plugin's and the product's names mapped onto the
 recorded ones. A rename of the distribution therefore adds one line to the alias map and moves no recorded
 fingerprint -- it does not change any canonical value, so the schema stays 4. A change to a module's code
 (the paths, the imports, the bodies) still moves the key."""
@@ -109,10 +110,29 @@ corpora recorded."""
 _PLUGIN_DISTRIBUTION_ALIASES: tuple[str, ...] = ("rcp-vllm",)
 """Every current spelling of the distribution name, mapped onto :data:`_CANONICAL_PLUGIN_DISTRIBUTION`."""
 
-_PLUGIN_ENV_ALIASES: tuple[str, ...] = ("RCP_VLLM_",)
-"""Every current spelling of the distribution's environment-variable prefix, mapped onto the recorded
-``RCP_NDCG_VLLM_``: the plugin source carries the prefix in ``patches/__init__.py`` and ``models/__init__.py``,
-so an environment-variable sweep is a name change like the package's and must not move a recorded key."""
+_CANONICAL_PRODUCT_PACKAGE = "rcp_ndcg"
+"""The product package's recorded spelling. A keyed plugin module's docstrings name the product's own
+modules (``:func:`rcp_ndcg.data.postprocess.skip_keep_mask` ``), so the product's rename is a spelling the
+canonicalisation must map like the plugin's."""
+
+_CANONICAL_PRODUCT_DISTRIBUTION = "rcp-ndcg"
+"""The product distribution's recorded spelling (see above)."""
+
+_PRODUCT_NAME_RULES: tuple[tuple[bytes, bytes], ...] = (
+    # Today the product's package and its distribution are both spelled ``rcp``, so the bare token is
+    # ambiguous; each rule reads the context the recorded sources used it in. A dotted reference
+    # (``rcp.data.postprocess``) and a code span (``rcp``) name the package.
+    (rb"(?<![\w.-])rcp(?=[.`])", _CANONICAL_PRODUCT_PACKAGE.encode()),
+    # A sibling distribution's package keeps the recorded ``rcp_ndcg_`` prefix: ``rcp_test.observe.corpus``.
+    (rb"(?<![\w.-])rcp_(?!ndcg)", f"{_CANONICAL_PRODUCT_PACKAGE}_".encode()),
+    # A bare word in prose names the distribution: ``and rcp transfers float16``. A keyed plugin module
+    # imports no product code (the engine image installs the wheel with ``--no-deps``), so a bare ``rcp``
+    # in its source is prose, never an import.
+    (rb"(?<![\w.-])rcp(?![\w.-])", _CANONICAL_PRODUCT_DISTRIBUTION.encode()),
+)
+"""Every current spelling of the *product's* names, mapped onto the recorded ones, in order. Applied to a
+plugin module's source after the plugin's own names. The recorded bytes are a fixed point of the sweep, and
+so is ``rcp-fp`` (the fingerprint's own tag), which is neither name."""
 
 CLIENT_FIELDS: dict[str, str] = {
     # request: the field changes the bytes the client sends (and with them what the model returns)
@@ -227,34 +247,44 @@ def _canonical(value: Any) -> str:
 
 
 def _canonical_plugin_source(data: bytes) -> bytes:
-    """The plugin module source with every current spelling of the distribution's own name mapped onto the
-    recorded one.
+    """The plugin module source with every current spelling of the plugin's and the product's names mapped
+    onto the recorded ones.
 
     The canonical spelling is the one the committed corpora's ``plugin_sha256`` values were taken over, so the
     same code under a renamed package hashes to the same value: a rename moves no recorded fingerprint. The
-    bytes are read, never imported; a code change still moves the hash.
+    plugin's names map first (:data:`_PLUGIN_PACKAGE_ALIASES`, :data:`_PLUGIN_DISTRIBUTION_ALIASES`), then the
+    product's (:data:`_PRODUCT_NAME_RULES`) -- a module's docstrings name the product's own modules, so a
+    sweep of the product's name moves the hash just as a sweep of the plugin's does. The bytes are read, never
+    imported; a code change still moves the hash.
     """
     for alias in _PLUGIN_PACKAGE_ALIASES:
         data = data.replace(alias.encode(), _CANONICAL_PLUGIN_PACKAGE.encode())
     for alias in _PLUGIN_DISTRIBUTION_ALIASES:
         data = data.replace(alias.encode(), _CANONICAL_PLUGIN_DISTRIBUTION.encode())
-    for alias in _PLUGIN_ENV_ALIASES:
-        data = data.replace(alias.encode(), b"RCP_NDCG_VLLM_")
+    for pattern, replacement in _PRODUCT_NAME_RULES:
+        data = re.sub(pattern, replacement, data)
     return data
+
+
+def _continues_distribution_name(rest: str) -> bool:
+    """Whether ``rest`` continues a distribution name (PEP 503's letters, digits, ``-``, ``_`` and ``.``)."""
+    return bool(rest) and (rest[0].isalnum() or rest[0] in "-_.")
 
 
 def _canonical_plugin_text(spec: str) -> str:
     """A plugin spec with its leading distribution name in the recorded spelling; the rest is unchanged.
 
     ``serve.plugin`` is a pip requirement spec, so only the leading name is the distribution; its extras, its
-    version specifiers and a URL are not. An unknown name (a foreign plugin, which
+    version specifiers and a URL are not. A name that merely begins with a known one (``rcp-vllm-nightly``)
+    is a different distribution, and any name the map does not know (a foreign plugin, which
     :func:`plugin_module_hashes` refuses by name) is returned as written.
     """
     text = spec.strip()
     for alias in (*_PLUGIN_PACKAGE_ALIASES, *_PLUGIN_DISTRIBUTION_ALIASES):
-        if text.lower().startswith(alias):
-            return _CANONICAL_PLUGIN_DISTRIBUTION + text[len(alias) :]
-    return spec
+        rest = text[len(alias) :]
+        if text.lower().startswith(alias) and not _continues_distribution_name(rest):
+            return _CANONICAL_PLUGIN_DISTRIBUTION + rest
+    return text
 
 
 def _canonical_plugin_module(module: str) -> str:
@@ -278,12 +308,31 @@ def _canonical_plugin_module(module: str) -> str:
 
 
 def _current_plugin_module(module: str) -> str:
-    """The current dotted module name of a canonical plugin key (the path of the staged wheel's member)."""
+    """The current dotted module name of a canonical plugin key (the path of the staged wheel's member).
+
+    The current package name is the one the shipped declaration names
+    (:data:`~rcp_vllm.models.PLUGIN_ENGINE_MODULES`), so the two sides of the wheel cross-check stay one
+    spelling apart.
+
+    Raises:
+        HarnessError: the declaration is empty (no package name to map onto), or ``module`` is not a
+            canonical key (a name this function did not make, which no wheel carries under it).
+    """
+    if not PLUGIN_ENGINE_MODULES:
+        raise HarnessError(
+            f"rcp_vllm.models.PLUGIN_ENGINE_MODULES is empty, so the canonical plugin key {module!r} cannot be "
+            "mapped onto the current package name; the shipped declaration must name the plugin's entry modules"
+        )
     package = PLUGIN_ENGINE_MODULES[0].partition(".")[0]
     if module == _CANONICAL_PLUGIN_PACKAGE:
         return package
     prefix = _CANONICAL_PLUGIN_PACKAGE + "."
-    return package + "." + module[len(prefix) :] if module.startswith(prefix) else module
+    if not module.startswith(prefix):
+        raise HarnessError(
+            f"{module!r} is not a canonical plugin key (the recorded package {_CANONICAL_PLUGIN_PACKAGE!r} plus "
+            "the module's path below it), so the staged wheel carries no member to hash under it"
+        )
+    return package + "." + module[len(prefix) :]
 
 
 def _template_file_sha(recipe: Recipe) -> str:
@@ -399,7 +448,9 @@ def plugin_module_hashes(recipe: Recipe) -> dict[str, str]:
     """
     if recipe.serve.plugin is None:
         return {}
-    if plugin_distribution_name(recipe.serve.plugin) != "rcp-vllm":
+    # The recorded spelling of the plugin's name is the shipped plugin too (the alias map says so, and every
+    # wave record and archived recipe keeps it), so the guard reads the canonicalised spec's name.
+    if plugin_distribution_name(_canonical_plugin_text(recipe.serve.plugin)) != _CANONICAL_PLUGIN_DISTRIBUTION:
         raise HarnessError(
             f"recipe {recipe.id}: serve.plugin {recipe.serve.plugin!r} is not the shipped plugin, so the "
             "behaviour fingerprint cannot resolve the modules its engine runs; a foreign plugin needs its "
