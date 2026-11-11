@@ -4,7 +4,7 @@
       "description": "One exported schema.",
       "properties": {
         "id": {
-          "description": "rcp-ndcg.<name>.v1, the value payloads carry in their 'schema' field.",
+          "description": "rcp.<name>.v1, the value payloads carry in their 'schema' field.",
           "title": "Id",
           "type": "string"
         },

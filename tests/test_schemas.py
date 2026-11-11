@@ -96,17 +96,20 @@ def test_the_shipped_run_configs_have_the_types_the_run_config_schema_declares()
 
 
 def test_every_model_that_tags_its_payload_has_an_exported_schema() -> None:
-    """A payload that names ``rcp-ndcg.<name>.v1`` promises a schema of that name (the manifest, a calibration's
-    coverage and identity, an index record, ...)."""
+    """A payload that names a schema id promises a schema of that name (the manifest, a calibration's coverage
+    and identity, an index record, ...). Every spelling a model admits is checked: since the rename each payload
+    tag admits both ``rcp.<name>.v1`` and the pre-rename ``rcp-ndcg.<name>.v1``."""
     import importlib
     import pkgutil
     import typing
 
     from pydantic import BaseModel
+    from rcp_core.schemas import accepted_schema_ids
 
     import rcp
 
-    exported = {entry.schema_id for entry in schemas.entries()}
+    names = {entry.name for entry in schemas.entries()}
+    exported = {spelling: name for name in names for spelling in accepted_schema_ids(name)}
     tagged: dict[str, str] = {}
     for info in pkgutil.walk_packages(rcp.__path__, "rcp."):
         if info.name.endswith("__main__"):
@@ -117,14 +120,15 @@ def test_every_model_that_tags_its_payload_has_an_exported_schema() -> None:
             continue
         for obj in vars(module).values():
             if isinstance(obj, type) and issubclass(obj, BaseModel) and "schema_name" in obj.model_fields:
-                args = typing.get_args(obj.model_fields["schema_name"].annotation)
-                if len(args) != 1:
+                annotation = obj.model_fields["schema_name"].annotation
+                if typing.get_origin(annotation) is not typing.Literal:
                     # Not a payload tag: an artifact's own schema id is a plain ``str | None``.
                     continue
-                (tag,) = args
-                tagged[tag] = f"{obj.__module__}.{obj.__qualname__}"
+                for tag in typing.get_args(annotation):
+                    tagged[tag] = f"{obj.__module__}.{obj.__qualname__}"
     missing = {tag: where for tag, where in tagged.items() if tag not in exported}
     assert not missing, missing
+    assert len({exported[tag] for tag in tagged}) >= 4, tagged  # the walk found the payload records
 
 
 def _runner_sections_of_the_docs() -> list[tuple[str, dict]]:

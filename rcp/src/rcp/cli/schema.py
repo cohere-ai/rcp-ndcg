@@ -27,7 +27,7 @@ class SchemaInfo(BaseModel):
 
     name: str
     kind: SchemaKind
-    id: str = Field(description="rcp-ndcg.<name>.v1, the value payloads carry in their 'schema' field.")
+    id: str = Field(description="rcp.<name>.v1, the value payloads carry in their 'schema' field.")
     url: str = Field(description="The $id: the committed copy under schemas/ in the repository.")
 
 
