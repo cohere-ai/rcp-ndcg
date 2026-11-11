@@ -186,8 +186,8 @@ no index. The constraints file that you name replaces the release's:
 runner:
   name: kubernetes
   options:
-    wheelhouse: https://storage.googleapis.com/my-bucket/wheelhouse/0.0.1rc1
-    constraints: https://storage.googleapis.com/my-bucket/wheelhouse/0.0.1rc1/requirements-constraints.txt
+    wheelhouse: https://storage.googleapis.com/my-bucket/wheelhouse/<version>
+    constraints: https://storage.googleapis.com/my-bucket/wheelhouse/<version>/requirements-constraints.txt
 ```
 
 The local runner runs the coordinator in this host's environment and installs nothing, so a wheelhouse there
@@ -202,21 +202,21 @@ commands are:
 # the three published wheels, by name, as release.yml builds them (never --all-packages: the
 # unpublished fourth workspace member rcp-test must not be swept into the release files; the
 # pyproject.toml versions must match)
-uv build --package=rcp-core --out-dir /shared/wheelhouse/0.0.1rc1
-uv build --package=rcp --out-dir /shared/wheelhouse/0.0.1rc1
-uv build --package=rcp-vllm --out-dir /shared/wheelhouse/0.0.1rc1
+uv build --package=rcp-core --out-dir /shared/wheelhouse/<version>
+uv build --package=rcp --out-dir /shared/wheelhouse/<version>
+uv build --package=rcp-vllm --out-dir /shared/wheelhouse/<version>
 # the unpublished harness wheel (the node's client environment imports rcp_test), in its own directory
-uv build --package=rcp-test --out-dir /shared/wheelhouse/0.0.1rc1/harness
+uv build --package=rcp-test --out-dir /shared/wheelhouse/<version>/harness
 # the locked dependencies, pinned exactly (the command the committed requirements-constraints.txt records)
 uv export --frozen --no-hashes --no-emit-workspace --no-dev --extra calibrate --extra hf --extra s3 --extra azure \
-  -o /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt
-pip download -r /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt \
-  -c /shared/wheelhouse/0.0.1rc1/requirements-constraints.txt \
+  -o /shared/wheelhouse/<version>/requirements-constraints.txt
+pip download -r /shared/wheelhouse/<version>/requirements-constraints.txt \
+  -c /shared/wheelhouse/<version>/requirements-constraints.txt \
   'rcp-vllm[test]==<version>' 'rcp[hf]==<version>' 'rcp-test==<version>' \
   $(for lock in rcp-vllm/src/rcp_vllm/recipes/*/reference.lock; do
       grep -q '^# own-torch: true' "$lock" || printf -- '-r %s ' "$lock";
     done) \
-  --dest /shared/wheelhouse/0.0.1rc1 --find-links /shared/wheelhouse/0.0.1rc1 --only-binary :all: \
+  --dest /shared/wheelhouse/<version> --find-links /shared/wheelhouse/<version> --only-binary :all: \
   --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
 # The own-torch families' locks pin a CUDA torch: download them from PyPI alone (PEP 440 orders a
 # ``+cpu`` local version above the plain release, so the CPU index must not see them).
@@ -224,7 +224,7 @@ pip download \
   $(for lock in rcp-vllm/src/rcp_vllm/recipes/*/reference.lock; do
       grep -q '^# own-torch: true' "$lock" && printf -- '-r %s ' "$lock";
     done) \
-  --dest /shared/wheelhouse/0.0.1rc1 --index-url https://pypi.org/simple
+  --dest /shared/wheelhouse/<version> --index-url https://pypi.org/simple
 ```
 
 `uv export --frozen ...` writes the same file that the release attaches, with the command in its header.
