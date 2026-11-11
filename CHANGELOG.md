@@ -36,6 +36,39 @@ incompatibly, independently of the package version. All four distributions carry
   with a test that imports it and runs its mteb-only branch under that extra; and `rcp.judging.tokens` is kept
   beside `TextBudget` because an estimate runs where no tokenizer can count, a split
   `docs/concepts/text-budgets.md` states.
+- **A metric is an entry point, and the shipped three are its first members** (the metric seam): a package
+  registers a metric class under the seventh entry-point group, `rcp.metrics`. The class follows `rcp.eval.Metric`:
+  it has a `name`, a `k_required` and the `score` of one query. `rcp.eval.metric_class`, `registered_metrics`,
+  `METRICS` and `METRICS_GROUP` are the one lookup, and one duplicate-name policy applies to a plugin that
+  publishes a shipped name. `rcp eval score --metric NAME` is repeatable and scores a registered metric beside
+  `--metrics`. `rcp eval compare --metric` now names any metric that the report holds, not only the three shipped
+  metrics. The `metric` fields of `schemas/{eval-report,eval-score,comparison}.v1.json` are strings, because the
+  `enum` is gone. An old report still reads, and a plugin's name is admitted. The CLI and MCP `metric` inputs
+  follow. `tests/contract/snapshots/` and the generated API pages are regenerated.
+- **A suite is data, and a downstream suite is named by its own bytes**: `load_dataset("suite:<name>")` reads the
+  four shipped suites from `rcp/data/suites/<name>.yaml` through one suite reader, and the result is byte-identical
+  to the literal `SUITES`. A suite directory or its `suite.yaml` loads by path (`suite:<path>`), and the new
+  `schemas/suite.v1.json` is the format. A subset read at a revision other than the suite's is refused, and the
+  refusal names both. The identity of a downstream suite is its repository at the resolved commit. When that
+  `suite.yaml` declares no full commit, the identity also includes the bytes of the file, so an edited suite is
+  another dataset. The four shipped suites are package data, and they keep their identity.
+- **A recipe declares the fields only the plugin provides, and the loader refuses what the target cannot honour**
+  (the plugin-field surface): `rcp_vllm.recipe.PLUGIN_FIELDS` is the one declaration of the serving fields that the
+  stock engine lacks. These fields are the embed chunker's `chunk_length`, `chunk_weighting` and
+  `normalize_aggregated_embeddings` under `serve.pooler_config`, which `serve_argv` renders inside the
+  `--pooler-config` JSON, and the rerank route's `relevant_spans` capability. Each field names the plugin
+  distribution that honours it. A recipe that declares one of these fields names the plugin in `serve.plugin`. The
+  load refuses by name, with the plugin's `pip install --no-deps <spec>` line, in three cases: the recipe does not
+  declare the plugin, the plugin does not provide the field, or the environment does not install the plugin. The
+  load judges the last case through the `vllm.general_plugins` entry-point group that the packaging snapshot
+  records. Nothing is dropped silently.
+- **`Recipe.relevant_spans` and `RecipeFamily.relevant_spans`** are new fields (default `false`, rerank recipes
+  only): the deployment honours the plugin's span-level relevance wire. The declaration is a capability, so it
+  renders nothing into the `vllm serve` argv. It is a recipe-level field and not a `serve` field on purpose: every
+  `serve` field is a behaviour-fingerprint input, so a home in the serve block would re-key every recipe's recorded
+  corpus. The recipe schema (`rcp-vllm/schema/recipe.schema.json`, `family.schema.json`) carries both additions.
+- **The `schema list` id description states the id the command emits**: `rcp.cli.schema.SchemaInfo.id` said
+  `rcp-ndcg.<name>.v1`; the exported `rcp.schema-list.v1` now says `rcp.<name>.v1`.
 
 ### Changed
 
@@ -43,9 +76,8 @@ incompatibly, independently of the package version. All four distributions carry
   the `rcp_ndcg_core` package are renamed, the `rcp-ndcg` pin moves to `rcp-core==<version>`, and there is no
   compatibility shim — the old names are gone. The historical entries below keep the old names.
 - **The main distribution is `rcp` and its package is `rcp`**: the `rcp-ndcg` distribution, the `rcp_ndcg`
-  package and the `rcp-ndcg` command are renamed, the four entry-point groups are `rcp.runners`, `rcp.readers`,
-  `rcp.writers` and `rcp.results`, and `python -m rcp_ndcg.cli` is `python -m rcp.cli`. There is no compatibility
-  shim.
+  package and the `rcp-ndcg` command are renamed, and `python -m rcp_ndcg.cli` is `python -m rcp.cli`. There is no
+  compatibility shim. The entry-point groups have their own bullet below.
   The artifact tags move with it (`rcp.<name>.v1`, below); the emulator's extension keys
   (`x-rcp-ndcg-emulator-*`), the public dataset ids, the bucket prefix and the repository URL keep the spellings
   they shipped with, and so do the historical entries below.
@@ -57,10 +89,10 @@ incompatibly, independently of the package version. All four distributions carry
   read-compatible and write-forward, so no file is rewritten and the exported schemas admit both spellings.
 - **The serving distribution is `rcp-vllm` and its package is `rcp_vllm`**: the `rcp-ndcg-vllm` distribution,
   the `rcp_ndcg_vllm` package, the `rcp-ndcg-vllm` console and the `vllm.general_plugins` entry point are renamed,
-  and the recipes declare `serve.plugin: rcp-vllm`. **The behaviour fingerprint moves for every recipe that
-  declares a plugin** (`serve.plugin` and the plugin's module names are inputs, `rcp-fp/4`), so the committed
-  observation corpora are stale and the record and equivalence waves re-run before the ledger is regenerated;
-  the goldens are regenerated here. The CHANGELOG's historical entries and the wave records keep the old names.
+  and the recipes declare `serve.plugin: rcp-vllm`. **The behaviour fingerprint does not move**: `serve.plugin`
+  and the plugin's module names are inputs (`rcp-fp/4`), but the fingerprint keys them in the recorded spelling
+  (`rcp_test.fingerprint`). Therefore no recorded key, no committed corpus and no golden moves, and no wave runs
+  again. The CHANGELOG's historical entries and the wave records keep the old names.
 - **The harness is `rcp-test` and its package is `rcp_test`**: the `rcp-ndcg-test` distribution, the
   `rcp_ndcg_test` package and the `rcp-ndcg-test` checkout directory are renamed; the fake-transport entry
   point is `rcp-test` under the `rcp.fake_transports` group, `python -m rcp_ndcg_test.<tool>` is
@@ -69,6 +101,26 @@ incompatibly, independently of the package version. All four distributions carry
   The behaviour fingerprints do not move (the harness is not a fingerprint input), the committed corpora and
   the pairs corpus keep the spellings they were recorded with, the ledger's historical wave paths keep their
   placeholders, and so do the historical entries below.
+- **The metric id stays `rcp_ndcg`**: the names of the three shipped nDCGs are the metric's, not the package's, so
+  they keep the spellings that they shipped with. These names are `MetricName`, the `--metrics`/`--metric` values
+  and an `EvalReport`'s `metric` field, and they are `rcp_ndcg`, `qrel_ndcg` and `count_ndcg`. The distribution,
+  the package and the command are `rcp`. `rcp` is not a metric name. The names that were already the metric's are
+  unchanged: `delta_rcp_ndcg`, the `rcp_ndcg10` columns and the Hub file `rcp_ndcg_tasks.py`.
+- **The default cache directory is `$XDG_CACHE_HOME/rcp`** (was `$XDG_CACHE_HOME/rcp-ndcg`, else
+  `~/.cache/rcp-ndcg`): the cache root follows the package name. A media or object cache that 0.0.1 filled is
+  abandoned, and the files are fetched again once. `$RCP_NDCG_CACHE_DIR` keeps its name and still overrides the
+  root. Set it, or point it at the old directory, to keep a warm cache.
+- **Every entry-point group that the product reads is `rcp.*`**: the groups are `rcp.runners`, `rcp.readers`,
+  `rcp.writers`, `rcp.results`, `rcp.adapters`, `rcp.events`, `rcp.fake_transports` and `rcp.metrics` (the metric
+  seam). The product no longer finds a third-party plugin that is registered under an old `rcp_ndcg.*` group, so
+  register it under the new group. The test harness's own group is `rcp.emulators`, which `rcp_test` reads and the
+  product never reads.
+- **The behaviour fingerprint is invariant under a rename of the product too**: the docstrings of a plugin module
+  name the product's own modules, so the fingerprint's canonicalisation maps the product's package and
+  distribution spellings onto the recorded ones, as it already mapped the plugin's. The mapped spellings are
+  `rcp_ndcg`, `rcp-ndcg` and the `rcp_ndcg_` prefix for a sibling package. The product rename therefore moves no
+  recorded key. The GPU ledger's fingerprint column is the recorded evidence again, and the four goldens that it
+  had regenerated are restored to their recorded values. `rcp-fp/4` stays.
 
 ### Fixed
 
@@ -406,6 +458,14 @@ incompatibly, independently of the package version. All four distributions carry
   is refused (the parse version is part of the family), and the refusal offered `--force`, which supersedes the
   stored answers and asks the judge for every window again. When the parse version is the only difference, the
   hint now says to re-read the answers into a new store with `rcp-ndcg judge reparse` and resume there.
+- **A judgement store keeps the schema tag that it was created with**: `claim()` writes `identity.json` back under
+  the tag that the file carries. A pass that resumes into a store written before the rename therefore keeps
+  `rcp-ndcg.judgement-store.v1`, and the pre-rename code still opens it. A new store writes
+  `rcp.judgement-store.v1`. The judgement records that a resume appends do carry the new tag, so finish an old
+  store with a new install, or start a new store.
+- **A metric named twice is one metric**: `evaluate(metrics=["qrel_ndcg", "qrel_ndcg"])` scored the query twice,
+  so `num_queries` doubled and the bootstrap interval resampled it twice. The requested metrics are now
+  de-duplicated in order, the same way that the command line's `--metric` joins `--metrics`.
 
 ### Changed
 
