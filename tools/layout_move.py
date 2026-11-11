@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """The layout move as a re-runnable transform (drafts/layout-move.md item 1).
 
-Moves this repository to the four-distribution tree:
+Moves this repository from the four distributions flat at the root to the four-distribution tree under
+``packages/``:
 
-    rcp-core/   (was packages/rcp-ndcg-core)
-    rcp/             (was the root package: pyproject.toml, MANIFEST.in, README.md, src/)
-    rcp-vllm/        (was packages/rcp-ndcg-vllm)
-    rcp-test/        (was packages/rcp-ndcg-test, when that exists on the tip)
-    pyproject.toml   the uv workspace only (members, tooling config)
+    packages/rcp-core/   (was ``rcp-core/`` at the root, ``packages/rcp-ndcg-core`` before the rename)
+    packages/rcp/        (was the root package: pyproject.toml, MANIFEST.in, README.md, src/)
+    packages/rcp-vllm/   (was ``rcp-vllm/`` at the root, ``packages/rcp-ndcg-vllm`` before the rename)
+    packages/rcp-test/   (was ``rcp-test/`` at the root, ``packages/rcp-ndcg-test`` before the rename)
+    pyproject.toml       the uv workspace only (members, tooling config)
 
 Everything is rule-based -- a declared table of moves, of old-path -> new-path rewrites and of the
 pyproject section split -- never a recorded patch, so the same script replays on a later tip in
@@ -298,7 +299,7 @@ REWRITES: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     ("helpers-runs", r"tests\.runs\.conftest\b", "tests._helpers.runs", None),
     ("helpers-retrieval", r"tests\.retrieval\.conftest\b", "tests._helpers.retrieval", None),
     # A bare `pyproject.toml` in a script or workflow is executable path syntax: the one root-level
-    # manifest is now rcp/pyproject.toml. (`x/pyproject.toml` is a package's own manifest.)
+    # manifest is now packages/rcp/pyproject.toml. (`x/pyproject.toml` is a package's own manifest.)
     ("bare-pyproject", r"(?<![\w./-])pyproject\.toml\b", "packages/rcp/pyproject.toml", (".github/**", "**/*.sh")),
     # The root-file helpers in the tests point at the moved distribution files (the long README and
     # the package manifest are PyPI's now).
@@ -522,7 +523,7 @@ def run(root: Path, *, check: bool = False) -> int:
         done_work = True
         moved.append(f"{source} -> {destination}")
         if source.startswith("packages/"):
-            # The `packages/` level empties; `rcp-core/src` is the target layout's own directory.
+            # The `packages/` level empties; `packages/rcp-core/src` is the target layout's own directory.
             _drop_empty_parents(root, source)
 
     # 2. The rewrite sweep over every tracked text file outside EXEMPT (before the split, so the
