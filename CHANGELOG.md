@@ -189,7 +189,7 @@ every reader still accepts it. All four distributions carry the tag version; `rc
   step's recorded digest.
 - **Observation tooling**: `GENERATOR_VERSION` 3, `CORPUS_PLAN_VERSION` 5 and `MEDIA_SET_VERSION` 4 (the
   over-length ladder is one token over, the several-images row honours `max_images`, and the query-side empty
-  rule is document-only); the committed `rcp-ndcg-test/pairs/` corpus was regenerated.
+  rule is document-only); the committed `rcp-test/pairs/` corpus was regenerated.
 - **A fake judge refuses a custom prompt it cannot place** (a typed `ConfigError`) instead of guessing a shape
   from the query.
 - **Docs**: the duplicate `docs/api/` pages are retired and their narrative moved into
@@ -217,7 +217,7 @@ every reader still accepts it. All four distributions carry the tag version; `rc
   writer): it excluded any file *named* `manifest.json`, which dropped `pairs/manifest.json` - a staged file the
   node installs and must be able to verify. Only the manifest at the stage root is excluded now, so the record
   and the tree agree.
-- **`rcp-ndcg-vllm` declares the licences its wheel actually carries** (release-3, owner decision 2): the
+- **`rcp-vllm` declares the licences its wheel actually carries** (release-3, owner decision 2): the
   manifest said `Apache-2.0` while the wheel bundles ContextualAI's `ctxl-rerank-v2-instruct-multilingual`
   reference and template (CC-BY-NC-SA-4.0), Jina AI's `jina-reranker-v3` reference (CC-BY-NC-4.0) and
   Perplexity AI's `pplx-embed-v2-context-9b-preview` chunk rule (MIT) — every one of them named in `NOTICE`.
@@ -235,9 +235,9 @@ every reader still accepts it. All four distributions carry the tag version; `rc
   `recipe 'octen-embedding-0.6b' is a embed recipe, not a judge recipe`; the message is now "is a recipe of
   role 'embed'", which reads for every role. `recipe_role`'s docstring also names the `judge` role it
   returns (pipeline-ds41 D4).
-- **Importing `rcp_ndcg.cli.__main__` no longer runs the CLI** (pipeline-glm53 O1): the module called
+- **Importing `rcp.cli.__main__` no longer runs the CLI** (pipeline-glm53 O1): the module called
   `main()` unguarded, so any import executed click and printed the command help (exit 2). The call is
-  behind `if __name__ == "__main__":`; `python -m rcp_ndcg.cli` and the console script are unchanged.
+  behind `if __name__ == "__main__":`; `python -m rcp.cli` and the console script are unchanged.
 - **The release record's prose is current** (core-glm53 note 1, vllm-ds41 nit, docsrel-glm53 minor (b),
   recipes-ds41 D6, recipes-ds41 D4/recipes-glm53 4): the base estimator docstring names the
   `RaschEstimator` raw-`theta` override it documents, the dead `_VERSION_RE` constant is gone, every
@@ -259,7 +259,7 @@ every reader still accepts it. All four distributions carry the tag version; `rc
 - **The behaviour fingerprint resolves plugin modules without importing package `__init__` files** (B2):
   `importlib.util.find_spec` imported every parent package, and the embeddinggemma-2 fold's `__init__`
   installs the folded transformers modules at import time -- which needs transformers' gemma4 modules and
-  torchvision. In the documented `gated` install (`rcp-ndcg[mteb]` plus `rcp-ndcg-test`, no torchvision)
+  torchvision. In the documented `gated` install (`rcp[mteb]` plus `rcp-test`, no torchvision)
   the embeddinggemma-2 golden failed with `ModuleNotFoundError: No module named 'torchvision'`, and where
   torchvision was present the hash computation mutated the process. The module's source is now resolved by
   walking the top-level package's search location; the hashes are unchanged.
@@ -360,7 +360,7 @@ every reader still accepts it. All four distributions carry the tag version; `rc
   the checkpoint-generation-defaults sampling decision, the Qwen3.6 Hub-head revision pin and the SGLang
   to vLLM move, instead of narrowing the ledger's "every cause" claim (owner decision 14(ii)).
 
-- **`rcp-ndcg-vllm serve` declares a chunk that cannot hang an at-budget pooling prompt** (vllm-1,
+- **`rcp-vllm serve` declares a chunk that cannot hang an at-budget pooling prompt** (vllm-1,
   owner decision 6(b)): a pooling recipe whose client's largest token budget reaches
   `serve.max_model_len` now renders `--max-num-batched-tokens` at `serve.max_model_len` when nothing sets
   one, so the engine's own GPU-dependent default (2048 on A100 and GPUs under 70 GiB) can never chunk an
@@ -391,7 +391,7 @@ every reader still accepts it. All four distributions carry the tag version; `rc
   nightly digest remains the fold's source provenance only). The engine-image correction moves the
   recipe's behaviour fingerprint, so the GPU ledger row names the current key and the release's
   re-recording waves re-run it before the tag.
-- **`rcp-ndcg-vllm serve --dry-run` prints the engine environment's patch opt-in** (vllm-2): the printed argv
+- **`rcp-vllm serve --dry-run` prints the engine environment's patch opt-in** (vllm-2): the printed argv
   alone starts an engine without the recipe's declared patches (`RCP_NDCG_VLLM_PATCHES` is set only by the
   console), so the dry run now prints the variable beside the identity and the overrides; the how-to says so.
 - **The `serve.plugin` presence check runs in the engine's interpreter** (vllm-3): the console now resolves
@@ -453,7 +453,7 @@ every reader still accepts it. All four distributions carry the tag version; `rc
   text after it is never rewritten. An object that opens inside a `<think>` that never closes is a draft too (the
   judge was cut at the token limit while thinking): it stays refused, `truncated` at the token limit. Both stages
   share the decoder, so the rubric reads its answers the same way. The shipped serve commands split the reasoning
-  with `--reasoning-parser` and are not affected; `rcp-ndcg judge reparse` of answers stored with inline
+  with `--reasoning-parser` and are not affected; `rcp judge reparse` of answers stored with inline
   reasoning, such as the paper's, is. For Stage A it now reads exactly the paper's v2 rule (the text after the
   last `</think>`, decoded by this decoder). For Stage B the decoder reads the same object as that rule, but the
   paper's rubric prompt also asked a sixth criterion (C6) that the paper never fitted: arXiv v2 dropped C6 and then
@@ -489,7 +489,7 @@ every reader still accepts it. All four distributions carry the tag version; `rc
 - **A judgement store read by an older parser points at `judge reparse`**: resuming a pass after a parser upgrade
   is refused (the parse version is part of the family), and the refusal offered `--force`, which supersedes the
   stored answers and asks the judge for every window again. When the parse version is the only difference, the
-  hint now says to re-read the answers into a new store with `rcp-ndcg judge reparse` and resume there.
+  hint now says to re-read the answers into a new store with `rcp judge reparse` and resume there.
 - **A judgement store keeps the schema tag that it was created with**: `claim()` writes `identity.json` back under
   the tag that the file carries. A pass that resumes into a store written before the rename therefore keeps
   `rcp-ndcg.judgement-store.v1`, and the pre-rename code still opens it. A new store writes
@@ -524,9 +524,9 @@ every reader still accepts it. All four distributions carry the tag version; `rc
   labelled `v0.33.0` in `zerank` — the other two families cite it as the checkout it is). The engine image is part of the
   behaviour fingerprint, so every recipe's key moved: the pin sets every variant to `status: unverified`, a
   recipe returns to `verified` only from a wave that re-recorded its corpus on the 0.33 image, and the 44 recipe goldens (and their redactions file)
-  were regenerated with no client budget, template or role changed. The waves have since verified 33 of the 44
+  were regenerated with no client budget, template or role changed. The waves have since verified 42 of the 44
   variants on their own 0.33 runs, the two `topk-embed-v1` variants are `failed` under the owner's disposition,
-  and 9 read `unverified` with no wave yet — the ledger and every `status` block are generated from the waves'
+  and no variant reads `unverified` — the ledger and every `status` block are generated from the waves'
   evidence by `python -m rcp_ndcg_test.jobs.ledger --evidence <mirror> [--write]`, never by hand, and a row whose
   key does not match the tree is refused by name. The `pooling-full-context` patch is
   deleted with its opt-ins, because the engine's own scheduler keeps the whole context of a pooling prefill
@@ -535,7 +535,7 @@ every reader still accepts it. All four distributions carry the tag version; `rc
   engine version is refused by name, never replayed, and the public `fake://` engine host moves to
   `fake://vllm-0.33.0/<recipe>` (the committed corpora are re-recorded and renamed with the waves; until
   then a 0.31 corpus under the 0.33 host is the refusal). The two `topk-embed-v1` variants are the only
-  `failed` recipes, and the owner's explicit disposition for 0.0.1 names exactly those two: their end-to-end
+  `failed` recipes, and the owner's explicit disposition for 0.1.0 names exactly those two: their end-to-end
   validation does not meet the stage-2 per-token cosine floor on the available engine configurations (bf16 and
   fp16 both fail, and fp32 cannot be served because the engine's GatedDeltaNet kernels refuse it), the gate
   failure is recorded in the ledger, their state returns to `failed` only from a wave that re-runs that gate,
@@ -612,11 +612,22 @@ every reader still accepts it. All four distributions carry the tag version; `rc
   cutoff took credit the system did not earn. All presets now use `group_mean` (each tied document is credited
   its tie group's mean gain: the expected nDCG over the orders of the tie), mteb's `ndcg_float_at_k` rule and the
   paper's from arXiv v2 on. RCP-, qrel- and Count-nDCG move only for queries whose scores tie across the cutoff;
-  untied scores are unchanged. `rcp-ndcg eval score --suite ...` and `evaluate` follow the presets, and
+  untied scores are unchanged. `rcp eval score --suite ...` and `evaluate` follow the presets, and
   `ndcg`'s default was already `group_mean`. To score as arXiv v1 did, copy a preset with its old rule
   (`PROTOCOLS["nanobeir"].model_copy(update={"ties": "doc_id_desc"})`; `"input_order"` with the pool for TREC-DL).
   mteb's integer `ndcg_at_k` (pytrec_eval) keeps breaking ties by document id, so it equals `evaluate`'s
   qrel-nDCG under that copy, not under the preset.
+
+### Docs
+
+- **The documentation is rewritten in Simplified Technical English, and a gate keeps it so**: every hand-written
+  page under `docs/` now follows ASD-STE100 -- 20 words per sentence at most, the active voice, one idea per
+  sentence, and a technical term defined where it first appears. The rule and its exceptions are the new
+  [writing style](docs/reference/writing-style.md) page, and `tests/docs/test_style.py` checks every page
+  against them. The check counts an inline code span as one word, skips the code blocks, the tables, the
+  headings and the generated API pages, and records a pinned sentence in an allowlist with its reason, so an
+  exception is the record and never a silent filter. A page that goes over the limit fails `pytest tests/docs`
+  naming the sentence.
 
 ## 0.0.1 — 2026-10-14
 
