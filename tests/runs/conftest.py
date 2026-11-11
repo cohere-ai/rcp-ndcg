@@ -1,29 +1,21 @@
-"""A tiny dataset and one finished offline run, shared by the run tests."""
+"""The run tests' helpers: the step list and the config a tiny offline run builds from.
+
+The two fixtures the run tests request by name (``data``, the tiny rankings file, and ``finished``, one
+completed run) live in ``tests/conftest.py``: pytest binds a conftest's fixtures to the directory collector
+object it first saw, and a file argument makes pytest collect that directory's parent package again, which
+leaves a subdirectory's own fixtures invisible to the files under the new collector. The root collector is
+never re-created, so the fixtures there reach every run test whatever the argument set. The helpers below
+are plain functions, imported by name, so their home is this file.
+"""
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
-import pytest
-
-from rcp.runs import Pipeline, RunConfig
-from rcp.testing import TINY_RUBRIC, TINY_TOURNAMENT, tiny_rows
+from rcp.runs import RunConfig
+from rcp.testing import TINY_RUBRIC, TINY_TOURNAMENT
 
 STEPS = ["tournament", "rubric", "calibrate", "evaluate"]
-
-
-@pytest.fixture(scope="session")
-def data(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Two queries with their pools, bodies and labels, as a rankings file."""
-    path = tmp_path_factory.mktemp("data") / "rows.jsonl"
-    rows, _ = tiny_rows()
-    lines = [
-        json.dumps({"query_id": r.id, "query": r.text, "doc_ids": r.doc_ids, "docs": r.docs, "qrels": r.qrels})
-        for r in rows
-    ]
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return path
 
 
 def tiny_config(data: Path, **fields) -> RunConfig:
@@ -38,11 +30,3 @@ def tiny_config(data: Path, **fields) -> RunConfig:
             **fields,
         }
     )
-
-
-@pytest.fixture(scope="session")
-def finished(data: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """One completed run; tests copy it before changing anything."""
-    pipeline = Pipeline(tiny_config(data), runs_dir=str(tmp_path_factory.mktemp("runs")))
-    pipeline.run()
-    return Path(pipeline.layout.root)

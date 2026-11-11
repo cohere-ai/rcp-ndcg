@@ -299,6 +299,46 @@ def sample_qrels() -> dict[ID, int]:
 
 
 # ---------------------------------------------------------------------------
+# The tiny offline run
+#
+# These two fixtures live at the suite root, not in ``tests/runs/conftest.py`` with the rest of the run
+# helpers: pytest binds a conftest's fixtures to the directory collector object it saw first, and a file
+# argument makes pytest collect that directory's PARENT package again -- which yields a second, distinct
+# collector for the subdirectory and leaves its fixtures invisible to the files under the new one. The
+# root's ``tests`` collector is never re-created, so a fixture here is visible to every run test whatever
+# the argument set. ``tests/runs/conftest.py`` keeps the helpers those tests import by name.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def data(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Two queries with their pools, bodies and labels, as a rankings file."""
+    import json
+
+    from rcp.testing import tiny_rows
+
+    path = tmp_path_factory.mktemp("data") / "rows.jsonl"
+    rows, _ = tiny_rows()
+    lines = [
+        json.dumps({"query_id": r.id, "query": r.text, "doc_ids": r.doc_ids, "docs": r.docs, "qrels": r.qrels})
+        for r in rows
+    ]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+@pytest.fixture(scope="session")
+def finished(data: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """One completed run; tests copy it before changing anything."""
+    from rcp.runs import Pipeline
+    from tests.runs.conftest import tiny_config
+
+    pipeline = Pipeline(tiny_config(data), runs_dir=str(tmp_path_factory.mktemp("runs")))
+    pipeline.run()
+    return Path(pipeline.layout.root)
+
+
+# ---------------------------------------------------------------------------
 # Composite fixtures
 # ---------------------------------------------------------------------------
 
