@@ -81,7 +81,7 @@
         },
         "internal": {
           "default": false,
-          "description": "Whether the source is internal to the producer (not for publication). The default is ``False`` and it is a statement, not a guess: a manifest written before this field existed describes a run the product made, and the product never reads an internal source.",
+          "description": "Whether the source is internal to the producer (not for publication). The default is ``False`` and it is a statement by the producer, never an inference: the product reads the field, it does not decide it, and a source the producer did not mark is not internal.",
           "title": "Internal",
           "type": "boolean"
         },
@@ -837,7 +837,8 @@
       "type": "object"
     },
     "Usage": {
-      "description": "Requests and tokens accumulated by a transport or a role client; merge instances with\nmerged_with.\n\nOne type for every role: a role client's ``usage`` property is this shape, the run manifest serialises it\nper step and per run, and the transport accumulates it. Tokens and requests only -- the wire reports\nnothing else (an endpoint's cached-input detail is not tracked and stays 0).",
+      "additionalProperties": false,
+      "description": "Requests and tokens accumulated by a transport or a role client; merge instances with\nmerged_with.\n\nOne type for every role: a role client's ``usage`` property is this shape, the run manifest serialises it\nper step and per run, and the transport accumulates it. Tokens and requests only -- the wire reports\nnothing else (an endpoint's cached-input detail is not tracked and stays 0).\n\nA closed record (``extra=\"forbid\"``), like every record the run manifest carries: the shipped reader\nrefuses a field it does not know wherever the field sits, so a manifest needs a reader at least as new as\nits writer.",
       "properties": {
         "cached_input_tokens": {
           "default": 0,

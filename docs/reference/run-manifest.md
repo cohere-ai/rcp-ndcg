@@ -20,7 +20,8 @@ bumped only when the record changes incompatibly. Within `v1`:
 * an old `v1` manifest still validates, with the added fields taking their defaults;
 * a reader that ignores the fields it does not know reads a later `v1` record. The additions are optional, so
   it does not need them;
-* the shipped reader is a closed record. It refuses a field it does not know, and it names that field. Read a
+* the shipped reader is a closed record, and every record inside it is closed too. It refuses a field it does
+  not know wherever the field sits, and it names that field. Read a
   run directory with a reader at least as new as the writer.
 
 The rule is the repository's artifact rule. [The results record](results-record.md) spells it out for the

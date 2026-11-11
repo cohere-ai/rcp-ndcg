@@ -109,8 +109,8 @@ class DatasetEntry(DatasetRef):
 
     Attributes:
         internal: Whether the source is internal to the producer (not for publication). The default is
-            ``False`` and it is a statement, not a guess: a manifest written before this field existed
-            describes a run the product made, and the product never reads an internal source.
+            ``False`` and it is a statement by the producer, never an inference: the product reads the field,
+            it does not decide it, and a source the producer did not mark is not internal.
         args: The reader arguments that selected the slice (the options passed to
             :func:`~rcp.data.load_dataset`); ``{}`` when none were recorded.
     """

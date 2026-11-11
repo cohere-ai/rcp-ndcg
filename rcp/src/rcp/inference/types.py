@@ -90,6 +90,10 @@ class Usage(BaseModel):
     per step and per run, and the transport accumulates it. Tokens and requests only -- the wire reports
     nothing else (an endpoint's cached-input detail is not tracked and stays 0).
 
+    A closed record (``extra="forbid"``), like every record the run manifest carries: the shipped reader
+    refuses a field it does not know wherever the field sits, so a manifest needs a reader at least as new as
+    its writer.
+
     Attributes:
         requests: Requests sent, as the transport counts them: one logical request however many retries it
             took; a reply the status map returns (even one the adapter refuses) counts as one.
@@ -102,7 +106,7 @@ class Usage(BaseModel):
             accounting does not track it and it stays 0.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     requests: int = 0
     failed_requests: int = 0

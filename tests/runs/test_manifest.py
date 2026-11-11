@@ -298,6 +298,16 @@ class TestTheV1Additions:
         assert "added_later" in caught.value.message
         assert _FirstV1Reader.model_validate(later).run_id == manifest.run_id
 
+        # Closed wherever the field sits, not only at the top: a step's `usage` is the one nested record a
+        # producer could extend, and it refuses an unknown field like the manifest does.
+        nested = json.loads(Path(layout.manifest).read_text(encoding="utf-8"))
+        nested.pop("added_later")
+        nested["usage"] = {"requests": 1, "added_later": 1}
+        Path(layout.manifest).write_text(json.dumps(nested), encoding="utf-8")
+        with pytest.raises(DataError) as nested_caught:
+            RunManifest.load(layout)
+        assert "added_later" in nested_caught.value.message
+
     def test_the_added_fields_are_optional_and_the_manifest_stays_closed(self) -> None:
         schema = RunManifest.model_json_schema(mode="serialization")
 
