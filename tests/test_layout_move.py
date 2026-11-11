@@ -218,6 +218,20 @@ def run_layout(worktree: Path, *args: str) -> str:
     return proc.stdout
 
 
+def test_the_split_keeps_a_workspace_key_it_does_not_regenerate() -> None:
+    """``members`` is derived from the move table; every other ``[tool.uv.workspace]`` key is the tip's own.
+
+    A transform that dropped one would lose a contributor's policy silently (the fixture carries
+    ``exclude``), so the split carries the keys it does not regenerate into the workspace manifest it
+    writes, and drops only the ``members`` row it replaces.
+    """
+    package, workspace = tool()._split_pyproject(PYPROJECT, members=["rcp", "rcp-core"])
+    assert 'members = ["packages/*"]' in workspace
+    assert 'exclude = ["packages/rcp-ndcg-vllm"]' in workspace
+    assert workspace.count("members = ") == 1  # the table's own row is replaced, never kept beside it
+    assert "exclude" not in package  # a workspace key never travels into the package manifest
+
+
 def test_the_move_performs_every_move_and_rewrite(tmp_path: Path) -> None:
     worktree = make_fixture(tmp_path)
     run_layout(worktree)
@@ -240,6 +254,8 @@ def test_the_move_performs_every_move_and_rewrite(tmp_path: Path) -> None:
     assert "[tool.uv.workspace]" not in package and "[tool.ruff]" not in package
     assert "[project]" not in workspace
     assert 'members = ["packages/*"]' in workspace
+    # The workspace key the split does not derive (`exclude`) survives it, rewritten like any other path.
+    assert 'exclude = ["packages/rcp-vllm"]' in workspace
     assert "[tool.uv.sources]" in workspace and "rcp-core = { workspace = true }" in workspace
     assert 'include = ["packages/rcp/src", "packages/rcp-core/src", "packages/rcp-vllm/src"]' in workspace
     assert 'extend-exclude = ["packages/rcp-vllm/recipes/*/qwen3_vl_embedding.py"]' in workspace

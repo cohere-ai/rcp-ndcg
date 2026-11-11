@@ -31,9 +31,11 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import json
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 __all__ = ["MOVES", "REWRITES", "STALE", "main", "run"]
@@ -650,16 +652,21 @@ def _split_pyproject(text: str, *, members: list[str]) -> tuple[str, str]:
     Top-level tables are assigned by name: ``build-system``, ``project*`` and ``tool.setuptools*``
     build the distribution; ``tool.uv*``, ``tool.pytest*``, ``tool.ruff*`` and ``tool.basedpyright*``
     are the workspace's tooling config. The ``tool.uv.workspace`` / ``tool.uv.sources`` tables are
-    regenerated from the members (every destination of the move table this tree carries). A table
-    neither side claims is refused, never dropped.
+    regenerated from the members (every destination of the move table this tree carries), keeping the
+    ``tool.uv.workspace`` keys the move does not derive (``exclude``). A table neither side claims is
+    refused, never dropped.
     """
     header, tables, order = _sections(text)
     package_parts: list[str] = []
     workspace_parts: list[str] = []
+    kept_workspace_keys: list[str] = []
     for name in order:
         body = tables[name]
         if any(name.startswith(prefix) for prefix in _WORKSPACE_TABLES):
-            if name in ("tool.uv.workspace", "tool.uv.sources", "tool.ruff.lint.isort"):
+            if name == "tool.uv.workspace":
+                kept_workspace_keys.extend(_kept_workspace_keys(body))
+                continue  # `members` is regenerated; the tip's other keys travel with it
+            if name in ("tool.uv.sources", "tool.ruff.lint.isort"):
                 continue  # regenerated below
             workspace_parts.append(body)
         elif any(name.startswith(prefix) for prefix in _PACKAGE_TABLES):
@@ -667,10 +674,32 @@ def _split_pyproject(text: str, *, members: list[str]) -> tuple[str, str]:
         else:
             raise SystemExit(f"layout_move: pyproject table [{name}] is claimed by neither side; extend the split")
     package = header + "\n\n".join(part.strip("\n") for part in package_parts) + "\n"
-    pieces = [_WORKSPACE_HEADER.strip("\n"), _workspace_tables(members).strip("\n")]
+    pieces = [
+        _WORKSPACE_HEADER.strip("\n"),
+        _workspace_tables(members, kept=kept_workspace_keys).strip("\n"),
+    ]
     pieces += [part.strip("\n") for part in workspace_parts]
     workspace = "\n\n".join(pieces) + "\n"
     return package, workspace
+
+
+def _kept_workspace_keys(body: str) -> list[str]:
+    """The ``[tool.uv.workspace]`` rows the split keeps, as ``key = [values]`` text: every key but the
+    regenerated ``members``.
+
+    ``members`` is derived from the move table; a key the move does not derive (``exclude``) is the
+    tip's own policy and travels into the workspace manifest instead of being dropped with the table it
+    came from. A key that is not a list of strings is refused, never guessed at.
+    """
+    workspace = tomllib.loads(body).get("tool", {}).get("uv", {}).get("workspace", {})
+    rows: list[str] = []
+    for key, value in workspace.items():
+        if key == "members":
+            continue
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            raise SystemExit(f"layout_move: [tool.uv.workspace] {key} is not a list of paths; extend the split")
+        rows.append(f"{key} = [{', '.join(json.dumps(item) for item in value)}]")
+    return rows
 
 
 def _sections(text: str) -> tuple[str, dict[str, str], list[str]]:
@@ -703,16 +732,18 @@ def _sections(text: str) -> tuple[str, dict[str, str], list[str]]:
     return "".join(header_lines), tables, order
 
 
-def _workspace_tables(members: list[str]) -> str:
+def _workspace_tables(members: list[str], *, kept: list[str]) -> str:
     """The ``tool.uv.workspace`` / ``tool.uv.sources`` / ``tool.ruff.lint.isort`` tables: the members
-    (a glob over ``packages/``, and the package name of a member directory is its directory name) and
+    (a glob over ``packages/``, and the package name of a member directory is its directory name), the
+    workspace rows the move does not derive (``kept``: the tip's own ``exclude``, never dropped) and
     the imports classification the move forces (``src/rcp`` was first-party in the old src layout by
     ruff's inference; the sibling tops never were -- the pin keeps every import block byte-for-byte)."""
     sources = "\n".join(f"{member} = {{ workspace = true }}" for member in members)
+    workspace_rows = "\n".join(['members = ["packages/*"]', *kept])
     return f"""\
 [tool.uv.workspace]
 # One member per distribution: the directory name is the distribution name.
-members = ["packages/*"]
+{workspace_rows}
 
 [tool.uv.sources]
 # An inter-member requirement resolves to the checkout, never to an index.
