@@ -1,10 +1,13 @@
 # RCP-nDCG
 
-RCP-nDCG is nDCG with calibrated relevance gains from an LLM judge. The judge orders each query's candidate pool in
-a listwise tournament and answers five binary rubric criteria for every document. A two-parameter item-response
-model then puts the tournament scores of all queries on one scale, and the gain of a document is its
-discrimination-weighted probability of passing the criteria. The method and its validation are in the paper,
-[Rubric-Calibrated Preferences: Cross-Query Calibration of LLM Judgments via Item Response Theory](https://arxiv.org/abs/2609.35739).
+RCP-nDCG is nDCG (normalized discounted cumulative gain) with calibrated relevance gains from a large language
+model (LLM) judge. The judge orders the candidate pool of each query in a listwise tournament. Listwise means that
+the judge compares all documents of the pool as one list. The judge also answers five binary rubric criteria
+(yes/no quality checks) for each document. A two-parameter item-response model (2PL) then places the tournament
+scores of all queries on one scale. The gain of a document is its discrimination-weighted probability of passing
+the criteria. The paper,
+[Rubric-Calibrated Preferences: Cross-Query Calibration of LLM Judgments via Item Response Theory](https://arxiv.org/abs/2609.35739),
+gives the method and its validation.
 
 Start with the [quickstart](quickstart.md).
 
@@ -18,8 +21,8 @@ Start with the [quickstart](quickstart.md).
 - [The calibration](concepts/calibration.md): the 2PL model, its fit, its two modes and its artifacts.
 - [Primitives](concepts/primitives.md): re-annotation, insertion into a tournament, and several judges.
 - [Preprocessing and chunking](concepts/preprocessing.md): what the judge reads, and the record of every cut.
-- [Text budgets for served roles](concepts/text-budgets.md): what an embedder, pooler or reranker reads: the
-  template anchors, the budget and the fit, and every recorded cut.
+- [Text budgets for served roles](concepts/text-budgets.md): what an embedder, a pooler or a reranker reads. It
+  covers the template anchors, the budget, the fit and every recorded cut.
 - [The inference layer](concepts/inference.md): one transport for every role -- wire adapters, role clients,
   routing, retries and credentials.
 - [Retrieval and reranking](concepts/retrieval.md): the candidate pools, the retriever kinds, and the index and
@@ -48,8 +51,8 @@ Start with the [quickstart](quickstart.md).
 - [Recipes and serving models](reference/recipes.md): the catalog of the 44 recipes (24 families) and the
   `rcp-vllm` surface.
 - [The results record](reference/results-record.md): the versioned evaluation record and its sink contract.
-- [Compatibility and versioning](reference/versioning.md): what is public, the `0.0.x` rules, the recipe
-  `schema_version`, the behaviour fingerprint and the artifact tags.
+- [Compatibility and versioning](reference/versioning.md): what is public, the `0.0.x` rules and the recipe
+  `schema_version`. It also covers the behaviour fingerprint and the artifact tags.
 - [The `rcp-test` package](reference/rcp-test.md): reference cases, conformance and the GPU job
   tooling for contributors.
 - [`rcp_core`: metric, gains and protocols](reference/api/rcp_core.md).

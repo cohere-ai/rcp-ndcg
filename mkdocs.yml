@@ -56,6 +56,7 @@ nav:
       - "The run manifest": reference/run-manifest.md
       - "Extension points: the plugin seams": reference/extension-points.md
       - "The public surface, frozen": reference/public-surface.md
+      - "Writing style": reference/writing-style.md
       - "API reference (generated)":
           - "rcp_core": reference/api/rcp_core.md
           - "rcp_core.gain": reference/api/rcp_core.gain.md
