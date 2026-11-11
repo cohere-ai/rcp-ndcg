@@ -23193,6 +23193,144 @@
       }
     }
   },
+  "rcp.support.events": {
+    "all": {
+      "EVENTS_GROUP": {
+        "kind": "constant",
+        "type": "str",
+        "value": "rcp.events"
+      },
+      "Emitter": {
+        "bases": [],
+        "defined_in": "rcp.support.events",
+        "init": [
+          {
+            "annotation": "Sequence[Subscriber]",
+            "default": [],
+            "kind": "positional_or_keyword",
+            "name": "subscribers"
+          },
+          {
+            "returns": "None"
+          }
+        ],
+        "kind": "class",
+        "members": {
+          "emit": {
+            "kind": "method",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "self"
+              },
+              {
+                "annotation": "RunEvent",
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "event"
+              },
+              {
+                "returns": "None"
+              }
+            ]
+          },
+          "installed": {
+            "kind": "classmethod",
+            "signature": [
+              {
+                "annotation": null,
+                "default": "<required>",
+                "kind": "positional_or_keyword",
+                "name": "cls"
+              },
+              {
+                "returns": "Emitter"
+              }
+            ]
+          },
+          "subscribers": "property"
+        }
+      },
+      "PHASES": {
+        "kind": "constant",
+        "type": "tuple",
+        "value": [
+          "step_started",
+          "step_finished",
+          "step_failed",
+          "usage"
+        ]
+      },
+      "RunEvent": {
+        "bases": [
+          "pydantic.main.BaseModel"
+        ],
+        "defined_in": "rcp.support.events",
+        "extra": "forbid",
+        "fields": {
+          "at": {
+            "alias": null,
+            "default": "<factory _now>",
+            "frozen": false,
+            "required": false,
+            "type": "datetime.datetime"
+          },
+          "detail": {
+            "alias": null,
+            "default": "<factory dict>",
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, Any]"
+          },
+          "phase": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "Literal['step_started', 'step_finished', 'step_failed', 'usage']"
+          },
+          "run_id": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "step": {
+            "alias": null,
+            "default": "<required>",
+            "frozen": false,
+            "required": true,
+            "type": "str"
+          },
+          "usage": {
+            "alias": null,
+            "default": null,
+            "frozen": false,
+            "required": false,
+            "type": "dict[str, int] | None"
+          }
+        },
+        "frozen": true,
+        "kind": "pydantic_model"
+      },
+      "RunPhase": {
+        "kind": "literal_alias",
+        "values": [
+          "step_started",
+          "step_finished",
+          "step_failed",
+          "usage"
+        ]
+      },
+      "Subscriber": {
+        "kind": "type_alias",
+        "type": "collections.abc.Callable[['RunEvent'], None]"
+      }
+    }
+  },
   "rcp.testing": {
     "all": {
       "DEFAULT_DIFFICULTIES": {

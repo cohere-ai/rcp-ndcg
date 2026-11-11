@@ -57,6 +57,7 @@ PUBLIC_MODULES: tuple[str, ...] = (
     "rcp.retrieval",
     "rcp.runners",
     "rcp.runs",
+    "rcp.support.events",
     "rcp.testing",
     "rcp_vllm.recipe",
 )
