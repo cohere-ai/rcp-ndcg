@@ -1490,13 +1490,14 @@ class VllmEmulator:
             index for index in range(len(set_.prompts)) if set_.count(index, self.tokenizer) > self.facts.max_model_len
         ]
         if over:
+            # The over-length refusal as vLLM v0.33.0 words it: the committed corpora recorded this message
+            # verbatim (``.refs/vllm`` is a 0.31-era checkout, which words it another way).
             cap = self.facts.max_model_len
             return None, _error(
                 400,
-                f"This model's maximum context length is {cap} tokens. However, you requested 0 output "
-                f"tokens and your prompt contains at least {cap + 1} input tokens, for a total of at least "
-                f"{cap + 1} tokens. Please reduce the length of the input prompt or the number of requested "
-                f"output tokens. (parameter=input_tokens, value={cap + 1})",
+                f"This model's maximum context length is {cap} tokens. However, your prompt contains at "
+                f"least {cap + 1} input tokens, which exceeds this limit even without any output tokens. "
+                f"Please reduce the length of the input prompt. (parameter=input_tokens, value={cap + 1})",
                 param="input_tokens",
                 kind="BadRequestError",
             )
