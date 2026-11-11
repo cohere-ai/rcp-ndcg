@@ -69,6 +69,90 @@
       "title": "CodeVersion",
       "type": "object"
     },
+    "DatasetEntry": {
+      "additionalProperties": false,
+      "description": "One dataset a run read: the DatasetRef provenance plus the reader's slice and its visibility.",
+      "properties": {
+        "args": {
+          "additionalProperties": true,
+          "description": "The reader arguments that selected the slice (the options passed to load_dataset); ``{}`` when none were recorded.",
+          "title": "Args",
+          "type": "object"
+        },
+        "internal": {
+          "default": false,
+          "description": "Whether the source is internal to the producer (not for publication). The default is ``False`` and it is a statement, not a guess: a manifest written before this field existed describes a run the product made, and the product never reads an internal source.",
+          "title": "Internal",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "The dataset name.",
+          "title": "Name",
+          "type": "string"
+        },
+        "revisions": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "``{source URI: {\"repo\", \"commit\", \"verified\"}}`` of the Hub sources, or ``None``.",
+          "title": "Revisions"
+        },
+        "split": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The source split the labels were read at, or ``None``.",
+          "title": "Split"
+        },
+        "subset": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The source subset the data was read for (mteb's ``hf_subset``), or ``None``.",
+          "title": "Subset"
+        },
+        "task": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The mteb task the dataset realises, or ``None``.",
+          "title": "Task"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "DatasetEntry",
+      "type": "object"
+    },
     "DatasetRef": {
       "additionalProperties": false,
       "description": "What was evaluated: the dataset's name, provenance and the revision each source resolved to.",
@@ -435,6 +519,27 @@
       "title": "JudgementFamily",
       "type": "object"
     },
+    "Rows": {
+      "additionalProperties": false,
+      "description": "The downstream row schema a run's exported rows are written as.",
+      "properties": {
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The row schema's name, a free string the package never interprets, or ``None``.",
+          "title": "Schema"
+        }
+      },
+      "title": "Rows",
+      "type": "object"
+    },
     "RunManifest": {
       "additionalProperties": false,
       "description": "Everything known about one run.",
@@ -466,7 +571,7 @@
         "datasets": {
           "description": "The datasets the run read, with the reader arguments that selected each slice and whether the source is internal; empty when the producer recorded none. ``dataset`` remains the primary dataset.",
           "items": {
-            "$ref": "#/$defs/_DatasetEntry"
+            "$ref": "#/$defs/DatasetEntry"
           },
           "title": "Datasets",
           "type": "array"
@@ -507,7 +612,7 @@
         "rows": {
           "anyOf": [
             {
-              "$ref": "#/$defs/_Rows"
+              "$ref": "#/$defs/Rows"
             },
             {
               "type": "null"
@@ -543,7 +648,7 @@
         "suites": {
           "description": "The suites the run read and the entries of each it used; empty when none were recorded.",
           "items": {
-            "$ref": "#/$defs/_SuiteEntry"
+            "$ref": "#/$defs/SuiteEntry"
           },
           "title": "Suites",
           "type": "array"
@@ -707,6 +812,30 @@
       "title": "StepStatus",
       "type": "string"
     },
+    "SuiteEntry": {
+      "additionalProperties": false,
+      "description": "A suite a run read and the entries of it the run used.",
+      "properties": {
+        "entries": {
+          "description": "The suite entries the run evaluated; empty when the suite ran whole or the entries were not recorded.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Entries",
+          "type": "array"
+        },
+        "name": {
+          "description": "The suite's name (the ``suite:<name>`` it was loaded by, or the directory's name).",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "SuiteEntry",
+      "type": "object"
+    },
     "Usage": {
       "description": "Requests and tokens accumulated by a transport or a role client; merge instances with\nmerged_with.\n\nOne type for every role: a role client's ``usage`` property is this shape, the run manifest serialises it\nper step and per run, and the transport accumulates it. Tokens and requests only -- the wire reports\nnothing else (an endpoint's cached-input detail is not tracked and stays 0).",
       "properties": {
@@ -742,135 +871,6 @@
         }
       },
       "title": "Usage",
-      "type": "object"
-    },
-    "_DatasetEntry": {
-      "additionalProperties": false,
-      "description": "One dataset a run read: the DatasetRef provenance plus the reader's slice and its visibility.",
-      "properties": {
-        "args": {
-          "additionalProperties": true,
-          "description": "The reader arguments that selected the slice (the options passed to load_dataset); ``{}`` when none were recorded.",
-          "title": "Args",
-          "type": "object"
-        },
-        "internal": {
-          "default": false,
-          "description": "Whether the source is internal to the producer (not for publication), or ``False``.",
-          "title": "Internal",
-          "type": "boolean"
-        },
-        "name": {
-          "description": "The dataset name.",
-          "title": "Name",
-          "type": "string"
-        },
-        "revisions": {
-          "anyOf": [
-            {
-              "additionalProperties": {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "``{source URI: {\"repo\", \"commit\", \"verified\"}}`` of the Hub sources, or ``None``.",
-          "title": "Revisions"
-        },
-        "split": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The source split the labels were read at, or ``None``.",
-          "title": "Split"
-        },
-        "subset": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The source subset the data was read for (mteb's ``hf_subset``), or ``None``.",
-          "title": "Subset"
-        },
-        "task": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The mteb task the dataset realises, or ``None``.",
-          "title": "Task"
-        }
-      },
-      "required": [
-        "name"
-      ],
-      "title": "_DatasetEntry",
-      "type": "object"
-    },
-    "_Rows": {
-      "additionalProperties": false,
-      "description": "The downstream row schema a run's exported rows are written as.",
-      "properties": {
-        "schema": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "The row schema's name, a free string the package never interprets, or ``None``.",
-          "title": "Schema"
-        }
-      },
-      "title": "_Rows",
-      "type": "object"
-    },
-    "_SuiteEntry": {
-      "additionalProperties": false,
-      "description": "A suite a run read and the entries of it the run used.",
-      "properties": {
-        "entries": {
-          "description": "The suite entries the run evaluated; empty when the suite ran whole or the entries were not recorded.",
-          "items": {
-            "type": "string"
-          },
-          "title": "Entries",
-          "type": "array"
-        },
-        "name": {
-          "description": "The suite's name (the ``suite:<name>`` it was loaded by, or the directory's name).",
-          "title": "Name",
-          "type": "string"
-        }
-      },
-      "required": [
-        "name"
-      ],
-      "title": "_SuiteEntry",
       "type": "object"
     }
   },

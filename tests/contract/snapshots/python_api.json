@@ -22701,7 +22701,7 @@
             "default": "<factory list>",
             "frozen": false,
             "required": false,
-            "type": "list[rcp.runs.manifest._DatasetEntry]"
+            "type": "list[rcp.runs.manifest.DatasetEntry]"
           },
           "families": {
             "alias": null,
@@ -22736,7 +22736,7 @@
             "default": null,
             "frozen": false,
             "required": false,
-            "type": "rcp.runs.manifest._Rows | None"
+            "type": "rcp.runs.manifest.Rows | None"
           },
           "run_id": {
             "alias": null,
@@ -22771,7 +22771,7 @@
             "default": "<factory list>",
             "frozen": false,
             "required": false,
-            "type": "list[rcp.runs.manifest._SuiteEntry]"
+            "type": "list[rcp.runs.manifest.SuiteEntry]"
           },
           "updated_at": {
             "alias": null,
