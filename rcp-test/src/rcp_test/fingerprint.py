@@ -138,7 +138,7 @@ CLIENT_FIELDS: dict[str, str] = {
     "use_activation": "request",  # sent in the /rerank body
     "listwise": "request",  # one N-passage request instead of one request per pair
     "embed_dtype": "request",  # sent in the /pooling body
-    "embedding_types": "request",  # the vector the client asks for: int8, uint8 or binary changes what returns
+    "embedding_types": "post_processing",  # declared, never sent: the adapters send ["float"] and quantize client-side
     "image_processor": "request",  # the client resizes the media it sends
     "image_policy": "request",
     "video_policy": "request",

@@ -57,7 +57,9 @@ def _recorded(payload: dict[str, Any]) -> dict[str, Any]:
     """The manifest without what two runs of one config cannot share: ids, clocks, durations, and the hashes of
     the judgement store files, whose every record carries the wall clock it was written at. Every path, status,
     identity, usage and metric stays, so the comparison is of what the run recorded, not of when."""
-    volatile = ("run_id", "created_at", "updated_at")
+    # `path` is the run's own directory: two runs of one config in different roots cannot share it, and
+    # it is the only L4 addition that is about where the run lives rather than what it recorded.
+    volatile = ("run_id", "created_at", "updated_at", "path")
     stable = {key: value for key, value in payload.items() if key not in volatile}
     stable["steps"] = [
         {

@@ -1,6 +1,6 @@
 # The run manifest
 
-`rcp-ndcg.run-manifest.v1` is the record of one run: what it read, which steps ran, what each step wrote, what
+`rcp.run-manifest.v1` is the record of one run: what it read, which steps ran, what each step wrote, what
 the judge cost and which numbers came out. Every run directory has one `manifest.json`, updated atomically as
 each step finishes. A run is resumable exactly when every completed step's identity and inputs are unchanged;
 the [runs concept](../concepts/runs.md) describes the steps and the resume rule.
@@ -11,7 +11,7 @@ pinned by `tests/contract`.
 
 ## Versioning
 
-The tag in the record's `schema` field is `rcp-ndcg.run-manifest.v1`, independent of the package version and
+The tag in the record's `schema` field is `rcp.run-manifest.v1`, independent of the package version and
 bumped only when the record changes incompatibly. Within `v1`:
 
 * fields are only **added**, and an added field is optional or has a default;
@@ -29,7 +29,7 @@ a new tag (`rcp-ndcg.run-manifest.v2`), never a silent reinterpretation of `v1`.
 
 | Field | Type | Notes |
 |---|---|---|
-| `schema` | `"rcp-ndcg.run-manifest.v1"` | the artifact tag |
+| `schema` | `"rcp.run-manifest.v1"` | the artifact tag |
 | `layout` | `"rcp-ndcg.run-layout.v1"` | the on-disk run layout |
 | `run_id` | `str` | the run directory's name |
 | `created_at`, `updated_at` | `datetime` | timezone-aware; `updated_at` moves on every write |

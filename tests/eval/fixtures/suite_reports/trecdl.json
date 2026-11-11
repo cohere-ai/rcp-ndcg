@@ -1,5 +1,5 @@
 {
-  "schema": "rcp-ndcg.eval-report.v1",
+  "schema": "rcp.eval-report.v1",
   "protocol": {
     "name": "trecdl",
     "ties": "group_mean",

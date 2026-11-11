@@ -183,7 +183,10 @@ class _FirstV1Reader(BaseModel):
 
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
-    schema_name: Literal["rcp-ndcg.run-manifest.v1"] = Field(alias="schema")
+    # The artifact identity moved from `rcp-ndcg.` to `rcp.` while the fields stayed the same, so a reader
+    # written against the first v1 accepts both spellings: that is what the move promised, and `accepted_schema_ids`
+    # is where the product states it.
+    schema_name: Literal["rcp.run-manifest.v1", "rcp-ndcg.run-manifest.v1"] = Field(alias="schema")
     layout: Literal["rcp-ndcg.run-layout.v1"] = "rcp-ndcg.run-layout.v1"
     run_id: str
     created_at: datetime
