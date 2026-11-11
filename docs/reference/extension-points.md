@@ -43,7 +43,7 @@ my-runner = "my_package.runner:MyRunner"
 
 `rcp.runners.get_runner("my-runner", **options)` loads the entry point only when the name is selected and calls
 `MyRunner(**options)` with the run config's `runner.options`. A name provided by more than one installed
-distribution is refused, so a plugin cannot shadow a built-in; an unknown name lists the installed runners. The
+distribution is refused, so a plugin cannot shadow a built-in. An unknown name lists the installed runners. The
 runner's `name` attribute is the entry point's name.
 
 ### The contract
@@ -58,16 +58,17 @@ runner's `name` attribute is the entry point's name.
 | `logs(handle, *, tail=None) -> str` | The job's output so far; `tail` keeps the last lines. |
 | `cancel(handle) -> None` | Stop a pending or running job; a finished job is left as it is. |
 
-`JobSpec` is one command line (`argv`) with its image, resources and environment, or the phases to run in order
-(`phases`), exactly one of the two. The run layer reads four optional members when a runner declares them:
+`JobSpec` is one command line (`argv`) with its image, resources and environment. It can also be the phases to
+run in order (`phases`). It is exactly one of the two. The run layer reads four optional members when a runner
+declares them:
 
 - `render(jobs) -> dict[str, str]` returns the script or manifest each job would submit, without submitting
-  anything; `run start --dry-run` prints it. It is called before the run directory is written, so it is where a
+  anything; `run start --dry-run` prints it. It is called before the run directory is written. It is where a
   runner refuses a job it cannot run.
 - `renders_phases = True` declares that `render` and `submit` take a phased job (its phases' engines are the
-  runner's to start). A runner without it is handed the whole-run command as the job's `argv`, and a job whose
+  runner's to start). A runner without it is handed the whole-run command as the job's `argv`. A job whose
   phases start engines is refused.
-- `run_root` is the directory a run is restored into inside the job, from the run's mirror; a runner whose jobs
+- `run_root` is the directory a run is restored into inside the job, from the run's mirror. A runner whose jobs
   do not see the submitting host's files sets it. Runners without it share the files.
 - `note(handle)` explains why a pending job is still pending (a scheduler's unschedulable reason).
 
@@ -80,11 +81,11 @@ to read first. A runner that adds no scheduling can delegate to it.
   The registry raises it around the constructor; a plugin does not need to import it for its own options.
 - `RunnerError` (exit 6) for a scheduler command that failed, or a job the runner cannot submit as specified.
 - A job that exits non-zero is the job's failure, not the runner's. A `synchronous` runner raises the error class
-  of the job's exit code (`rcp.errors.error_class`, for example `MissingInputError` for 4) from `submit`; a code
+  of the job's exit code (`rcp.errors.error_class`, for example `MissingInputError` for 4) from `submit`. A code
   no error class uses is a non-retryable `RunnerError`. A scheduler runner returns a handle and reports
   `JobStatus.FAILED`; its output is in `logs`.
 
-The typed error is what a caller branches on: `MissingInputError` names an input to produce, `ProviderError` a
+The typed error is what a caller branches on. `MissingInputError` names an input to produce, `ProviderError` a
 failure to retry, and so on. Flattening a job's failure into a generic `RunnerError` loses that decision.
 
 ### A minimal runner
@@ -118,7 +119,7 @@ class MyRunner:
 
 A plugin's own tests call `rcp.testing.runner_conformance` with a constructed runner and a job it can actually
 run. The helper checks the four methods and the answers' shapes, plus `render`, `renders_phases` and `run_root`
-when declared; a failure is one assertion listing every broken check.
+when declared. A failure is one assertion listing every broken check.
 
 <!-- snippet: skip (the plugin is installed by the package under test) -->
 ```python
@@ -129,8 +130,8 @@ runner = get_runner("my-runner", log_dir="logs")
 runner_conformance(runner, job=JobSpec(name="smoke", argv=("true",)))
 ```
 
-The plugin's test should also run one real step and one job that exits 4: the step proves the handle, `status`
-and `logs` describe the same job, and the failing job proves the failure is the typed error the built-in
+The plugin's test should also run one real step and one job that exits 4. The step proves that the handle,
+`status` and `logs` describe the same job. The failing job proves the failure is the typed error the built-in
 `LocalRunner` raises, not a generic runner error. The repository's `tests/contract/test_runner_plugin.py`
 installs a minimal runner as a test distribution, resolves it through this group, and makes both checks.
 

@@ -3,7 +3,7 @@
 `rcp.run-manifest.v1` is the record of one run. It holds what the run read, which steps ran and what each step
 wrote. It also holds what the judge cost and which numbers came out. Every run directory has one
 `manifest.json`, updated atomically as each step finishes. A run is resumable exactly when every completed
-step's identity and inputs are unchanged; the [runs concept](../concepts/runs.md) describes the steps and the
+step's identity and inputs are unchanged. The [runs concept](../concepts/runs.md) describes the steps and the
 resume rule.
 
 The manifest is a public artifact. Its JSON Schema is `schemas/run-manifest.v1.json`, exported from
@@ -12,8 +12,8 @@ pins both.
 
 ## Versioning
 
-The tag in the record's `schema` field is `rcp.run-manifest.v1`, independent of the package version and
-bumped only when the record changes incompatibly. Within `v1`:
+The tag in the record's `schema` field is `rcp.run-manifest.v1`. It does not depend on the package version,
+and it bumps only when the record changes in an incompatible way. Within `v1`:
 
 * fields are only **added**, and an added field is optional or has a default;
 * an existing field never changes meaning or type;
@@ -71,8 +71,9 @@ downstream producer writes them into the manifest it produces. A real run theref
   * `args` (`object`, default `{}`): the reader arguments that selected the slice (the options passed to
     `load_dataset`).
   `dataset` remains the run's primary dataset; `datasets` is the full list when a run read more than one.
-* **`suites[]`** — the suites the run read. Each entry has the suite's `name` and `entries`, the suite entries
-  the run evaluated (default `[]`, when the suite ran whole or the entries were not recorded).
+* **`suites[]`** — the suites the run read. Each entry has the suite's `name` and `entries`. The entries are
+  the suite entries that the run evaluated. The default is `[]`: the suite ran whole, or the entries were not
+  recorded.
 * **`rows`** — `{schema: <name>}`: the downstream row schema the run's rows were written as. The package never
   interprets the name; it is a free string, and `rows` is `null` when the producer recorded none.
 
@@ -105,7 +106,7 @@ assert RunManifest.model_validate(first_v1).path is None
 ## Reading a manifest
 
 `RunManifest.load` accepts a run directory, a `RunLayout` or the manifest file itself. It refuses a record whose
-`schema` tag it does not know, with a hint to restore the run from its mirror or re-run it. It also refuses a
+`schema` tag it does not know. The refusal carries a hint: restore the run from its mirror, or re-run it. It also refuses a
 record that carries a field it does not know, and it names that field. The record is closed: a reader that
 silently dropped an unknown field could misread a later record. A damaged manifest is never read as a valid
 one. The result sinks read the manifest for the run's identity and artifact hashes; the export contract is

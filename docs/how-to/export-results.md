@@ -1,41 +1,41 @@
 # Export evaluation results
 
-An evaluation ends as numbers inside a run directory or a report file. The results-export seam turns those
-numbers into a versioned, self-contained record per **system × dataset × metric × cutoff** and hands them to a
-sink that writes them where a consumer reads them. The record is the compatibility contract between the
-package and whoever consumes its results ([the results record](../reference/results-record.md)); the sink is a
-plugin seam, exactly like the dataset readers and the job runners.
+An evaluation ends as numbers in a run directory or a report file. The results-export extension point turns those
+numbers into a versioned record. There is one self-contained record per **system × dataset × metric × cutoff**.
+The extension point hands each record to a sink. A sink is a plugin that writes records where a consumer reads
+them. The record is the compatibility contract between the package and the consumer of its results ([the results
+record](../reference/results-record.md)). The sink is an extension point, like the dataset readers and the job
+runners.
 
 ## From a run
 
-A run's manifest, report and artifacts are the export's source:
+A run's manifest, report and artifacts are the source of the export:
 
 ```bash
 rcp results export --run runs/20260102-030405-tiny-ab12cd --sink jsonl --out records.jsonl
 ```
 
-Every record carries the run id, the resolved dataset revision, the scoring protocol and the artifact hashes.
-The run's reference systems (`candidates`, the pool order, and `judge`, the judge's own abilities) are left
-out; `--include-reference` adds them, and `--system NAME` (repeatable) picks the systems to export.
+Every record carries the run id, the resolved dataset revision, the scoring protocol and the artifact hashes. The
+export leaves out the run's reference systems: `candidates`, the pool order, and `judge`, the judge's own
+abilities. `--include-reference` adds them. `--system NAME` (repeatable) selects the systems to export.
 
 `rcp results sinks` lists the registered sinks (`jsonl`, `parquet`, `null`).
 
 ## From a report
 
-A report written by `eval score --out` records its inputs, so it can be exported on its own:
+A report from `eval score --out` records its inputs. Thus you can export the report alone:
 
 ```bash
 rcp eval score --rankings run.parquet --dataset hf://YOUR-ORG/your-dataset --out report.json
 rcp results export --report report.json --sink parquet --out records.parquet
 ```
 
-A report without recorded inputs is refused: the record names the dataset it was scored on, and the export
-never invents one. `--run` and `--report` may be combined: the report file overrides the run's
-`metrics/report.json`, and the run supplies the identity and the artifacts.
+The export refuses a report without recorded inputs. The record names the dataset that the report was scored on.
+The export never invents a dataset. You can combine `--run` and `--report`. The report file overrides the run's `metrics/report.json`, and the run supplies the identity and the artifacts.
 
 ## In Python
 
-`records_from_report` and `records_from_run` are the builders the command line uses:
+`records_from_report` and `records_from_run` are the builders that the command line uses:
 
 ```python
 from rcp.data import Dataset, Rankings
@@ -56,32 +56,34 @@ for record in records_from_report(report):
 sink.flush()
 ```
 
-The `jsonl` sink writes one record per line; the `parquet` sink writes one row per metric row (a record with
-several metrics becomes several rows); `null` discards. All three accept `uri` and an `options` mapping, and a
-sink is always closed with `flush()`.
+The `jsonl` sink writes one record per line. The `parquet` sink writes one row per metric row: a record with
+several metrics becomes several rows. The `null` sink discards records. All three accept `uri` and an `options`
+mapping. Always close a sink with `flush()`.
 
 ## What a record holds
 
-A record (`rcp.result-record.v1`) is frozen and one-way:
+A record (`rcp.result-record.v1`) is frozen. It has no update operation:
 
 | Field | Meaning |
 |---|---|
 | `schema` | `rcp.result-record.v1` |
-| `record_id` | a digest of the subject, the dataset and the metrics: deterministic, and a protocol difference is part of it |
+| `record_id` | a digest of the subject, the dataset and the metrics; it is deterministic, and it includes a protocol difference |
 | `created_at` | when the record was built (timezone-aware) |
 | `subject` | `kind` (`system`, `run` or `calibration`), `name`, the `Rankings` `system`, the `run_id`, an optional content `identity`, free-form `labels` |
 | `dataset` | `name`, `subset`, `split`, `task`, `revision`, `protocol` (the preset name), `protocol_spec` (qrel gain, tie rule, pool restriction, rounding), `gains_source` |
 | `metrics` | one row per record: `metric`, `k`, `value`, `num_queries`, `num_datasets`, `ci_low`, `ci_high`, `dataset` (the per-dataset mean's dataset, or `null` for the summary row) |
-| `artifacts` | `role`, `uri`, `sha256`, `schema_name`, `media_type` of the files the row was computed from |
+| `artifacts` | `role`, `uri`, `sha256`, `schema_name`, `media_type` of the files that the row was computed from |
 | `provenance` | free-form exporter provenance: the code version, the run's resolved-config digest |
 
-Numbers compare only when the conventions match. `dataset.protocol_spec` states the whole convention, and
-`record_id` covers it: two records that differ only in the qrel gain (`linear` versus `exponential`) or the
-tie rule (`doc_id_desc` versus `group_mean`) are different records, never the same number under two labels.
+Compare numbers only when the conventions match. `dataset.protocol_spec` states the whole convention. `record_id`
+covers that convention. Two records can differ only in the qrel gain (`linear` versus `exponential`) or in the
+tie rule (`doc_id_desc` versus `group_mean`). Such records are different records. They are never the same number
+under two labels.
 
 ## Write your own sink
 
-A sink is one class in a package that publishes it under the `rcp.results` entry-point group:
+A sink is one class in a package. The package publishes the class under the `rcp.results` entry-point group.
+An entry-point group is a named list of plugin entry points in the package metadata:
 
 ```toml
 [project.entry-points."rcp.results"]
@@ -106,8 +108,8 @@ class MySink(ResultsSink):
         self.records.append(record)
 ```
 
-The constructor's first parameter after `self` is named `uri` (what `--out` passes), `emit` refuses a record
-whose `schema` is not `rcp.result-record.v1`, and `flush` is called once after the last record. Run the
+The constructor's first parameter after `self` is named `uri`. `--out` passes this value. `emit` refuses a record
+whose `schema` is not `rcp.result-record.v1`. The package calls `flush` once after the last record. Run the
 shared contract check from your own tests:
 
 ```python
@@ -118,5 +120,5 @@ sink.emit(record)
 results_conformance(sink, registered=False)
 ```
 
-`registered=False` skips the entry-point check while the package is under development; once it is installed,
+`registered=False` skips the entry-point check while the package is under development. After installation,
 `results_conformance(sink)` also verifies that the name resolves through the group.

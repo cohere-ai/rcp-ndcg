@@ -1,21 +1,18 @@
 # Adopt a model: the four classes, the pitfalls and the parity bar
 
-[Add a serving recipe](add-a-model.md) is the mechanics: the family directory, the schema, the reference
-interface, the three equivalence stages, the wave. This page is the doctrine above it — what "parity with
-the reference" means for each of the four classes of model this package serves, what to look out for when
-you bring a new checkpoint, and what a recipe must prove before its `status` may say `verified`.
+[Add a serving recipe](add-a-model.md) gives the mechanics. They are the family directory, the schema, the reference interface, the three equivalence stages and the wave. This page gives the doctrine above it. It states what
+"parity with the reference" means for each of the four classes of model that this package serves. It lists
+what to look out for when you bring a new checkpoint. It states what a recipe must prove before its `status`
+may say `verified`.
 
-The one-sentence rule: **the served engine must be indistinguishable from the model's own published code
-path — or, where the paper's numbers rest on it, the paper's exact scorer — on the inputs the product
-sends, within bounds that are declared, measured, and never loosened silently.**
+The rule: **the served engine must match the model's own published code path on the inputs that the product sends. Where the paper's numbers rest on it, it must match the paper's exact scorer. The match must stay within bounds that are declared, measured, and never loosened silently.**
 
 ## 1. What "verified" means
 
-A recipe is not verified by a smoke call. It is verified when its served engine reproduces the reference
-on the **observation corpus**: generated strata (over-length inputs per declared shape, the spelling
-stratum, media rows, empty documents, ties) sent through the product's own role clients, compared per
-vector, per document and per query, with the gates below. A single pass/fail hides the evidence; every
-number in `equivalence.json` carries its referent.
+A smoke call does not verify a recipe. The recipe is verified when its served engine reproduces the reference
+on the **observation corpus**. The corpus has generated strata: over-length inputs per declared shape, the
+spelling stratum, media rows, empty documents and ties. The harness sends them through the product's own role
+clients. It compares per vector, per document and per query, with the gates below. A single pass/fail does not show the evidence. Every number in `equivalence.json` carries its referent.
 
 | Comparison | Default gate |
 |---|---|
@@ -26,147 +23,119 @@ number in `equivalence.json` carries its referent.
 | Ranking, per query | median Kendall τ ≥ 0.98 |
 | Stage 3, per subset | mean \|Δ nDCG@10\| ≤ 2e-3 |
 
-Two things may legitimately stop a gate from passing, and both are declared, never silent:
+Two things may legitimately stop a gate from passing. Both are declared, never silent:
 
-- **A measured bound.** Where the residual is a genuine numeric floor — both sides run bf16 kernels, no
-  ranking changes, τ = 1.0 — the family, or the size whose floor differs, declares the measured bound in
-  `gates` (`vec_min_cosine`, `media_vec_min_cosine` for the media rows' own bound, `prob_p99_abs`, …) and names the evidence (per-MRL, per-document) in its
-  notes and the CHANGELOG. A size's set field replaces the family's value -- or the published default
-  where the family sets none -- in either direction, and must name its evidence; an unset field keeps
-  the family's value. The bound still gates: a regression beyond it fails.
-- **A declared deviation.** The reference's own behaviour over a cap, or a card pipeline that cannot run
-  an input, is declared under `reference.known_deviations` (`anchor_drop_over_cap`,
-  `over_cap_cut_differs`, `media_approximation`). Those inputs are reported in a separate non-gating
-  table with their cause. The reference never copies the client's cut to make a pair pass.
+- **A measured bound.** Sometimes the residual is a genuine numeric floor. Both sides run bf16 kernels, no ranking changes, τ = 1.0. The family declares the measured bound in `gates`. So does the size whose floor differs. The bound uses fields such as `vec_min_cosine`, `media_vec_min_cosine` for the media rows' own bound, and `prob_p99_abs`. It names the evidence (per-MRL, per-document) in its notes and the CHANGELOG. A size's set field replaces the family's value in either direction. It also replaces the published default where the family sets none. It must name its evidence. An unset field keeps the family's value. The bound still gates: a regression beyond it fails.
+- **A declared deviation.** The reference's own behaviour over a cap is declared under `reference.known_deviations`. A card pipeline that cannot run an input is declared there too (`anchor_drop_over_cap`, `over_cap_cut_differs`, `media_approximation`). The harness reports those inputs in a separate non-gating table with their cause.
+  The reference never copies the client's cut to make a pair pass.
 
-Cuts are the client's, applied to content spans only, with the anchors reserved; the schema has no
-engine-truncation field at all. Judges are the exception to score parity: no HF reference exists for a
-rubric prompt, so a judge recipe declares no reference and its equivalence/record steps are reported as
-skipped (counted as satisfied); a judge's parity is the instrument's own contracts, below.
+Cuts are the client's. They apply to content spans only, with the anchors reserved. The schema has no
+engine-truncation field at all. Judges are the exception to score parity: no HF reference exists for a rubric
+prompt. Thus a judge recipe declares no reference, and the harness reports its equivalence/record steps as
+skipped (counted as satisfied). A judge's parity is the instrument's own contracts, below.
 
 ## 2. The four classes
 
 ### Dense embedding — `role: embed`
 
-One vector per text: a pooler (last token, mean, CLS) plus normalization, sometimes a Matryoshka head.
-Served as `runner: pooling` with `api: vllm_pooling` or `openai_embeddings`; the wire is `text`
-(the default: the client sends the rendered string and the engine tokenizes it), `messages` (the engine's
-template frames the content), or `token_ids` (the client tokenizes and sends ids).
+One vector per text: a pooler (last token, mean, CLS) plus normalization, sometimes a Matryoshka head. The
+model is served as `runner: pooling` with `api: vllm_pooling` or `openai_embeddings`. The wire is `text` (the default: the client sends the rendered string and the engine tokenizes it). It can also be `messages` (the engine's template frames the content) or `token_ids` (the client tokenizes and sends ids).
 
 What to look out for:
 
 - **The role prompt.** Query and document sides may carry different prefixes (`prompt_name`,
-  `config_sentence_transformers.json`). A dataset with a task instruction is refused unless the recipe
-  declares `instruction: none | fold` — never silently changed.
-- **The token the pooler reads.** A last-token pooler's trailing end token is part of the anchor: the
-  cut reserves it, re-attaches the template, and stage 1 asserts it survived. A mean pooler has no anchor
-  token, so the audit asserts the fixed edges and at least one content token instead.
-- **A suffix marker.** Some cards append their own suffix in code (an end marker plus newline, a
-  separator); that suffix is the model's computation and belongs in the reference and in the render.
-- **Matryoshka.** `mrl_kind` (`truncation`, `projection`, `none`) with the card's `mrl_dims`/`mrl_range`;
-  the serve gate and the client declaration must agree, and the comparison is per k as well as at full
-  width.
-- **The engine is the tokenization truth.** With an engine URL, stage 1 requires the engine's
-  `/tokenize` ids and counts to equal the client's render, and the engine's own `usage.prompt_tokens` to
-  equal the client's budgeted count; without an engine both are `not_run`, never passed.
-- **The bf16 floor.** A minimum cosine a little under 1 − 1e-3 with τ = 1.0 is the kernel stack, not the
-  model: declare the measured per-variant bound (and per MRL width) rather than chasing the last 1e-4.
+  `config_sentence_transformers.json`). The client refuses a dataset with a task instruction unless the recipe
+  declares `instruction: none | fold`. It never changes the instruction silently.
+- **The token the pooler reads.** A last-token pooler's trailing end token is part of the anchor. The cut
+  reserves it, re-attaches the template, and stage 1 asserts that it survived. A mean pooler has no anchor
+  token. Thus the audit asserts the fixed edges and at least one content token instead.
+- **A suffix marker.** Some cards append their own suffix in code (an end marker plus newline, a separator).
+  That suffix is the model's computation and belongs in the reference and in the render.
+- **Matryoshka.** `mrl_kind` (`truncation`, `projection`, `none`) with the card's `mrl_dims`/`mrl_range`. The
+  serve gate and the client declaration must agree. The comparison is per k as well as at full width.
+- **The engine is the tokenization truth.** With an engine URL, stage 1 reads the engine's `/tokenize` ids and counts. They must equal the client's render. It also requires the engine's own `usage.prompt_tokens` to equal
+  the client's budgeted count. Without an engine, both are `not_run`, never passed.
+- **The bf16 floor.** A minimum cosine a little under 1 − 1e-3 with τ = 1.0 is the kernel stack. It is not the model. Declare the measured per-variant bound (and per MRL width) instead of trying to remove the last 1e-4.
 
 ### Cross-encoder reranker — `role: rerank`
 
-Pointwise or listwise; a score per document on a declared scale (`probability`, `logit`, `cosine`) with
-`use_activation` set for a served wire. The engine's classifier head reads a token pair
-(`classifier_from_token`), or a listwise prompt is generated and the answer parsed.
+Pointwise or listwise. The model gives a score per document on a declared scale (`probability`, `logit`, `cosine`). Set `use_activation` for a served wire. The engine's classifier head reads a token pair
+(`classifier_from_token`), or the client generates a listwise prompt and parses the answer.
 
 What to look out for:
 
-- **The scale and the activation.** `sigmoid(yes_logit / 5)`, a raw logit and a cosine are three
-  different gates. Declare `score_scale` from the reference; a wrong scale fails every document, not
-  subtly.
+- **The scale and the activation.** `sigmoid(yes_logit / 5)`, a raw logit and a cosine are three different
+  gates. Declare `score_scale` from the reference. A wrong scale fails every document, not subtly.
 - **The settled query.** A reranker settles one query span per call and shares it across its pointwise
-  requests; the query and document shares are declared (`query_max_tokens`, `document_max_tokens`) and
-  stage 1 asserts the settlement.
-- **The instruction and the assistant anchor.** `instruction: none | field | fold`, and the trailing
-  assistant suffix the model reads its score from — a `last` anchor, reserved by every cut.
-- **Listwise prompts are the reference's builder.** The client cannot re-derive it, so the engine's
-  prompt-token check reports `not_run` with that reason; the prompt itself is compared through the
+  requests. The query and document shares are declared (`query_max_tokens`, `document_max_tokens`), and stage
+  1 asserts the settlement.
+- **The instruction and the assistant anchor.** `instruction: none | field | fold`, and the trailing assistant suffix that the model reads its score from. That suffix is a `last` anchor, reserved by every cut.
+- **Listwise prompts are the reference's builder.** The client cannot re-derive the prompt. Thus the engine's
+  prompt-token check reports `not_run` with that reason. The harness compares the prompt itself through the
   reference's `render` mode.
-- **The reference's over-cap behaviour.** A joint `longest_first` truncation that drops anchors is
-  declared (`anchor_drop_over_cap`); one that keeps anchors but cuts its own way is declared
-  (`over_cap_cut_differs`). The reference stays the card's or the paper's.
-- **Remote-code quirks.** A rope path that expects 3-D position ids, a missing `layer_type`, a nested
-  `hf_overrides` the engine reads differently: fix with a narrow, declared shim (with a CPU test) or pin
-  the transformers version the checkpoint needs — never by relaxing a gate.
-- **The bf16 probability floor.** τ = 1.0 with a p99 just under 99% at the default tolerance is a kernel
-  floor; declare the measured |Δ| tolerance per variant.
+- **The reference's over-cap behaviour.** A joint `longest_first` truncation that drops anchors is declared
+  (`anchor_drop_over_cap`). One that keeps anchors but cuts its own way is declared (`over_cap_cut_differs`).
+  The reference stays the card's or the paper's.
+- **Remote-code quirks.** Examples are a rope path that expects 3-D position ids and a missing `layer_type`. Another is a nested `hf_overrides` that the engine reads differently. Fix with a narrow, declared shim (with a CPU test),
+  or pin the transformers version that the checkpoint needs. Never relax a gate.
+- **The bf16 probability floor.** A p99 just under 99% at the default tolerance is a kernel floor. The cause is τ = 1.0. Declare the measured |Δ| tolerance per variant.
 
 ### Late interaction (multi-vector) — `role: multi_vector`
 
-One L2-normalized vector per kept token; the retrieval score is fp32 MaxSim. The keep-rule is the
-checkpoint's own mask, not a generic one. Served with the multi-vector plugin; the wire is `text`
-(the engine tokenizes), `messages` for media, or `token_ids` where the checkpoint's own construction
-needs client-side ids.
+One L2-normalized vector per kept token; the retrieval score is fp32 MaxSim. The keep-rule is the checkpoint's
+own mask, not a generic one. The model is served with the multi-vector plugin. The wire is `text` (the engine
+tokenizes), `messages` for media, or `token_ids` where the checkpoint's own construction needs client-side ids.
 
 What to look out for:
 
-- **The prefix tokens are tokens too.** The client must reproduce the checkpoint's own construction,
-  including the prefix's own tokens and any standalone space token inside it. A plugin that pools a
-  prefix token the reference never pools produces a real, reproducible mismatch: fix the plugin, not the
-  gate.
-- **The nesting of the reply.** One vector for a dense embedder, one matrix per text for a multi-vector
-  model; the reference and the client agree on the nesting per side (query and document), and the
-  comparison walks the same nesting.
-- **All-masked documents.** Two zero vectors are agreement (cosine 1.0); a one-sided zero is a failure
-  (0.0) — a document that keeps no token on one side only is a defect, and the convention is documented
-  and tested in the harness.
-- **Media.** A multi-vector recipe with image input runs the media stage as an *input* gate: the parts,
-  their prepared sizes and the token counts must match the card, and the engine's own media count is an
-  independent check. It proves the model is shown the same media, never that it returns the same numbers
-  — that half is stage 2.
+- **The prefix tokens are tokens too.** The client must reproduce the checkpoint's own construction. That includes the prefix's own tokens and any standalone space token inside it. A plugin that pools a prefix token that the
+  reference never pools produces a real, reproducible mismatch. Fix the plugin, not the gate.
+- **The nesting of the reply.** A dense embedder returns one vector. A multi-vector model returns one matrix
+  per text. The reference and the client agree on the nesting per side (query and document). The comparison walks the same nesting.
+- **All-masked documents.** Two zero vectors are agreement (cosine 1.0). A one-sided zero is a failure (0.0).
+  A document that keeps no token on one side only is a defect. The harness documents and tests the convention.
+- **Media.** A multi-vector recipe with image input runs the media stage as an *input* gate. The parts, their
+  prepared sizes and the token counts must match the card. The engine's own media count is an independent
+  check. The stage proves that the model is shown the same media. It never proves that the model returns the
+  same numbers; that half is stage 2.
 
 ### LLM / judge — `role: judge`
 
-A rubric or tournament judge, served by any OpenAI-compatible endpoint (one URL, replicas of the same
-model allowed). A judge recipe ships `family.yaml` only: there is no HF score reference for a rubric
-prompt, so no `reference.py` and no stage-2 gates.
+A rubric or tournament judge, served by any OpenAI-compatible endpoint (one URL, replicas of the same model
+allowed). A judge recipe ships `family.yaml` only. There is no HF score reference for a rubric prompt, so the
+recipe has no `reference.py` and no stage-2 gates.
 
 What to look out for:
 
 - **Sampling is declared, not inherited.** A self-hosted recipe declares its checkpoint's own
-  `generation_config.json` sampling at the pinned revision -- Gemma 4's `top_p` 0.95/`top_k` 64, the
-  Qwen3.x judges' 0.95/20, Qwen3.5-397B's temperature 0.6 -- or greedy `temperature 0.0` when the config
-  declares none, and `rcp-test/tests/recipes/test_judge_sampling.py` pins the table. What the recipe
-  declares is what crosses the wire, and the sampling settings are content fields of the judgement family.
-- **The prompt is the family.** The tournament and rubric prompts define the judgement family, with a
-  parse version; a changed prompt is a new family and never pools with the shipped one. Every criterion
-  is fixed — the rubric has exactly its five, and they are not reworded.
-- **Budgets.** A self-hosted role config declares `tokenizer` + `max_tokens`; a hosted vendor profile
-  without a tokenizer declares `budget_source: vendor` and sends content uncut. Media are counted in
-  tokens, never money.
-- **The smoke route first.** A judge's first end-to-end check is its smoke call; then the schedules, the
+  `generation_config.json` sampling at the pinned revision. Examples: Gemma 4's `top_p` 0.95/`top_k` 64, the
+  Qwen3.x judges' 0.95/20, Qwen3.5-397B's temperature 0.6. When the config declares none, the recipe declares
+  greedy `temperature 0.0`. `rcp-test/tests/recipes/test_judge_sampling.py` pins the table. What the
+  recipe declares is what crosses the wire. The sampling settings are content fields of the judgement family.
+- **The prompt is the family.** The tournament and rubric prompts define the judgement family, with a parse
+  version. A changed prompt is a new family and never pools with the shipped one. Every criterion is fixed:
+  the rubric has exactly its five, and they are not reworded.
+- **Budgets.** A self-hosted role config declares `tokenizer` + `max_tokens`. A hosted vendor profile without a
+  tokenizer declares `budget_source: vendor` and sends content uncut. Media are counted in tokens, never money.
+- **The smoke route first.** A judge's first end-to-end check is its smoke call. Then the schedules, the
   judgement store, the cost estimate and the calibration are the instrument's own tested contracts.
 
 ## 3. The adoption workflow
 
-1. **Pin the checkpoint.** The lowercased canonical Hub repo name (never a redirecting short name), the
-   revision, the licence, and the card's own usage with its `README` lines — the reference follows the
-   card, and where the paper's numbers rest on it, the paper's exact module wins and the divergence is
-   noted.
-2. **Write the reference.** One `reference.py` per family: the card's code path (or the paper's module)
-   with the harness's subprocess CLI added and the provenance in the docstring. Justify every pin in
-   `reference.in` with a `file:line` comment and generate `reference.lock`.
-3. **Choose the serving path.** Flags first, then the checkpoint's chat template, then pooler config,
-   then a plugin/patch (a vendored model backport) — with `plugin_architectures` declared when the plugin
-   registers architectures.
-4. **Declare the request as data.** Shapes as `fixed`/`content` segments, the anchor kind, explicit
-   budgets, `on_overflow`, the empty-document policy, the title policy. Nothing is implicit.
-5. **Stage 1 on CPU.** The anchor audit, the render check and the template check run without an engine;
-   the engine checks report `not_run` — never "passed".
-6. **The family's tests.** The family test module pins every field per variant (with mutants red), the
-   recipe goldens are regenerated the documented way, and the contract snapshots are updated.
-7. **The GPU wave.** Stage 2 (plus the media stage for media input), then read `equivalence.json` per
-   referent. Fix or declare — in that order; a declared bound carries its evidence.
-8. **Then, and only then, `verified`.** The status flips from the wave's own artifacts, the report is
+1. **Pin the checkpoint.** Use the lowercased canonical Hub repo name, never a redirecting short name. Record the revision, the licence, and the card's own usage with its `README` lines. The reference follows the card.
+   Where the paper's numbers rest on it, the paper's exact module wins and the divergence is noted.
+2. **Write the reference.** One `reference.py` per family. Use the card's code path (or the paper's module), with the harness's subprocess CLI added. Put the provenance in the docstring. Justify every pin in `reference.in`
+   with a `file:line` comment and generate `reference.lock`.
+3. **Choose the serving path.** Flags come first, then the checkpoint's chat template, then pooler config. The last option is a plugin/patch (a vendored model backport). Declare `plugin_architectures` when the plugin registers
+   architectures.
+4. **Declare the request as data.** Use shapes as `fixed`/`content` segments, the anchor kind, explicit budgets and `on_overflow`. Declare the empty-document policy and the title policy. Nothing is implicit.
+5. **Stage 1 on CPU.** The anchor audit, the render check and the template check run without an engine. The
+   engine checks report `not_run`, never "passed".
+6. **The family's tests.** The family test module pins every field per variant (with mutants red). Regenerate
+   the recipe goldens the documented way, and update the contract snapshots.
+7. **The GPU wave.** Run stage 2 (plus the media stage for media input), then read `equivalence.json` per
+   referent. Fix or declare, in that order. A declared bound carries its evidence.
+8. **Then, and only then, `verified`.** The status changes from the wave's own artifacts. The report is
    written, and the release gate (wave 0 and the end-to-end scenarios) follows.
 
 ## 4. What the repository keeps per model
@@ -184,10 +153,11 @@ recipes/<family>/
   <card>.py        a card script the reference runs verbatim (e.g. a remote-code file), hash-pinned
 ```
 
-The harness never imports the reference — it holds no torch. Stage 2 launches it as a subprocess in the
-family's own environment (`--reference-python`), built from the lock over the engine image's torch/CUDA,
-so one recipe's transformers pin cannot break a wave. The original computation is therefore not only
-kept: it is the thing the engine is measured against, and its environment is reproducible per family.
+The harness never imports the reference: it holds no torch. Stage 2 launches the reference as a subprocess in
+the family's own environment (`--reference-python`). The environment is built from the lock over the engine
+image's torch/CUDA. Thus one recipe's transformers pin cannot break a wave. The original computation is
+therefore not only kept: it is the thing that the engine is measured against. Its environment is reproducible
+per family.
 
 | Family | Class | The reference's provenance |
 |---|---|---|
@@ -208,13 +178,13 @@ kept: it is the thing the engine is measured against, and its environment is rep
 | `zembed-1` | embed | the model card's snippet (remote model, the suffix its pooler reads) |
 | `zerank` | rerank (pointwise) | the paper's in-process code (where card and paper disagree, the paper wins) |
 
-The judge families are the exception by design: a rubric prompt has no HF score reference, so they ship
-`family.yaml` alone and their parity is the judge instrument's own contracts (prompts, parse versions,
-schedules, calibration) plus the smoke route.
+The judge families are the exception by design. A rubric prompt has no HF score reference, so they ship
+`family.yaml` alone. Their parity is the judge instrument's own contracts (prompts, parse versions, schedules,
+calibration) plus the smoke route.
 
 ## 5. The pitfall catalogue
 
-Every row below is a failure this repository actually hit and resolved; the disposition column is the
+Every row below is a failure that this repository actually hit and resolved. The disposition column is the
 pattern to reach for first.
 
 | Symptom | What it was | Disposition |
