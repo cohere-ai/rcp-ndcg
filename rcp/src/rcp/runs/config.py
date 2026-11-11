@@ -101,12 +101,13 @@ class DatasetSource(BaseModel):
         """What names the data: the source, the commit it resolves to now, and the bytes nothing pins.
 
         A local source has no commit, so its *content* names it: the digest of the files the reader reads (the
-        dataset location and every local ``*_uri`` option; the rule and its one home are
+        dataset location and every local ``*_uri`` input option; the rule and its one home are
         :func:`rcp.data.revisions.dataset_content_digest`), so an edited ``rows.jsonl`` makes every step
-        that read it stale on resume -- retrieve, rerank and the judging steps alike. A Hub dataset and a shipped
-        suite are pinned by their resolved commit and carry no content digest (the commit *is* the content). A
-        suite file outside the package pins nothing unless it declares a full commit. Its bytes enter the
-        identity too: an edited downstream ``suite.yaml`` is another dataset.
+        that read it stale on resume -- retrieve, rerank and the judging steps alike. A source read at a commit
+        (a Hub dataset, an ``mteb:`` task, a shipped suite) carries no content digest: the commit *is* the
+        content. A suite is data either way: a suite file outside the package enters by the definition it
+        states, so an edited downstream ``suite.yaml`` is another dataset, pinned or not. A reader option that
+        names an output location (``media_out_uri``) is no content, and a remote one is never fingerprinted.
         """
         from rcp.data.revisions import dataset_uri_revision
 
@@ -120,10 +121,11 @@ class DatasetSource(BaseModel):
         return {**identity, "content": content} if content else identity
 
     def content_digest(self) -> dict[str, str]:
-        """``{name: digest}`` of the local files this source reads (empty for a remote or unreadable one).
+        """``{name: digest}`` of the content this source states (empty for one read at a commit).
 
         :func:`rcp.data.revisions.dataset_content_digest` owns the rule; its names (``dataset``,
-        ``dataset.options.<key>``) are the same locations :meth:`local_inputs` reports for a mirror.
+        ``dataset.options.<key>``) are the same locations :meth:`local_inputs` reports for a mirror, except
+        ``definition``, which is a downstream suite's definition rather than a file on this host.
         """
         return dataset_content_digest(self.uri, self.options)
 

@@ -259,8 +259,8 @@ def test_an_unknown_suite_name_is_still_refused() -> None:
 
 
 class TestTheSuiteIdentity:
-    """A ``suite:`` URI is named by the definition it reads: the commit its repository resolves to, and -- when
-    the file pins nothing -- its own bytes, so an edited downstream suite never reuses stale work."""
+    """A suite is data: a ``suite:`` URI is named by the definition its file states, together with the commit its
+    data is read at -- so an edited downstream suite never reuses stale work, whether or not it pins a commit."""
 
     def test_editing_a_downstream_suite_moves_the_identity(self, tmp_path, hub: object) -> None:
         from rcp.runs.config import DatasetSource
@@ -275,9 +275,9 @@ class TestTheSuiteIdentity:
 
         assert after != before, "an edited suite.yaml is another dataset"
         assert after["resolved"]["repo"] == FROZEN_SUITES["nanobeir"][0], "the file's repository is resolved"
-        assert after["content"]["dataset"] != before["content"]["dataset"]
+        assert after["content"]["definition"] != before["content"]["definition"]
 
-    def test_a_suite_pinned_to_a_commit_is_named_by_its_repository_and_revision(self, tmp_path) -> None:
+    def test_a_suite_pinned_to_a_commit_is_named_by_its_definition_and_its_commit(self, tmp_path) -> None:
         from rcp.runs.config import DatasetSource
 
         pin = "a" * 40
@@ -292,19 +292,38 @@ class TestTheSuiteIdentity:
             "commit": pin,
             "verified": True,
         }
-        assert "content" not in identity, "a full commit pins the data: the file's own bytes are not in the identity"
+        assert set(identity["content"]) == {"definition"}, "the commit pins the repository, not the definition"
 
-        # The same definition, written another way: a whitespace edit is not a new dataset.
+        # The commit names the repository's data; the file names which of it the suite is. A new subset is
+        # another dataset, and a resume must not reuse the parts it computed for the old selection.
+        _write_suite(directory, revision=pin, subsets=list(FROZEN_SUITES["nanobeir"][1][:2]))
+        after = source.identity()
+
+        assert after["resolved"] == identity["resolved"], "the data is read at the same commit"
+        assert after["content"]["definition"] != identity["content"]["definition"], "another selection is another suite"
+
+    def test_a_re_serialised_suite_keeps_its_identity(self, tmp_path) -> None:
+        """The definition digests as the spec, not as the bytes: the same suite written another way (a comment,
+        another key order, a flow sequence) is the same dataset."""
+        from rcp.runs.config import DatasetSource
+
+        pin = "a" * 40
+        directory = tmp_path / "pinned"
+        _write_suite(directory, revision=pin)
+        source = DatasetSource(uri=f"suite:{directory}")
+        identity = source.identity()
+
         (directory / "suite.yaml").write_text(
             f"# the same suite, written another way\n"
+            f"subsets: [{FROZEN_SUITES['nanobeir'][1][0]}]\n"
+            f"protocol: plain\n"
             f"name: my-suite\n"
             f"repo: {FROZEN_SUITES['nanobeir'][0]}\n"
-            f"protocol: plain\n"
             f"revision: {pin}\n"
-            f"gains: false\n"
-            f"subsets:\n  - {FROZEN_SUITES['nanobeir'][1][0]}\n",
+            f"gains: false\n",
             encoding="utf-8",
         )
+
         assert source.identity() == identity
 
     def test_a_shipped_suite_is_named_by_its_repository_and_commit(self, hub: object) -> None:
@@ -315,7 +334,7 @@ class TestTheSuiteIdentity:
         assert identity == {
             "uri": "suite:trecdl",
             "resolved": {"repo": FROZEN_SUITES["trecdl"][0], "commit": SHA, "verified": True},
-        }, "the four shipped suites are package data: their identity is the repository at its commit"
+        }, "the four shipped suites are package data: their identity is their name, and it must not move"
 
 
 def test_a_suite_file_with_a_wrong_kind_is_refused(tmp_path) -> None:
