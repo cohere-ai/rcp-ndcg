@@ -130,6 +130,15 @@ incompatibly, independently of the package version. All four distributions carry
 
 ### Fixed
 
+- **A container pass runs at the judge's `concurrency`** (the media gate): the one-slot gate that bounds a
+  pass's prepared media now asks what the prepared pool holds, not what type a part is. A pass that inlines
+  media -- pages, or the frames the video policy keeps -- still runs one query at a time. A pass of containers
+  (a file, a remote URI, or frames that `wire: video_url` drops) holds only a reference, so it runs at the
+  endpoint's `concurrency`; `RCP_NDCG_VIDEO_CACHE_SIZE` bounds the encoded clips one worker keeps, and
+  `RCP_NDCG_MAX_VIDEO_BYTES` bounds each clip before a send. A `data:` container carries its bytes in the
+  reference and still takes the gate. Scoring, records and the number of judge calls do not move, but a
+  concurrent pass appends to the store as answers arrive, so the judgements it returns can come back in
+  another order.
 - **A resume cannot reuse another candidate system's judgements or report** (the run identity): the pool
   selection (`candidates.source`, `.system`, `.rankings`) is part of the judging, evaluate and rerank step
   identities, so flipping `candidates.system` on a `from: rankings` run re-runs those steps instead of reporting
@@ -5069,7 +5078,8 @@ text it sends to the declared budget.
   `run_tournament`, `run_rubric` and the `judge(windows=...)` path now drop the finished query's entries.
   The peak before the first answer is bounded too: the window budget prepares a query's pool synchronously
   before its first await, so a pass that started every query at once held one pool per query -- a media pass
-  now runs one query at a time.
+  ran one query at a time. That gate now covers only the media a pass inlines, so a container pass keeps the
+  judge's `concurrency` (see the container-pass entry in Unreleased).
 - **`judge --estimate` counts the media the pass sends and gates videos too** (`g-video-8`): the window gate
   counted every raw frame of a frame directory (a 60-frame clip under `num_frames: 4` was refused against a
   cap the pass accepts), counted a `video_url` part's frames as images, and never checked `max_videos` (a
