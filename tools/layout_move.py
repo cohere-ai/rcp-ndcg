@@ -38,36 +38,95 @@ from pathlib import Path
 __all__ = ["MOVES", "REWRITES", "STALE", "main", "run"]
 
 MOVES: tuple[tuple[str, str], ...] = (
-    # The root package into rcp/ (the files its distribution needs beside src/).
-    ("pyproject.toml", "rcp/pyproject.toml"),
-    ("MANIFEST.in", "rcp/MANIFEST.in"),
-    ("README.md", "rcp/README.md"),
-    ("src", "rcp/src"),
-    # The package directories one level up. An optional source (a package a tip does not carry)
-    # is skipped; a source next to an existing destination is refused.
-    ("packages/rcp-ndcg-core", "rcp-core"),
+    # The four distribution directories this tip carries at the root: each gains the packages/ level,
+    # and its directory name stays its distribution name. They move first, so the rows below find the
+    # root package already in its new home.
+    ("rcp", "packages/rcp"),
+    ("rcp-core", "packages/rcp-core"),
+    ("rcp-vllm", "packages/rcp-vllm"),
+    ("rcp-test", "packages/rcp-test"),
+    # The root package into packages/rcp/ (the files its distribution needs beside src/): the rows a
+    # tip that still carries the package as a root `src/` needs. A tip that already keeps its files in
+    # `rcp/` reports them done, and one that carries neither skips the two optional sources.
+    ("pyproject.toml", "packages/rcp/pyproject.toml"),
+    ("MANIFEST.in", "packages/rcp/MANIFEST.in"),
+    ("README.md", "packages/rcp/README.md"),
+    ("src", "packages/rcp/src"),
+    # The package directories, one distribution per directory name. An optional source (a package a tip
+    # does not carry) is skipped; a source next to an existing destination is refused.
+    ("packages/rcp-ndcg-core", "packages/rcp-core"),
     # The core's import package follows its distribution's name (`rcp_ndcg_core` -> `rcp_core`).
-    ("rcp-core/src/rcp_ndcg_core", "rcp-core/src/rcp_core"),
+    ("packages/rcp-core/src/rcp_ndcg_core", "packages/rcp-core/src/rcp_core"),
     # So does the main package's (`rcp_ndcg` -> `rcp`), once the root source is in its new home.
-    ("rcp/src/rcp_ndcg", "rcp/src/rcp"),
-    ("packages/rcp-ndcg-vllm", "rcp-vllm"),
+    ("packages/rcp/src/rcp_ndcg", "packages/rcp/src/rcp"),
+    ("packages/rcp-ndcg-vllm", "packages/rcp-vllm"),
     # So does the serving package's (`rcp_ndcg_vllm` -> `rcp_vllm`).
-    ("rcp-vllm/src/rcp_ndcg_vllm", "rcp-vllm/src/rcp_vllm"),
-    ("packages/rcp-ndcg-test", "rcp-ndcg-test"),
-    # So does the harness (`rcp_ndcg_test` -> `rcp_test`): the unpublished test distribution moves
-    # once more (the rows above land it at the -ndcg spelling first), then its import package
-    # follows its distribution's name like the others'.
-    ("rcp-ndcg-test", "rcp-test"),
-    ("rcp-test/src/rcp_ndcg_test", "rcp-test/src/rcp_test"),
+    ("packages/rcp-vllm/src/rcp_ndcg_vllm", "packages/rcp-vllm/src/rcp_vllm"),
+    # The unpublished harness: its directory already carries the packages/ level, and its import package
+    # follows its distribution's name like the others' (`rcp_ndcg_test` -> `rcp_test`).
+    ("packages/rcp-ndcg-test", "packages/rcp-test"),
+    ("packages/rcp-test/src/rcp_ndcg_test", "packages/rcp-test/src/rcp_test"),
+    # The test re-parenting: a test that proves one package's behaviour moves into that package, and the
+    # repo-wide invariants (tests/contract, tests/docs, tests/experiments and the eight invariant modules)
+    # stay at the root.
+    ("tests/calibration", "packages/rcp/tests/calibration"),
+    ("tests/cli", "packages/rcp/tests/cli"),
+    ("tests/data", "packages/rcp/tests/data"),
+    ("tests/eval", "packages/rcp/tests/eval"),
+    ("tests/inference", "packages/rcp/tests/inference"),
+    ("tests/judging", "packages/rcp/tests/judging"),
+    ("tests/results", "packages/rcp/tests/results"),
+    ("tests/retrieval", "packages/rcp/tests/retrieval"),
+    ("tests/runners", "packages/rcp/tests/runners"),
+    ("tests/runs", "packages/rcp/tests/runs"),
+    ("tests/storage", "packages/rcp/tests/storage"),
+    ("tests/support", "packages/rcp/tests/support"),
+    ("tests/test_end_to_end.py", "packages/rcp/tests/test_end_to_end.py"),
+    ("tests/test_errors.py", "packages/rcp/tests/test_errors.py"),
+    ("tests/test_mcp.py", "packages/rcp/tests/test_mcp.py"),
+    ("tests/core", "packages/rcp-core/tests"),
+    # The case-tree hook proves the harness's own data, so it lives with it.
+    ("tests/test_cases_package.py", "packages/rcp-test/tests/test_cases_package.py"),
+    # The shared helpers: a module two of a package's test directories both import cannot stay inside
+    # one of them (a package's test tree is a plain directory, not an import package), so it moves to
+    # the root `tests/_helpers/` -- the one home every tree reaches by name.
+    ("packages/rcp/tests/data/hub_stubs.py", "tests/_helpers/hub_stubs.py"),
+    ("packages/rcp/tests/data/_media_reference.py", "tests/_helpers/_media_reference.py"),
+    ("packages/rcp/tests/eval/_metrics.py", "tests/_helpers/_metrics.py"),
+    ("packages/rcp/tests/results/_runs.py", "tests/_helpers/_runs.py"),
+    ("packages/rcp/tests/results/_sinks.py", "tests/_helpers/_sinks.py"),
+    ("packages/rcp/tests/inference/_budget.py", "tests/_helpers/_budget.py"),
+    ("packages/rcp/tests/inference/_pooling.py", "tests/_helpers/_pooling.py"),
+    ("packages/rcp/tests/inference/_embed.py", "tests/_helpers/_embed.py"),
+    ("packages/rcp/tests/runners/shell.py", "tests/_helpers/shell.py"),
+    ("packages/rcp/tests/runners/k8s_schema.py", "tests/_helpers/k8s_schema.py"),
+    # The paper's protocol queries: the core's suite and the product's evaluation suite both read them.
+    (
+        "packages/rcp-core/tests/fixtures/paper_protocol_queries.json",
+        "tests/_helpers/fixtures/paper_protocol_queries.json",
+    ),
 )
 
-OPTIONAL_SOURCES: frozenset[str] = frozenset({"packages/rcp-ndcg-test", "rcp-ndcg-test", "rcp-test/src/rcp_ndcg_test"})
-"""A move source this tree is allowed not to carry (the tip predates the package, or a rename leg of
-the harness above already happened)."""
+OPTIONAL_SOURCES: frozenset[str] = frozenset(
+    {
+        "packages/rcp-ndcg-test",
+        "packages/rcp-test/src/rcp_ndcg_test",
+        # The four directories a tip may still carry under their old names (the `packages/rcp-ndcg-*`
+        # rows above), and the root package's two files a tip already keeps in `rcp/`.
+        "rcp",
+        "rcp-core",
+        "rcp-vllm",
+        "rcp-test",
+        "src",
+        "MANIFEST.in",
+    }
+)
+"""A move source this tree is allowed not to carry (the tip predates the package, or the harness
+rename's leg already happened, or the root package already keeps its source and manifest in `rcp/`)."""
 
 LANDED_CARD_SOURCES: frozenset[str] = frozenset({"README.md"})
 """A move source the landing-card design replaced (docs-release Q1): the full README moved into
-rcp/, and a NEW root README -- the short landing card -- was added at the old path on purpose.
+packages/rcp/, and a NEW root README -- the short landing card -- was added at the old path on purpose.
 Source beside destination is the target state for these, never a conflict."""
 
 SPLIT_REGENERATED: frozenset[str] = frozenset({"pyproject.toml"})
@@ -80,9 +139,13 @@ EXEMPT: frozenset[str] = frozenset(
         "tests/test_layout_move.py",
         # The fingerprint canonicalisation is the other transform that must spell the old names: its
         # table maps them onto the recorded spelling, and its tests assert the mapping.
-        "rcp-test/src/rcp_test/fingerprint.py",
-        "rcp-test/tests/test_fingerprint.py",
-        "rcp-test/tests/test_wave_plugin_wheel.py",
+        "packages/rcp-test/src/rcp_test/fingerprint.py",
+        "packages/rcp-test/tests/test_fingerprint.py",
+        "packages/rcp-test/tests/test_wave_plugin_wheel.py",
+        # The harness's ledger and its tree-change reader describe the layouts of the trees that
+        # recorded a wave; those spellings are data, never a live path.
+        "packages/rcp-test/src/rcp_test/jobs/ledger.py",
+        "packages/rcp-test/src/rcp_test/changes.py",
     }
 )
 """Files the rewrite sweep and the stale scan skip: this transform and its test declare the old
@@ -91,13 +154,19 @@ whole purpose is to map a current spelling onto the recorded one."""
 
 EXEMPT_PREFIXES: tuple[str, ...] = (
     "handover/",
-    "rcp-test/corpora/",
-    "rcp-test/pairs/",
-    "rcp-test/src/rcp_test/fixtures/cases/",
-    "rcp-test/tests/recipes/golden/",
+    "packages/rcp-test/corpora/",
+    "packages/rcp-test/pairs/",
+    "packages/rcp-test/src/rcp_test/fixtures/cases/",
+    "packages/rcp-test/tests/recipes/golden/",
+    # A recipe's own data: its `notes` are a field of the golden (`load_recipe(id).model_dump()`), so a
+    # path rewrite there costs a 44-golden regeneration for prose -- and the goldens staying byte-identical
+    # is the proof that a directory move re-keys no recipe (the fingerprint keys plugin modules by their
+    # dotted name, never by path).
+    "packages/rcp-vllm/src/rcp_vllm/recipes/",
 )
 """Path prefixes the sweep and the stale scan skip: handover/ is temporary scaffolding (deleted in one
-commit before the release), and its workstream reports describe the tree as it was when written; the
+commit before the release), and its workstream reports describe the tree as it was when written; a
+recipe's own directory is its recorded contract (see the entry below); the
 observation corpora -- the recipe keyings and the pairs corpus -- are the GPU waves' records, keyed by
 the tree that recorded them (PLAN section 8); a case's expected values are derived from its input
 texts, so a renamed text there re-records evidence; and a recipe golden is a recorded keying too -- its
@@ -172,58 +241,124 @@ REWRITES: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     # module, never a fragment of another identifier).
     ("test-name", r"(?<![\w-])rcp-ndcg-test\b", "rcp-test", None),
     ("test-module", r"(?:(?<!\w)|(?<=\\[ntr]))rcp_ndcg_test(?!\w)", "rcp_test", None),
-    # The package directories, in one string or split the way a test spells a Path. The core-name
-    # rule above has already mapped the core's directory to `rcp-core`; `\1` keeps the others.
-    ("packages", r"packages/(rcp-(?:ndcg-)?(?:core|vllm|test))\b", r"\1", None),
-    ("packages-split", r"""(["'])packages\1\s*/\s*(['"])(rcp-(?:ndcg-)?(?:core|vllm|test))\2""", r"\2\3\2", None),
+    # The layout: every distribution directory gains the `packages/` level, and the root package's
+    # source lands under it too. The lookbehind keeps the rules idempotent (an already-prefixed path is
+    # skipped) and keeps a *container* path out (`/etc/rcp/files/...` in the engine image is not this
+    # repository's `rcp/`, and `skills/rcp/` is a directory of its own).
+    ("dist-src", r"(?<![A-Za-z0-9_./-])(rcp|rcp-core|rcp-vllm|rcp-test)/src", r"packages/\1/src", None),
+    ("dist-dir", r"(?<![A-Za-z0-9_./-])(rcp-core|rcp-vllm|rcp-test)/", r"packages/\1/", None),
+    # Only a path segment that exists in the distribution directory: `rcp/job` is a Kubernetes label key
+    # and `rcp/data/suites/` is package-relative prose, and neither is a directory of this repository.
+    (
+        "root-dir",
+        r"(?<![A-Za-z0-9_./-])rcp/(?=src/|tests/|README\.md|pyproject\.toml|MANIFEST\.in|NOTICE|LICENSE)",
+        r"packages/rcp/",
+        None,
+    ),
     # The root package's source: `src/rcp` (never `src/rcp_*` -- \b does not match before _), in one
     # string or split the way a test spells a Path. A MANIFEST.in spells its own source relative to
     # its directory and keeps it.
-    ("root-src", r"(?<![\w./-])src/rcp(?![\w-])", "rcp/src/rcp", None),
+    ("root-src", r"(?<![\w./-])src/rcp(?![\w-])", "packages/rcp/src/rcp", None),
     (
         "root-src-split",
         r"""(["'])src\1\s*/\s*(['"])rcp\2""",
-        r"\1rcp/src/rcp\1",
+        r"\1packages/rcp/src/rcp\1",
         None,
     ),
+    # The test re-parenting, in the spellings a workflow, a docstring or a test names them.
+    ("tests-core", r"(?<![A-Za-z0-9_./-])tests/core/", "packages/rcp-core/tests/", None),
+    (
+        "tests-sub",
+        r"(?<![A-Za-z0-9_./-])tests/(calibration|cli|data|eval|inference|judging|results|retrieval|runners"
+        r"|runs|storage|support)/",
+        r"packages/rcp/tests/\1/",
+        None,
+    ),
+    (
+        "tests-top",
+        r"(?<![A-Za-z0-9_./-])tests/(test_end_to_end|test_errors|test_mcp)\.py",
+        r"packages/rcp/tests/\1.py",
+        None,
+    ),
+    (
+        "tests-cases",
+        r"(?<![A-Za-z0-9_./-])tests/test_cases_package\.py",
+        "packages/rcp-test/tests/test_cases_package.py",
+        None,
+    ),
+    # The shared helpers' new home: a module two of a package's test directories both import is now
+    # `tests._helpers.<name>`, never a path inside one of those directories.
+    (
+        "helpers-sub",
+        r"tests\.(data|eval|results|runners)\.(hub_stubs|_media_reference|_metrics|_runs|_sinks|shell|k8s_schema)\b",
+        r"tests._helpers.\2",
+        None,
+    ),
+    ("helpers-inference", r"tests\.inference(\.| import )(_budget|_pooling|_embed)\b", r"tests._helpers\1\2", None),
+    ("helpers-runs", r"tests\.runs\.conftest\b", "tests._helpers.runs", None),
+    ("helpers-retrieval", r"tests\.retrieval\.conftest\b", "tests._helpers.retrieval", None),
     # A bare `pyproject.toml` in a script or workflow is executable path syntax: the one root-level
     # manifest is now rcp/pyproject.toml. (`x/pyproject.toml` is a package's own manifest.)
-    ("bare-pyproject", r"(?<![\w./-])pyproject\.toml\b", "rcp/pyproject.toml", (".github/**", "**/*.sh")),
+    ("bare-pyproject", r"(?<![\w./-])pyproject\.toml\b", "packages/rcp/pyproject.toml", (".github/**", "**/*.sh")),
     # The root-file helpers in the tests point at the moved distribution files (the long README and
     # the package manifest are PyPI's now).
-    ("root-readme-helper", r'(?<![\w./-])ROOT / "README\.md"', 'ROOT / "rcp" / "README.md"', None),
-    ("root-readme-helper-repo", r'(?<![\w./-])REPO / "README\.md"', 'REPO / "rcp" / "README.md"', None),
+    ("root-readme-helper", r'(?<![\w./-])ROOT / "README\.md"', 'ROOT / "packages" / "rcp" / "README.md"', None),
+    ("root-readme-helper-repo", r'(?<![\w./-])REPO / "README\.md"', 'REPO / "packages" / "rcp" / "README.md"', None),
     (
         "root-pyproject-helper",
         r'(?<![\w./-])(ROOT|REPO) / "pyproject\.toml"',
-        r'\1 / "rcp" / "pyproject.toml"',
+        r'\1 / "packages" / "rcp" / "pyproject.toml"',
         ("tests/docs/**",),
     ),
-    ("root-src-helper", r'(?<![\w./-])(ROOT|REPO) / "src"(?![\w.-])', r'\1 / "rcp" / "src"', ("tests/**",)),
-    ("readme-pages", r'\["README\.md", "docs/', '["rcp/README.md", "docs/', ("tests/**",)),
+    (
+        "root-src-helper",
+        r'(?<![\w./-])(ROOT|REPO) / "src"(?![\w.-])',
+        r'\1 / "packages" / "rcp" / "src"',
+        ("tests/**",),
+    ),
+    ("readme-pages", r'\["README\.md", "docs/', '["packages/rcp/README.md", "docs/', ("tests/**",)),
     (
         "source-folders",
         r'\("src", "packages", "experiments"',
-        '("rcp/src", "rcp-core", "rcp-vllm", "experiments"',
+        '("packages/rcp/src", "packages/rcp-core", "packages/rcp-vllm", "experiments"',
         ("tests/**",),
     ),
     # basedpyright's include lists the root package's source as a bare "src".
-    ("basedpyright-include", r'include = \["src", ', 'include = ["rcp/src", ', ("*.toml",)),
-    # The lock records every workspace member by editable path; the root package's was ".".
-    ("lock-editable", r'editable = "\."', 'editable = "rcp"', ("uv.lock",)),
+    ("basedpyright-include", r'include = \["src", ', 'include = ["packages/rcp/src", ', ("*.toml",)),
+    # The lock records every workspace member by editable path; the root package's was "." in the layout
+    # this table was written for, and "rcp" on a tip that already moved it out of the root.
+    ("lock-editable", r'editable = "(\.|rcp)"', 'editable = "packages/rcp"', ("uv.lock",)),
+    (
+        "lock-editable-siblings",
+        r'editable = "(rcp-core|rcp-vllm|rcp-test)"',
+        r'editable = "packages/\1"',
+        ("uv.lock",),
+    ),
     # The build directories follow their distribution: the one glob that named the old packages/
     # tree names the four distributions (the main one carries no hyphen, so the glob cannot require
     # one; `/rcp*/build/` is a superset of `/rcp-*/build/`).
-    ("gitignore-build", r"/packages/\*/build/", "/rcp*/build/", (".gitignore",)),
+    ("gitignore-build", r"/rcp\*/build/", "/packages/*/build/", (".gitignore",)),
 )
 
 STALE: tuple[tuple[str, ...], ...] = (
-    # Any old package path left anywhere, `packages/rcp-...` split or together.
-    (r"packages/(rcp-(?:ndcg-)?(?:core|vllm|test))",),
-    (r"""(["'])packages\1\s*/\s*['"]rcp-(?:ndcg-)?(?:core|vllm|test)""",),
+    # A distribution directory outside the packages/ level, split or together (`rcp/src/rcp` is the
+    # layout the move took away; `packages/rcp/src/rcp` is the one it made).
+    (r"(?<![A-Za-z0-9_./-])(?:rcp-core|rcp-vllm|rcp-test)/",),
+    (r"(?<![A-Za-z0-9_./-])rcp/src", "packages/rcp/MANIFEST.in"),
     # The root package's source outside its one new home (its MANIFEST.in spells it relative).
-    (r"(?<![\w./-])src/rcp(?![\w-])", "rcp/MANIFEST.in", "MANIFEST.in", "tests/docs/test_packaging.py"),
+    (r"(?<![\w./-])src/rcp(?![\w-])", "packages/rcp/MANIFEST.in", "MANIFEST.in", "tests/docs/test_packaging.py"),
     (r"""(["'])src\1\s*/\s*['"]rcp["']""",),
+    # A test directory the move emptied: the product's suites are under packages/rcp/tests now, the
+    # core's under packages/rcp-core/tests, the case hook under packages/rcp-test/tests.
+    (
+        r"(?<![A-Za-z0-9_./-])tests/(?:calibration|cli|data|eval|inference|judging|results|retrieval|runners"
+        r"|runs|storage|support|core)/",
+        "CHANGELOG.md",
+    ),
+    (
+        r"(?<![A-Za-z0-9_./-])tests/(?:test_end_to_end|test_errors|test_mcp|test_cases_package)\.py",
+        "CHANGELOG.md",
+    ),
     # The harness's distribution and import names, where they were live. The ledger's historical
     # source list, the shipped-entry homes the changelog test pins and the CHANGELOG's past entries
     # keep theirs; the corpora, the pairs corpus and the case fixtures keep theirs under EXEMPT_PREFIXES.
@@ -231,15 +366,15 @@ STALE: tuple[tuple[str, ...], ...] = (
         r"(?<![\w-])rcp-ndcg-test\b",
         "CHANGELOG.md",
         "tests/docs/test_changelog.py",
-        "rcp-test/src/rcp_test/jobs/ledger.py",
-        "rcp-test/tests/test_ledger.py",
+        "packages/rcp-test/src/rcp_test/jobs/ledger.py",
+        "packages/rcp-test/tests/test_ledger.py",
     ),
     (
         r"(?:(?<!\w)|(?<=\\[ntr]))rcp_ndcg_test(?!\w)",
         "CHANGELOG.md",
         "tests/docs/test_changelog.py",
-        "rcp-test/src/rcp_test/jobs/ledger.py",
-        "rcp-test/tests/test_ledger.py",
+        "packages/rcp-test/src/rcp_test/jobs/ledger.py",
+        "packages/rcp-test/tests/test_ledger.py",
     ),
 )
 """What must be gone after the sweep: patterns that can only mean a path the move took away. Each
@@ -297,6 +432,8 @@ def _apply_rewrites(text: str, name: Path) -> tuple[str, list[str]]:
             continue
         if rule.startswith(("core-", "main-", "vllm-", "test-")) and name.as_posix() == "CHANGELOG.md":
             continue  # the entries below Unreleased are history: they keep the names they shipped with
+        if rule.startswith(("dist-", "root-", "tests-", "helpers-")) and name.as_posix() == "CHANGELOG.md":
+            continue  # ...and the paths they shipped with, like the names
         if rule in (
             "core-name",
             "main-name",
@@ -304,9 +441,12 @@ def _apply_rewrites(text: str, name: Path) -> tuple[str, list[str]]:
             "test-module",
             "vllm-name",
             "vllm-module",
-        ) and name.as_posix() in ("rcp-test/src/rcp_test/jobs/ledger.py", "rcp-test/tests/test_ledger.py"):
-            continue  # both spell pre-rename trees' names as data: the source list, and the test that pins it
-        if rule == "main-name" and name.as_posix() == "tests/judging/test_store.py":
+        ) and name.as_posix() in (
+            "packages/rcp-test/src/rcp_test/jobs/ledger.py",
+            "packages/rcp-test/tests/test_ledger.py",
+        ):
+            continue  # their source lists name pre-rename trees' spellings as data, never a live path
+        if rule == "main-name" and name.as_posix() == "packages/rcp/tests/judging/test_store.py":
             continue  # its parametrize list spells both identity tags as data: a pre-rename store carries the old one
         if rule.startswith("test-") and name.as_posix() == "tests/docs/test_changelog.py":
             continue  # it pins the shipped 0.0.1 entry's harness homes as names, never live paths
@@ -408,24 +548,24 @@ def run(root: Path, *, check: bool = False) -> int:
             touched.append(name.as_posix())
 
     # 3. The root pyproject's split: its package tables travel with the root package into
-    #    rcp/pyproject.toml; the workspace and tooling tables stay at the root, and the
+    #    packages/rcp/pyproject.toml; the workspace and tooling tables stay at the root, and the
     #    workspace tables are regenerated from the move table's destinations that exist.
-    package_manifest = root / "rcp" / "pyproject.toml"
+    package_manifest = root / "packages" / "rcp" / "pyproject.toml"
     workspace_manifest = root / "pyproject.toml"
     if package_manifest.is_file():
         workspace_text = workspace_manifest.read_text(encoding="utf-8") if workspace_manifest.is_file() else ""
         if re.search(r"^\[project\]\s*$", workspace_text, re.M) or not workspace_manifest.is_file():
             if check:
-                problems.append("the root pyproject is not split (its package tables belong in rcp/)")
+                problems.append("the root pyproject is not split (its package tables belong in packages/rcp/)")
             else:
                 package_text, workspace_text = _split_pyproject(
                     package_manifest.read_text(encoding="utf-8"), members=_members(root)
                 )
                 package_manifest.write_text(package_text, encoding="utf-8")
                 workspace_manifest.write_text(workspace_text, encoding="utf-8")
-                touched.extend(["pyproject.toml", "rcp/pyproject.toml"])
+                touched.extend(["pyproject.toml", "packages/rcp/pyproject.toml"])
                 done_work = True
-                print("rewrote pyproject.toml: split (package -> rcp/pyproject.toml, workspace stays)")
+                print("rewrote pyproject.toml: split (package -> packages/rcp/pyproject.toml, workspace stays)")
 
     # 4. Stage only what the tool moved or rewrote, never the whole worktree: `git add -A` would
     #    stage an unrelated contributor's untracked files alongside the move.
@@ -479,14 +619,16 @@ def run(root: Path, *, check: bool = False) -> int:
 
 
 def _members(root: Path) -> list[str]:
-    """The workspace members: the top-level directories the move map brings into existence, when the
-    directory carries a pyproject.toml (sorted)."""
+    """The workspace members: the ``packages/<name>`` directories the move map brings into existence,
+    when the directory carries a pyproject.toml (sorted). The member's name is its directory name."""
     members = set()
     for source, destination in MOVES:
         for name in (source, destination):
-            top = name.split("/", 1)[0]
-            if top and (root / top / "pyproject.toml").is_file():
-                members.add(top)
+            parts = name.split("/")
+            if len(parts) < 3 or parts[0] != "packages":
+                continue
+            if (root / "packages" / parts[1] / "pyproject.toml").is_file():
+                members.add(parts[1])
     return sorted(members)
 
 
@@ -495,7 +637,7 @@ _WORKSPACE_TABLES = ("tool.uv", "tool.pytest", "tool.ruff", "tool.basedpyright",
 
 _WORKSPACE_HEADER = """\
 # The uv workspace root: the workspace members and the tooling config only. The distributions carry
-# their own manifests (rcp/pyproject.toml and the project directories beside it); tools/
+# their own manifests (packages/rcp/pyproject.toml and the project directories beside it); tools/
 # layout_move.py keeps this split and the member list current.
 """
 
@@ -561,14 +703,14 @@ def _sections(text: str) -> tuple[str, dict[str, str], list[str]]:
 
 def _workspace_tables(members: list[str]) -> str:
     """The ``tool.uv.workspace`` / ``tool.uv.sources`` / ``tool.ruff.lint.isort`` tables: the members
-    (the package name of a member directory is its directory name) and the imports classification the
-    move forces (``src/rcp`` was first-party in the old src layout by ruff's inference; the
-    sibling tops never were -- the pin keeps every import block byte-for-byte as before)."""
-    listed = ", ".join(f'"{member}"' for member in members)
+    (a glob over ``packages/``, and the package name of a member directory is its directory name) and
+    the imports classification the move forces (``src/rcp`` was first-party in the old src layout by
+    ruff's inference; the sibling tops never were -- the pin keeps every import block byte-for-byte)."""
     sources = "\n".join(f"{member} = {{ workspace = true }}" for member in members)
     return f"""\
 [tool.uv.workspace]
-members = [{listed}]
+# One member per distribution: the directory name is the distribution name.
+members = ["packages/*"]
 
 [tool.uv.sources]
 # An inter-member requirement resolves to the checkout, never to an index.

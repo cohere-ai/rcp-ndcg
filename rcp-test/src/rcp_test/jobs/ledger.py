@@ -107,6 +107,14 @@ RECIPES = Path("rcp-vllm/src/rcp_vllm/recipes")
 """The shipped recipes' root, relative to the checkout root."""
 
 SOURCE_DIRS = (
+    "packages/rcp-core",
+    "packages/rcp-ndcg-core",
+    "packages/rcp",
+    "packages/rcp-ndcg",
+    "packages/rcp-vllm",
+    "packages/rcp-ndcg-vllm",
+    "packages/rcp-test",
+    "packages/rcp-ndcg-test",
     "rcp-core",
     "rcp-ndcg-core",
     "rcp",
@@ -118,8 +126,9 @@ SOURCE_DIRS = (
 )
 """Every package source directory the key derivation reads, relative to the RC commit's tree.
 
-Both spellings of each renamed package: a wave records the commit it ran at, and the commits before a rename
-carry the old directory (a directory the commit predates is inert on the path).
+Both spellings of each renamed package, and both layouts of the tree: a wave records the commit it ran at, and
+the commits before a rename carry the old directory while the commits after the move carry every distribution
+under ``packages/`` (a directory the commit predates is inert on the path).
 """
 
 VALIDATION_KINDS = ("equivalence", "record", "gate")
@@ -150,6 +159,10 @@ tree = Path(sys.argv[1])
 golden = tree / "rcp-test" / "tests" / "recipes" / "golden"
 if not golden.is_dir():  # a pre-rename tree carries the harness, and so its goldens, under the old spelling
     golden = tree / "rcp-ndcg-test" / "tests" / "recipes" / "golden"
+if not golden.is_dir():  # a tree from before the move under packages/ carries every distribution at the root
+    golden = tree / "packages" / "rcp-test" / "tests" / "recipes" / "golden"
+if not golden.is_dir():  # the same tree before the rename: the harness under its old spelling
+    golden = tree / "packages" / "rcp-ndcg-test" / "tests" / "recipes" / "golden"
 keys, errors = {}, {}
 for recipe in iter_recipes(default_recipes_root()):
     try:

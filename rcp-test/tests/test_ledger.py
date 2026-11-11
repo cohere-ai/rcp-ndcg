@@ -123,10 +123,13 @@ def test_the_key_derivation_puts_both_spellings_of_every_renamed_package_on_the_
         "rcp-test",
         "rcp-ndcg-test",
     )
-    for spelling in spellings:
-        (tmp_path / spelling / "src").mkdir(parents=True)
+    # Both layouts of the tree: the flat one a wave from before the move ran at, and `packages/` after it.
+    layouts = ("", "packages/")
+    for layout in layouts:
+        for spelling in spellings:
+            (tmp_path / layout / spelling / "src").mkdir(parents=True)
     paths = [path.relative_to(tmp_path).as_posix() for path in ledger._source_paths(tmp_path)]
-    assert set(paths) == {f"{spelling}/src" for spelling in spellings}
+    assert set(paths) == {f"{layout}{spelling}/src" for layout in layouts for spelling in spellings}
 
 
 PRE_RENAME = "f6320c33"
@@ -148,6 +151,15 @@ def test_the_key_derivation_reads_a_wave_commit_from_before_the_rename() -> None
 
     assert errors == {}
     assert len(keys) == 44, "the recipes the tree at that commit ships"
+
+
+def test_the_key_derivation_reads_a_wave_commit_from_after_the_move_under_packages() -> None:
+    """The tree's own commit after the move carries every distribution under `packages/`: the derivation
+    reads that layout too, so a wave recorded at a post-move commit derives the 44 keys with no error."""
+    keys, errors = ledger.rc_keys("HEAD", ROOT)
+
+    assert errors == {}
+    assert len(keys) == 44, "the recipes the tree ships"
 
 
 def test_the_ledger_refuses_evidence_that_does_not_compute_todays_key(tmp_path: Path) -> None:
