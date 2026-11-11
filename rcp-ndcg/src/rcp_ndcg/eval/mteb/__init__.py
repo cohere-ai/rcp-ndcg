@@ -157,9 +157,10 @@ def task_metadata(source: str) -> tuple[str, dict[str, dict[str, Any]]]:
     """``(released revision, task table)`` from the text of a suite's ``rcp_ndcg_tasks.py``.
 
     The table is the file's ``_TASK_METADATA`` JSON, keyed as the release keys it: the published task names
-    from the 2026-10 rename on, the subset names before that.
+    from the 2026-10 rename on, the subset names before that. The revision is whatever ``_REVISION`` declares,
+    which the file defines as its release's data revision: a commit sha, or (the v2 releases) the release tag.
     """
-    revision = re.search(r'^_REVISION = "([0-9a-f]+)"', source, re.M)
+    revision = re.search(r'^_REVISION = "([^"]+)"', source, re.M)
     table = re.search(r'_TASK_METADATA[^=]*= json\.loads\(r"""(.*?)"""\)', source, re.S)
     if revision is None or table is None:
         raise DataError("not an rcp_ndcg_tasks.py: no _REVISION or _TASK_METADATA")

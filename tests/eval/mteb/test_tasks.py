@@ -57,6 +57,10 @@ def test_task_metadata_is_read_from_the_published_task_file_as_data() -> None:
     source = '_REVISION = "abc123"\n_TASK_METADATA = json.loads(r"""{"aops": {"name": "BrightAopsRCPRetrieval"}}""")\n'
 
     assert task_metadata(source) == ("abc123", {"aops": {"name": "BrightAopsRCPRetrieval"}})
+    # The v2 releases name the release tag as the data revision (the file's own comment: "the data revision
+    # of release RELEASE"); a tag is a valid Hub revision, so the parse must not insist on a commit sha.
+    tagged = source.replace('"abc123"', '"v2-nvidia-qwen3.5-397b-a17b-nvfp4"')
+    assert task_metadata(tagged) == ("v2-nvidia-qwen3.5-397b-a17b-nvfp4", {"aops": {"name": "BrightAopsRCPRetrieval"}})
     with pytest.raises(DataError, match="not an rcp_ndcg_tasks.py"):
         task_metadata("import os\n")
 
