@@ -11,7 +11,7 @@ bumps the patch version; from `1.0` on, semantic versioning applies. The public 
   `.records`; `rcp.calibration`, `rcp.data`, `rcp.data.preprocess`, `rcp.data.revisions`,
   `rcp.errors`, `rcp.eval`, `rcp.eval.mteb`, `rcp.examples`, `rcp.inference`,
   `rcp.judging`, `rcp.results`, `rcp.retrieval`, `rcp.runners`, `rcp.runs`,
-  `rcp.testing` and `rcp_vllm.recipe`;
+  `rcp.support.events`, `rcp.testing` and `rcp_vllm.recipe`;
 - the command tree with its flags and output schemas, the exit codes, the MCP tools, the packaging (distributions,
   extras, entry points) and the JSON Schemas in `schemas/`.
 
