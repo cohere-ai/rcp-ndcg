@@ -14,15 +14,15 @@ Two commands, one library:
   deltas, changed statuses, changed refusals and changed protocol behaviour, summarised by stratum),
   written here for review before a new corpus replaces the old in the repository.
 
-Both recordings are committed: ``rcp-test/corpora/vllm-0.33.0/`` is the current line (every recipe pins
-``min_version: "0.33.0"``) and ``rcp-test/corpora/vllm-0.31.0/`` the superseded one, kept as the earlier
-line's evidence. A recipe's corpus is resolved in the root of the engine line its own pin names
+Both recordings are committed: ``packages/rcp-test/corpora/vllm-0.33.0/`` is the current line (every recipe
+pins ``min_version: "0.33.0"``) and ``packages/rcp-test/corpora/vllm-0.31.0/`` the superseded one, kept as the
+earlier line's evidence. A recipe's corpus is resolved in the root of the engine line its own pin names
 (``corpora/<engine>-<version>``), so the superseded line is never resolved as current.
 
 Run from a checkout of the repository::
 
-    python -m rcp_test.changes changed --recipes-root rcp-vllm/src/rcp_vllm/recipes \
-        --corpora-root rcp-test/corpora/vllm-0.33.0
+    python -m rcp_test.changes changed --recipes-root packages/rcp-vllm/src/rcp_vllm/recipes \
+        --corpora-root packages/rcp-test/corpora/vllm-0.33.0
     python -m rcp_test.changes diff --before <corpus-dir> --after <corpus-dir>
 """
 
@@ -223,12 +223,12 @@ def changed_recipes(recipes_root: str | Path, corpora_root: str | Path) -> dict[
     if not root.is_dir():
         raise HarnessError(
             f"--corpora-root {root} does not exist (the committed corpora live under "
-            "rcp-test/corpora/<engine>-<version>)"
+            "packages/rcp-test/corpora/<engine>-<version>)"
         )
     if not any(root.rglob("manifest.json")):
         raise HarnessError(
             f"--corpora-root {root} holds no corpus manifest (the committed corpora live under "
-            "rcp-test/corpora/<engine>-<version>)"
+            "packages/rcp-test/corpora/<engine>-<version>)"
         )
     states: dict[str, dict[str, Any]] = {}
     for directory in sorted(Path(recipes_root).iterdir()):
