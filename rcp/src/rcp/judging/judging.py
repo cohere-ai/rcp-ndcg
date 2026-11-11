@@ -80,6 +80,7 @@ from rcp.support.step_budget import current_step_budget
 from rcp.support.urls import safe_url
 
 if TYPE_CHECKING:
+    from rcp.data.resolution import VideoPolicy
     from rcp.data.tokenizer import TextTokenizer
 
 logger = get_logger(__name__)
@@ -1201,25 +1202,45 @@ async def _run_rubric(query: _Query, schedule: RubricSchedule, run: _Pass) -> No
         run.retire_after_refit(query, "stratified", len(random_windows) + len(stratified))
 
 
-def _media_query_gate(queries: Sequence[_Query]) -> asyncio.Semaphore | None:
-    """A one-slot gate when any query carries *inlined* media -- a page or a frame set -- else ``None``.
+def _held_by_the_pool(part: Any, video: VideoPolicy | None) -> bool:
+    """Whether :func:`~rcp.data.prepare.prepare_content` keeps this part's bytes in the query's pool.
 
-    Every prepared page and frame is an inlined PNG data URI, and one query's pool can hold hundreds of
-    them (the shared image LRU is sized to one pool, :data:`~rcp.data.prepare.IMAGE_CACHE_SIZE`). A
-    pass that starts every query before its first answer holds one pool per query -- the window budget
-    prepares each query's pool synchronously, before its first await -- so an inlined pass runs one query at a
-    time; text queries keep the full concurrency.
+    The rule is preparation's own, not the part's type. Preparation inlines every image; it inlines every
+    frame the video policy keeps (all of them when there is no policy, and none under ``wire: video_url``,
+    which drops them); and it keeps a container as its :class:`~rcp_core.content.MediaRef`. That ref holds
+    bytes only when its ``uri`` is a ``data:`` URI -- a file or remote container is read again when a request
+    is lowered.
+    """
+    if isinstance(part, ImagePart):
+        return True
+    if not isinstance(part, VideoPart):
+        return False
+    if part.frames and not (video is not None and video.wire == "video_url"):
+        return True
+    return part.ref is not None and part.ref.uri.startswith("data:")
 
-    A container is not inlined: :func:`~rcp.data.prepare.prepare_content` keeps its :class:`~rcp_core.content.MediaRef`
-    and the bytes are read only while one request is lowered, so a container pass keeps the judge's own
-    concurrency, which with ``RCP_NDCG_VIDEO_CACHE_SIZE`` is the bound on its memory. A part that carries
-    frames takes the gate whatever the video policy's wire: the frames are inlined, and a ``video_url`` policy
-    on such a part is the rare case that serialises rather than one that grows.
+
+def _media_query_gate(queries: Sequence[_Query], video: VideoPolicy | None) -> asyncio.Semaphore | None:
+    """A one-slot gate when any query's prepared pool holds media bytes, else ``None``.
+
+    The gate asks what the pool holds, not what type a part is (:func:`_held_by_the_pool`). A prepared page
+    and a prepared frame are inlined PNG data URIs, and one query's pool can hold hundreds of them (the
+    shared image LRU is sized to one pool, :data:`~rcp.data.prepare.IMAGE_CACHE_SIZE`). A pass that starts
+    every query before its first answer holds one pool per query -- the window budget prepares each query's
+    pool synchronously, before its first await -- so a pass that holds bytes runs one query at a time; a
+    text-only pass keeps the full concurrency.
+
+    A container that preparation keeps as a file or remote ref holds no bytes, so a container pass keeps the
+    judge's own concurrency, which with ``RCP_NDCG_VIDEO_CACHE_SIZE`` bounds its memory. A part carrying
+    frames under ``wire: video_url`` is that same container pass: the policy drops the frames before
+    preparation, so the pool holds only the ref. A ``data:`` container is the exception both ways -- its
+    bytes are the ref's own string, held for the whole pass -- so it takes the gate whether the frames
+    travelled beside it or not.
     """
     for query in queries:
         for content in query.contents.values():
             for part in content.parts:
-                if isinstance(part, ImagePart) or (isinstance(part, VideoPart) and part.frames):
+                if _held_by_the_pool(part, video):
                     return asyncio.Semaphore(1)
     return None
 
@@ -1669,7 +1690,7 @@ async def ajudge(
     else:
         worker = run_tournament if stage == "tournament" else run_rubric
         jobs = [worker(query, plan.schedule, run) for query in queries]  # type: ignore[arg-type]
-    gate = _media_query_gate(queries)
+    gate = _media_query_gate(queries, plan.preprocessing.video)
     if gate is not None:
 
         async def bounded(job: Any) -> None:

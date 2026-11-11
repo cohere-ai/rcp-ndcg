@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -26,6 +27,7 @@ from rcp.judging import RubricSchedule, TournamentSchedule, judge, load_prompt
 from rcp.judging._templates import MEDIA_MARKER, collect_media, split_media, wrap_xml
 from rcp.judging.client import Completion, CompletionInput
 from rcp.judging.judging import media_marker_tokens, prompt_overhead_tokens, window_tokens
+from rcp.storage import write_bytes
 from rcp.testing import FakeJudge
 
 
@@ -511,26 +513,73 @@ class TestVideoContainers:
         assert fake.usage.requests == 0
 
 
-@pytest.mark.parametrize(("media", "at_once"), [("pages", 1), ("container", 3), ("mixed", 1)])
-def test_the_media_gate_bounds_only_the_inlined_pool(
-    tmp_path: Path, pages, monkeypatch, media: str, at_once: int
-) -> None:
-    """The one-slot gate guards the pool a query *holds*: prepared pages and frames are inlined data URIs kept
-    until its run returns, so an inlined pass serialises. A container is not inlined -- its bytes live only
-    while a request is lowered, and the video cache bounds them -- so a container pass runs at the judge's own
-    concurrency; a pass carrying one inlined query still takes the gate."""
+def _gate_case_media(tmp_path: Path, pages: list[MediaRef]) -> dict[str, Any]:
+    """One pool and its video policy per case of :func:`test_the_media_gate_bounds_only_the_inlined_pool`.
+
+    The cases pin the rule against preparation: a page and a kept frame set are inlined; a file, a remote
+    and a ``data:`` container are three different things to the pool (the first two are a ref it reads
+    again, the third is its own bytes); frames beside a container under ``wire: video_url`` are dropped
+    before preparation, so that pass is a container pass.
+    """
     from rcp.data.resolution import VideoPolicy
-    from rcp.judging import judging as module
 
     clip = tmp_path / "clip.mp4"
     clip.write_bytes(b"\x00" * 64)
-    container = MediaRef(uri=str(clip), mime="video/mp4", num_bytes=64, num_frames=30, fps=30.0, duration_s=1.0)
-    inlined = [Content.from_parts([ImagePart(ref=ref)]) for ref in pages[:2]]
-    containers = [Content.from_parts([VideoPart(ref=container)]) for _ in range(2)]
-    pools = {"pages": [inlined] * 3, "container": [containers] * 3, "mixed": [inlined, containers, inlined]}
+    remote = "memory://clip.mp4"
+    write_bytes(remote, b"\x00" * 64)
+    payload = base64.b64encode(b"\x00" * 64).decode("ascii")
+
+    def container(uri: str) -> MediaRef:
+        return MediaRef(uri=uri, mime="video/mp4", num_bytes=64, num_frames=30, fps=30.0, duration_s=1.0)
+
+    file_clip = container(str(clip))
+    inlined_pages = [Content.from_parts([ImagePart(ref=ref)]) for ref in pages[:2]]
+    file_containers = [Content.from_parts([VideoPart(ref=file_clip)]) for _ in range(2)]
+    remote_containers = [Content.from_parts([VideoPart(ref=container(remote))]) for _ in range(2)]
+    data_containers = [
+        Content.from_parts([VideoPart(ref=container(f"data:video/mp4;base64,{payload}"))]) for _ in range(2)
+    ]
+    frame_sets = [Content.from_parts([VideoPart(frames=pages[:2])]) for _ in range(2)]
+    frames_beside_a_container = [Content.from_parts([VideoPart(ref=file_clip, frames=pages[:2])]) for _ in range(2)]
+    as_container = VideoPolicy(num_frames=8, wire="video_url", engine_video_pinning=True)
+    as_frames = VideoPolicy(num_frames=2, wire="frames")
+    return {
+        "pages": ([inlined_pages] * 3, as_container),
+        "container": ([file_containers] * 3, as_container),
+        "remote_container": ([remote_containers] * 3, as_container),
+        "data_container": ([data_containers] * 3, as_container),
+        "frames": ([frame_sets] * 3, as_frames),
+        "frames_beside_a_container": ([frames_beside_a_container] * 3, as_container),
+        "mixed": ([file_containers, inlined_pages, inlined_pages], as_container),
+    }
+
+
+@pytest.mark.parametrize(
+    ("media", "at_once"),
+    [
+        ("pages", 1),
+        ("container", 3),
+        ("remote_container", 3),
+        ("data_container", 1),
+        ("frames", 1),
+        ("frames_beside_a_container", 3),
+        ("mixed", 1),
+    ],
+)
+def test_the_media_gate_bounds_only_the_inlined_pool(
+    tmp_path: Path, pages, monkeypatch, media: str, at_once: int
+) -> None:
+    """The one-slot gate guards the pool a query *holds*, not the part's type: prepared pages and kept frames
+    are inlined data URIs held until its run returns, so that pass serialises. A file or remote container is
+    a ref the pool reads again when a request is lowered, so that pass runs at the judge's own concurrency;
+    so does a frames-carrying part under ``wire: video_url``, whose frames the policy drops. A ``data:``
+    container is its own bytes and takes the gate, and so does a pass with one inlined query."""
+    from rcp.judging import judging as module
+
+    pools, video = _gate_case_media(tmp_path, pages)[media]
     rows = [
         RankingExample(query_id=f"q{index}", query="what happens", doc_ids=["p0", "p1"], contents=contents)
-        for index, contents in enumerate(pools[media])
+        for index, contents in enumerate(pools)
     ]
     depth = 0
     peak = 0
@@ -547,8 +596,8 @@ def test_the_media_gate_bounds_only_the_inlined_pool(
 
     monkeypatch.setattr(module, "run_rubric", spy)
     fake = FakeJudge()
-    fake.config = fake.config.model_copy(update={"max_images": 2, "max_videos": 2})
-    preprocessing = Preprocessing(video=VideoPolicy(num_frames=8, wire="video_url", engine_video_pinning=True))
+    fake.config = fake.config.model_copy(update={"max_images": 4, "max_videos": 2})
+    preprocessing = Preprocessing(video=video)
 
     judge(rows, None, fake, stage="rubric", out=tmp_path / "store", schedule=SMALL, preprocessing=preprocessing)
 
