@@ -863,7 +863,14 @@ class TestUserInfoNeverLeaks:
     error message or an engine record -- beside the code's keys-are-never-logged claim. The request itself
     still uses the full URL (that is where the credentials live)."""
 
-    def test_set_aside_and_outage_never_name_the_secret(self, caplog: pytest.LogCaptureFixture) -> None:
+    def test_set_aside_and_outage_never_name_the_secret(
+        self, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The replica stays set aside for longer than the test runs, so the pick after the set-aside finds it
+        # down and the zero outage budget raises. Under the fixture's millisecond backoff a slow runner could
+        # see the replica come back first (the warning log alone outlasts 1 ms) and re-send into the script's
+        # default 200, which is the macOS flake this pins out.
+        monkeypatch.setattr(Transport, "BACKOFF_S", 60.0)
         script = ReplicaScript(503)
         transport = _transport(script, base_url="http://user:sekrit-value@judge.test/v1", wait_on_outage_s=0)
         with caplog.at_level(logging.WARNING, logger="rcp_ndcg"):
