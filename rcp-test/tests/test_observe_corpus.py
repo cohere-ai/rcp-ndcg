@@ -471,6 +471,26 @@ def test_the_manifest_carries_the_provenance_and_the_one_behaviour_fingerprint(t
     assert manifest["model"]["tokenizer_sha256"] == manifest["recipe"]["fingerprint_inputs"]["tokenizer_sha256"]
 
 
+def test_the_manifest_carries_the_pooler_config_as_the_recipe_declared_it(tmp_path: Path) -> None:
+    """The model block's ``pooler_config`` is plain data -- the keys the recipe declared, exactly -- so the
+    manifest writes.
+
+    A typed ``serve.pooler_config`` left in the block made ``write_corpus`` raise ``TypeError: Object of type
+    PluginPoolerConfig is not JSON serializable`` for every recipe, so the wave runner could record no corpus
+    at all.
+    """
+    from rcp_test.corpus import load_corpus
+
+    request = {"model": "m", "input": ["x"], "encoding_format": "float"}
+    reply = {"object": "list", "data": [{"index": 0, "embedding": [0.6, 0.8]}]}
+    directory = _synthetic_corpus(
+        tmp_path / "c", [_exchange("/v1/embeddings", request, reply)], recipe_id="fixture-multi-vector"
+    )
+    recipe = load_recipe(RECIPES / "fixture-multi-vector")
+    recorded = load_corpus(directory).manifest["model"]["pooler_config"]
+    assert recorded == recipe.serve.pooler_config.model_dump(mode="json") == {"task": "token_embed"}
+
+
 def test_a_manifest_missing_a_provenance_fact_fails_the_check(tmp_path: Path) -> None:
     """A fact that is neither recorded nor explained (here: the engine's image digest) fails acceptance."""
     request = {"model": "m", "input": ["x"], "encoding_format": "float"}

@@ -238,7 +238,9 @@ def model_facts(
         "template_sha256": template,
         "plugin": plugin,
         "hf_overrides": serve.hf_overrides,
-        "pooler_config": serve.pooler_config,
+        # The keys the recipe declared, as plain data: the manifest is written as JSON, so a model instance
+        # here fails the writer, and an unset knob stays absent (never ``null``).
+        "pooler_config": serve.pooler_config.model_dump(mode="json"),
         "mm_processor_kwargs": serve.mm_processor_kwargs
         if serve.mm_processor_kwargs is not None
         else unavailable("the recipe pins no mm_processor_kwargs"),
