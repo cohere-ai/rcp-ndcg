@@ -92,7 +92,16 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml  # pyright: ignore[reportMissingModuleSource]
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from .errors import RecipeError
 from .models import ARCHITECTURE_MODULES
@@ -331,7 +340,7 @@ def declared_plugin_fields(recipe: Recipe) -> tuple[str, ...]:
     recipe declares the capability -- so the loader reads one list rather than re-deriving which field needs
     which plugin.
     """
-    pooler = set(recipe.serve.pooler_config)
+    pooler = set(recipe.serve.pooler_config.model_dump())
     declared = {f"serve.pooler_config.{key}" for key in _plugin_pooler_keys() if key in pooler}
     if recipe.relevant_spans:
         declared.add("relevant_spans")
@@ -407,6 +416,38 @@ _SERVE_ARGV_FLAG_FIELDS: Mapping[str, str] = {
 }
 
 
+class PluginPoolerConfig(BaseModel):
+    """The ``serve.pooler_config`` keys a plugin provides, typed so the exported schema declares them.
+
+    The stock ``PoolerConfig`` at :data:`_PINNED_VLLM_REF` carries none of these three knobs, so
+    :data:`PLUGIN_FIELDS` names them and the plugin that honours them; ``extra="allow"`` keeps every stock
+    field, and :meth:`ServeConfig._pooler_keys_exist_at_the_pinned_engine` still refuses a key that is
+    neither.  The three are optional and a recipe sets only the ones it needs, so the serializer writes back
+    exactly the keys the recipe declared: an unset knob appears in neither ``--pooler-config`` nor the
+    recipe's resolved form (its digest and behaviour fingerprint).
+
+    Attributes:
+        chunk_length: The embed chunker's chunk size (tokens).
+        chunk_weighting: How a document's chunk scores aggregate into its one vector (``linear``).
+        normalize_aggregated_embeddings: Whether the aggregated document vector is L2-normalised.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    chunk_length: int | None = Field(default=None, description="the embed chunker's chunk size (tokens)")
+    chunk_weighting: str | None = Field(
+        default=None, description="how a document's chunk scores aggregate into its one vector (``linear``)"
+    )
+    normalize_aggregated_embeddings: bool | None = Field(
+        default=None, description="whether the aggregated document vector is L2-normalised"
+    )
+
+    @model_serializer(mode="wrap")
+    def _as_declared(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        """The keys the recipe declared, in the engine's own shape: an unset knob is absent, not ``null``."""
+        return {key: value for key, value in handler(self).items() if key in self.model_fields_set}
+
+
 class ServeConfig(BaseModel):
     """Everything rendered into the ``vllm serve`` argv — nothing implicit.
 
@@ -434,10 +475,11 @@ class ServeConfig(BaseModel):
     chat_template: str | None = Field(
         default=None, description="chat template file in the recipe directory, given to vLLM --chat-template"
     )
-    pooler_config: dict[str, Any] = Field(
-        default_factory=dict,
+    pooler_config: PluginPoolerConfig = Field(
+        default_factory=PluginPoolerConfig,
         description="vLLM --pooler-config, a JSON object; keys must be PoolerConfig fields at the pinned engine, "
-        "or a field rcp_vllm.recipe.PLUGIN_FIELDS declares a plugin provides (the embed chunker's knobs)",
+        "or a field rcp_vllm.recipe.PLUGIN_FIELDS declares a plugin provides (the embed chunker's three knobs, "
+        "declared below)",
     )
     trust_remote_code: bool = Field(default=False, description="vLLM --trust-remote-code flag")
     max_model_len: int = Field(gt=0, description="vLLM --max-model-len; at least every client budget")
@@ -484,7 +526,7 @@ class ServeConfig(BaseModel):
 
     @field_validator("pooler_config")
     @classmethod
-    def _pooler_keys_exist_at_the_pinned_engine(cls, value: dict[str, Any]) -> dict[str, Any]:
+    def _pooler_keys_exist_at_the_pinned_engine(cls, value: PluginPoolerConfig) -> PluginPoolerConfig:
         """Every key is one the served engine parses: a ``PoolerConfig`` field at the pin, or a field
         :data:`PLUGIN_FIELDS` declares a plugin provides.
 
@@ -494,7 +536,7 @@ class ServeConfig(BaseModel):
         refused here with both lists.
         """
         plugin_keys = _plugin_pooler_keys()
-        unknown = sorted(set(value) - set(PINNED_POOLER_CONFIG_FIELDS) - set(plugin_keys))
+        unknown = sorted(set(value.model_dump()) - set(PINNED_POOLER_CONFIG_FIELDS) - set(plugin_keys))
         if unknown:
             raise ValueError(
                 f"pooler_config keys {unknown} are not PoolerConfig fields at vLLM {_PINNED_VLLM_REF} "
@@ -2396,7 +2438,7 @@ def serve_argv(
                 "load_recipe, or clear serve.chat_template"
             )
         argv += ["--chat-template", str(directory / recipe.serve.chat_template)]
-    argv += ["--pooler-config", json.dumps(recipe.serve.pooler_config, sort_keys=True)]
+    argv += ["--pooler-config", json.dumps(recipe.serve.pooler_config.model_dump(), sort_keys=True)]
     if recipe.serve.mm_processor_kwargs:
         argv += ["--mm-processor-kwargs", json.dumps(recipe.serve.mm_processor_kwargs, sort_keys=True)]
     if recipe.serve.limit_mm_per_prompt is not None:

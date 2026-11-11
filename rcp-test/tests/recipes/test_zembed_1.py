@@ -290,7 +290,7 @@ def test_recipe_loads_and_declares_the_serving_shape() -> None:
     assert (serve.runner, serve.convert) == ("pooling", "embed")
     assert serve.hf_overrides == {}
     assert serve.chat_template is None, "no chat template is applied anywhere on this serving path"
-    assert serve.pooler_config == {}, "the engine reads the checkpoint's pooling config itself"
+    assert serve.pooler_config.model_dump() == {}, "the engine reads the checkpoint's pooling config itself"
     assert serve.trust_remote_code is False
     assert serve.max_model_len == MAX_TOKENS
     assert serve.dtype == "bfloat16"

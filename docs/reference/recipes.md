@@ -133,7 +133,9 @@ with the plugin distribution that honours it; the loader reads that table, never
 | `relevant_spans` | the rerank route accepts span-level relevance (the plugin's `relevant_spans` wire field) | nothing |
 
 A recipe that declares one names the plugin in `serve.plugin`. The knobs are `PoolerConfig` fields, so they
-ride inside the `--pooler-config` JSON the engine already parses, and the rendered command carries them:
+ride inside the `--pooler-config` JSON the engine already parses, and the rendered command carries them. Both
+exported schemas declare them as optional properties of `serve.pooler_config` (the object stays open, so a
+stock `PoolerConfig` field still passes), and the loader remains the authority on which keys exist:
 
 ```yaml
 # a family's shared serve block: the chunk knobs beside the plugin that provides them

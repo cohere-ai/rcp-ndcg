@@ -234,6 +234,30 @@ def test_a_pooler_key_no_plugin_provides_is_still_refused(tmp_path: Path) -> Non
     assert "chunk_len" in message and "plugin-provided: chunk_length" in message
 
 
+def test_the_exported_schema_declares_the_knobs_and_the_loader_still_refuses_a_typo(tmp_path: Path) -> None:
+    """The exported schemas carry the three knobs as properties, and the loader stays the key authority.
+
+    A JSON-Schema-only consumer reads ``serve.pooler_config``'s property set, so the fields the plugin honours
+    must be there rather than in a description.  ``extra="allow"`` keeps the object open -- every stock
+    ``PoolerConfig`` field still passes -- which is also why the schema cannot be the authority on which keys
+    exist: a typo is refused by the loader, by name, before any engine sees the argv.
+    """
+    schema_dir = Path(__file__).resolve().parents[1] / "schema"
+    for name in ("recipe.schema.json", "family.schema.json"):
+        schema = json.loads((schema_dir / name).read_text(encoding="utf-8"))
+        pooler = schema["$defs"]["ServeConfig"]["properties"]["pooler_config"]
+        declared = schema["$defs"][pooler["$ref"].rsplit("/", 1)[-1]]
+        assert set(declared["properties"]) == set(KNOBS), name
+        assert declared["additionalProperties"] is True, f"{name}: a stock PoolerConfig field still passes"
+
+    directory = _write_family(tmp_path, serve_extra="  plugin: rcp-vllm\n  pooler_config: {chunk_len: 8}\n")
+    with pytest.raises(RecipeError) as excinfo:
+        load_recipe(directory)
+
+    message = str(excinfo.value)
+    assert "chunk_len" in message and "plugin-provided: chunk_length" in message
+
+
 def test_extra_args_may_not_repeat_the_pooler_config_flag(tmp_path: Path) -> None:
     """``serve_argv`` renders ``--pooler-config`` from ``serve.pooler_config``, so ``extra_args`` may not carry
     it: the engine keeps the last occurrence, and a second copy would silently drop every declared knob."""

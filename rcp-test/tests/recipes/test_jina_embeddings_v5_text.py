@@ -356,7 +356,7 @@ def test_recipe_loads_with_the_product_endpoint_config(variant_id: str) -> None:
     assert recipe.serve.trust_remote_code is True
     assert recipe.serve.chat_template is None  # raw text on /v1/embeddings; see the recipe notes
     assert recipe.serve.hf_overrides == VARIANTS[variant_id]["hf_overrides"]
-    assert recipe.serve.plugin == "rcp-vllm" and recipe.serve.pooler_config == {}  # the plugin carries
+    assert recipe.serve.plugin == "rcp-vllm" and recipe.serve.pooler_config.model_dump() == {}  # the plugin carries
     # the model, not a patch: the pooling-full-context opt-in is gone (vllm#48039 ships in 0.32+)
     assert recipe.reference.kind == "remote_code" and recipe.reference.score_scale == "cosine"
     assert recipe.reference.known_deviations == ["over_cap_cut_differs"]

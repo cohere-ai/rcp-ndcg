@@ -725,11 +725,11 @@ def test_pooler_config_keys_are_the_served_images_own(tmp_path: Path) -> None:
     (default ``True``), so the tuple accepts it; a key no release at the pin carries is still refused, or the
     rendered argv would be one the engine rejects at parse."""
     recipe = load_recipe(_serve_field_recipe(tmp_path / "late", pooler_config={"enable_flash_late_interaction": True}))
-    assert recipe.serve.pooler_config == {"enable_flash_late_interaction": True}
+    assert recipe.serve.pooler_config.model_dump() == {"enable_flash_late_interaction": True}
     with pytest.raises(RecipeError, match="not_a_pooler_field"):
         load_recipe(_serve_field_recipe(tmp_path / "unknown", pooler_config={"not_a_pooler_field": True}))
     recipe = load_recipe(_serve_field_recipe(tmp_path / "ok", pooler_config={"use_activation": False}))
-    assert recipe.serve.pooler_config == {"use_activation": False}
+    assert recipe.serve.pooler_config.model_dump() == {"use_activation": False}
 
 
 def test_convert_must_match_the_roles_route(tmp_path: Path) -> None:

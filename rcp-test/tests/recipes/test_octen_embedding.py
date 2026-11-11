@@ -272,7 +272,7 @@ def test_recipe_validates_against_the_product_endpoints(variant_id: str) -> None
     assert recipe.serve.chat_template is None  # the ChatML template would change every prompt
     assert recipe.serve.max_model_len == MAX_TOKENS
     assert recipe.serve.dtype == "bfloat16"
-    assert recipe.serve.hf_overrides == {} and recipe.serve.pooler_config == {}
+    assert recipe.serve.hf_overrides == {} and recipe.serve.pooler_config.model_dump() == {}
     client = recipe.client
     assert client.get("tokenizer") == f"{recipe.model}@{recipe.revision}"
     assert client.get("max_tokens") == MAX_TOKENS  # the whole input sequence, anchors included
