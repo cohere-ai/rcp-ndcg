@@ -121,7 +121,7 @@ An operator runs the other gates against the same staged RC. The wave runner use
 
 A recipe's `status` becomes `verified` only from a wave whose document records the gates it needs. The wave
 document's `recipes[].steps` names exactly which ran in that job. The document also records the tested RC
-(`rc.name`, `rc.commit`, `rc.manifest_sha256`). Every RC carries version `0.0.1`, so without it two RCs built
+(`rc.name`, `rc.commit`, `rc.manifest_sha256`). Every RC carries version `0.1.0`, so without it two RCs built
 from different commits would produce indistinguishable evidence.
 
 ## Tagging the release
@@ -130,7 +130,7 @@ The tag's commit must equal the tested RC's commit. The tag pipeline rebuilds fr
 
 ```bash
 git fetch --tags origin
-python .github/scripts/check_release.py 0.0.1 --commit "$(git rev-parse v0.0.1)" \
+python .github/scripts/check_release.py 0.1.0 --commit "$(git rev-parse v0.1.0)" \
   --wave /path/to/waves/wave-a/wave.json --wave /path/to/waves/wave-b/wave.json
 ```
 

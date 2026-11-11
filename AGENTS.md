@@ -91,7 +91,7 @@ returns typed results and raises typed errors from `rcp.errors`.
   error with a hint, not a default that changes numbers.
 - **Every public module declares `__all__`**, and every public function has a docstring that states its inputs,
   outputs and units (logits, gain in [0, 1], `_s`, `_chars`, `_tokens`).
-- **The public surface is frozen for 0.0.1.** `PUBLIC_MODULES` in `rcp.support.api_docs` is the list, the
+- **The public surface is frozen.** `PUBLIC_MODULES` in `rcp.support.api_docs` is the list, the
   snapshot is the definition of public, and every public name is documented -- `rcp docs api --out
   docs/reference/api` generates the per-module pages the contract suite keeps current. The rules, the
   deprecation path and the update flow are on
@@ -107,9 +107,9 @@ returns typed results and raises typed errors from `rcp.errors`.
   anchor drops are declared `known_deviations` in a recipe and compared under the cap only.
 - **Recipe ids are the lowercased canonical Hub repo name** (never a redirecting short name), pinned by a test;
   a recipe's CHANGELOG bullets fold into the one release entry.
-- **Every recipe ships validated.** A recipe merges only with its GPU waves green (one 0.0.1 with everything);
+- **Every recipe ships validated.** A recipe merges only with its GPU waves green (one release with everything);
   `status: unverified` does not ship in a tag, and a `failed` variant ships only when the owner's explicit
-  disposition list names it (for 0.0.1, exactly the two `topk-embed-v1` variants).
+  disposition list names it (for 0.1.0, exactly the two `topk-embed-v1` variants).
 - **No GPU pytests.** GPU work produces observation corpora per `OBSERVATIONS-SPEC`; verified fake engines on
   CPU with conformance + golden replays stand in for tests. Model-level fakes live in `rcp-test`; the
   generic `fake://` stays in the product.
