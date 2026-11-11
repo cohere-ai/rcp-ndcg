@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rcp-test"
-version = "0.0.1"
+version = "0.1.0"
 description = "The validation tooling for served models: the equivalence harness, the engine recorder, the verified emulators, the GPU wave runner and the reference cases (unpublished)."
 readme = "README.md"
 license = "Apache-2.0"
@@ -24,8 +24,8 @@ classifiers = [
 # install it from the workspace or the staged wheelhouse. It depends on the product and the lean serving
 # package at the release's version, and never the other way round: neither published package names this one.
 dependencies = [
-  "rcp==0.0.1",
-  "rcp-vllm==0.0.1",
+  "rcp==0.1.0",
+  "rcp-vllm==0.1.0",
   "numpy>=1.26",
   "pydantic>=2.11",
   "PyYAML>=6.0",

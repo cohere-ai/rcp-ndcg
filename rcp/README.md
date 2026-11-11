@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cohere-ai/rcp-ndcg/v0.0.1/docs/assets/cohere-logo-dark.svg">
-    <img src="https://raw.githubusercontent.com/cohere-ai/rcp-ndcg/v0.0.1/docs/assets/cohere-logo.svg" alt="Cohere" height="36">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cohere-ai/rcp-ndcg/v0.1.0/docs/assets/cohere-logo-dark.svg">
+    <img src="https://raw.githubusercontent.com/cohere-ai/rcp-ndcg/v0.1.0/docs/assets/cohere-logo.svg" alt="Cohere" height="36">
   </picture>
 </p>
 
@@ -15,7 +15,7 @@ are in the paper
 [Rubric-Calibrated Preferences: Cross-Query Calibration of LLM Judgments via Item Response Theory](https://arxiv.org/abs/2609.35739).
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/cohere-ai/rcp-ndcg/v0.0.1/docs/assets/rcp-pipeline.png" alt="The RCP-nDCG pipeline: an LLM judge runs a listwise tournament (Stage A) and answers five binary criteria (Stage B); an item-response model calibrates every query's tournament scores onto one shared scale; each document's gain is its discrimination-weighted probability of passing the criteria." width="100%">
+  <img src="https://raw.githubusercontent.com/cohere-ai/rcp-ndcg/v0.1.0/docs/assets/rcp-pipeline.png" alt="The RCP-nDCG pipeline: an LLM judge runs a listwise tournament (Stage A) and answers five binary criteria (Stage B); an item-response model calibrates every query's tournament scores onto one shared scale; each document's gain is its discrimination-weighted probability of passing the criteria." width="100%">
 </p>
 <p align="center"><em>The RCP-nDCG pipeline (Figure 2 of the paper).</em></p>
 
