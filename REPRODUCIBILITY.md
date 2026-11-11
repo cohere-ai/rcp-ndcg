@@ -262,7 +262,9 @@ the numbers of arXiv v1, up to the documented deviations of that time.
 
 ```bash
 uv sync --extra dev
-uv run pytest tests/ -n 4
+uv run pytest tests/ packages/rcp/tests packages/rcp-core/tests -n 4
+uv run pytest packages/rcp-vllm/tests -q -n 4
+cd packages/rcp-test && uv run pytest tests -q -n 4
 ```
 
 Conformance and the fake-engine replays live in `rcp-test` (unpublished) and run per its README.
