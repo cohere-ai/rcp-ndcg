@@ -537,10 +537,30 @@ def test_the_run_report_fails_when_no_phase_is_recorded(tmp_path: Path, monkeypa
 
     The mutation: put the literal ``True`` back into ``_run_text``'s ``_check(f"{name}: phases recorded", ...)``
     and the row is green whatever ``_phase_facts`` returned, so this assertion fails.
+
+    The scenario's dataset is a local ``jsonl:`` file, not the shipped scenario's ``suite:`` one: ``prepare``
+    reads the qrels to record the dataset's identity, so a ``suite:`` dataset would make this offline CPU test
+    depend on a warm Hub cache (it failed on a cold one: ``OfflineModeIsEnabled`` for ``qrels.parquet``).
     """
     from rcp_ndcg_test import e2e
 
-    scenario = load_scenario(SCENARIOS / "text-four-phases.yaml").model_copy(update={"pair": 1})
+    rows = tmp_path / "rows.jsonl"
+    rows.write_text(
+        json.dumps(
+            {
+                "query_id": "q1",
+                "query": "what is the capital of france",
+                "doc_ids": ["d1", "d2"],
+                "docs": ["paris", "lyon"],
+                "qrels": {"d1": 1, "d2": 0},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    scenario = load_scenario(SCENARIOS / "text-four-phases.yaml").model_copy(
+        update={"pair": 1, "dataset": {"uri": f"jsonl:{rows}"}}
+    )
     monkeypatch.setattr(e2e, "_phase_facts", lambda pipeline: [])
     monkeypatch.setattr(e2e, "run_job_script", lambda script, *, out: (0, out / "job.log"))
     builder = e2e.ScenarioResultBuilder(scenario)
