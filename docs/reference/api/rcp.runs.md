@@ -149,7 +149,7 @@ class RunManifest(pydantic.main.BaseModel)
 
 - `dataset: rcp.runs.manifest.DatasetRef | None` = None
 
-- `datasets: list[rcp.runs.manifest._DatasetEntry]` = '<factory list>'
+- `datasets: list[rcp.runs.manifest.DatasetEntry]` = '<factory list>'
 
 - `families: dict[str, rcp_core.schemas.JudgementFamily]` = '<factory dict>'
 
@@ -159,7 +159,7 @@ class RunManifest(pydantic.main.BaseModel)
 
 - `path: str | None` = None
 
-- `rows: rcp.runs.manifest._Rows | None` = None
+- `rows: rcp.runs.manifest.Rows | None` = None
 
 - `run_id: str`
 
@@ -169,7 +169,7 @@ class RunManifest(pydantic.main.BaseModel)
 
 - `steps: list[rcp.runs.manifest.StepRecord]` = '<factory list>'
 
-- `suites: list[rcp.runs.manifest._SuiteEntry]` = '<factory list>'
+- `suites: list[rcp.runs.manifest.SuiteEntry]` = '<factory list>'
 
 - `updated_at: datetime.datetime` = '<factory _now>'
 

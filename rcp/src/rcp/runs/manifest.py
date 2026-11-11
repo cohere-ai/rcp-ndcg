@@ -104,11 +104,13 @@ class DatasetRef(BaseModel):
     task: str | None = None
 
 
-class _DatasetEntry(DatasetRef):
+class DatasetEntry(DatasetRef):
     """One dataset a run read: the :class:`DatasetRef` provenance plus the reader's slice and its visibility.
 
     Attributes:
-        internal: Whether the source is internal to the producer (not for publication), or ``False``.
+        internal: Whether the source is internal to the producer (not for publication). The default is
+            ``False`` and it is a statement by the producer, never an inference: the product reads the field,
+            it does not decide it, and a source the producer did not mark is not internal.
         args: The reader arguments that selected the slice (the options passed to
             :func:`~rcp.data.load_dataset`); ``{}`` when none were recorded.
     """
@@ -117,7 +119,7 @@ class _DatasetEntry(DatasetRef):
     args: dict[str, Any] = Field(default_factory=dict)
 
 
-class _SuiteEntry(BaseModel):
+class SuiteEntry(BaseModel):
     """A suite a run read and the entries of it the run used.
 
     Attributes:
@@ -132,7 +134,7 @@ class _SuiteEntry(BaseModel):
     entries: list[str] = Field(default_factory=list)
 
 
-class _Rows(BaseModel):
+class Rows(BaseModel):
     """The downstream row schema a run's exported rows are written as.
 
     Attributes:
@@ -170,9 +172,9 @@ class RunManifest(BaseModel):
     config: dict[str, Any] = Field(default_factory=dict)
     dataset: DatasetRef | None = None
     path: str | None = None
-    datasets: list[_DatasetEntry] = Field(default_factory=list)
-    suites: list[_SuiteEntry] = Field(default_factory=list)
-    rows: _Rows | None = None
+    datasets: list[DatasetEntry] = Field(default_factory=list)
+    suites: list[SuiteEntry] = Field(default_factory=list)
+    rows: Rows | None = None
     families: dict[str, JudgementFamily] = Field(default_factory=dict)
     """``{family_key: JudgementFamily}`` of the judgements the run wrote."""
     steps: list[StepRecord] = Field(default_factory=list)

@@ -174,11 +174,13 @@ class TestPersistence:
 
 
 class _FirstV1Reader(BaseModel):
-    """The first ``run-manifest.v1``'s thirteen fields, and only those.
+    """The first ``run-manifest.v1``'s thirteen fields, and only those, under the additive rule.
 
-    A v1 reader reads the fields it knows; the additive fields are optional and unknown to it, so it ignores
-    them. Pinning the field set here means a change that made a new field required, or changed an old field's
-    type, fails this reader instead of passing unnoticed.
+    A reader that ignores the fields it does not know reads a later ``v1`` record: the additions are optional,
+    so it does not need them. Pinning the field set here means a change that made a new field required, or
+    changed an old field's type, fails this reader instead of passing unnoticed. The shipped reader is not
+    this one: ``RunManifest`` is a closed record and refuses a field it does not know, which
+    ``test_a_first_v1_reader_reads_a_later_v1_manifest`` pins beside this reader.
     """
 
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
@@ -285,6 +287,27 @@ class TestTheV1Additions:
         assert first.metrics == manifest.metrics
         assert "path" not in first.model_dump()
 
+        # The shipped reader is a closed record: it reads a later record only while it knows every field, and
+        # it refuses a field it does not know instead of dropping it. A field added after a release therefore
+        # needs a reader at least as new as the writer -- a refusal, never a misread -- and the additive rule
+        # is what keeps that the only breakage.
+        later = json.loads(Path(layout.manifest).read_text(encoding="utf-8")) | {"added_later": 1}
+        Path(layout.manifest).write_text(json.dumps(later), encoding="utf-8")
+        with pytest.raises(DataError) as caught:
+            RunManifest.load(layout)
+        assert "added_later" in caught.value.message
+        assert _FirstV1Reader.model_validate(later).run_id == manifest.run_id
+
+        # Closed wherever the field sits, not only at the top: a step's `usage` is the one nested record a
+        # producer could extend, and it refuses an unknown field like the manifest does.
+        nested = json.loads(Path(layout.manifest).read_text(encoding="utf-8"))
+        nested.pop("added_later")
+        nested["usage"] = {"requests": 1, "added_later": 1}
+        Path(layout.manifest).write_text(json.dumps(nested), encoding="utf-8")
+        with pytest.raises(DataError) as nested_caught:
+            RunManifest.load(layout)
+        assert "added_later" in nested_caught.value.message
+
     def test_the_added_fields_are_optional_and_the_manifest_stays_closed(self) -> None:
         schema = RunManifest.model_json_schema(mode="serialization")
 
@@ -295,11 +318,11 @@ class TestTheV1Additions:
         assert added.isdisjoint(schema["required"])
 
         definitions = schema["$defs"]
-        assert definitions["_DatasetEntry"]["properties"]["internal"]["default"] is False
-        assert "args" not in definitions["_DatasetEntry"]["required"]
-        assert "internal" not in definitions["_DatasetEntry"]["required"]
-        assert "entries" not in definitions["_SuiteEntry"]["required"]
-        assert definitions["_Rows"]["properties"]["schema"]["default"] is None
+        assert definitions["DatasetEntry"]["properties"]["internal"]["default"] is False
+        assert "args" not in definitions["DatasetEntry"]["required"]
+        assert "internal" not in definitions["DatasetEntry"]["required"]
+        assert "entries" not in definitions["SuiteEntry"]["required"]
+        assert definitions["Rows"]["properties"]["schema"]["default"] is None
         # The existing ``dataset`` field keeps its closed shape: the additions live on the new array's entries.
         assert {"internal", "args"}.isdisjoint(definitions["DatasetRef"]["properties"])
 
