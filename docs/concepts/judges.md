@@ -349,7 +349,7 @@ assert store.keys("run-1/rows/") == []  # ... and it is gone from the prefix
 A key is opaque. `cache_key` is the package's convention: `/`-separated segments, none of them empty and
 none of them holding a `/`. A prefix scan therefore names exactly one namespace.
 `keys(cache_key("run-1", "rows") + "/")` lists the run's rows, and not `run-1/rows-2/1`. The conformance test
-is `assert_cache_store_contract` in `tests/storage/test_cache_store.py`. It is one contract, run against both
+is `assert_cache_store_contract` in `packages/rcp/tests/storage/test_cache_store.py`. It is one contract, run against both
 shipped implementations. A downstream's own store therefore has a model to check itself against, with its own
 keys.
 

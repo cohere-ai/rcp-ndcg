@@ -1,9 +1,9 @@
 # The uv workspace root: the workspace members and the tooling config only. The distributions carry
-# their own manifests (rcp/pyproject.toml and the project directories beside it); tools/
+# their own manifests (packages/rcp/pyproject.toml and the project directories beside it); tools/
 # layout_move.py keeps this split and the member list current.
 
 [tool.uv.workspace]
-members = ["rcp", "rcp-core", "rcp-test", "rcp-vllm"]
+members = ["packages/*"]
 
 [tool.uv.sources]
 # An inter-member requirement resolves to the checkout, never to an index.
@@ -23,8 +23,12 @@ dev = [
 # The one extension seam: job runners. The public ones are registered here like any plugin would be.
 
 [tool.pytest.ini_options]
-# Collect the test tree only (experiments/ and examples/ are exercised through tests/).
-testpaths = ["tests"]
+# Collect the root test tree and the two distributions' suites it was split into (experiments/ and
+# examples/ are exercised through tests/). The other two distributions' trees are never collected with
+# this one: `packages/rcp-test/tests` and `packages/rcp-vllm/tests` run in their own processes, as CI does.
+testpaths = ["tests", "packages/rcp/tests", "packages/rcp-core/tests"]
+# The repository root, so ``tests._session`` is importable from a package's test tree.
+pythonpath = ["."]
 # The judging client and the execution layers are async end to end; `auto` mode keeps
 # `async def test_...` working without an @pytest.mark.asyncio on each one.
 asyncio_mode = "auto"
@@ -39,20 +43,20 @@ filterwarnings = ["error::rcp.errors.RcpNdcgWarning"]
 [tool.ruff]
 line-length = 120
 target-version = "py312"
-# A recipe's vendored card script (rcp-vllm/src/rcp_vllm/recipes/*/qwen3_vl_embedding.py) is a model's
+# A recipe's vendored card script (packages/rcp-vllm/src/rcp_vllm/recipes/*/qwen3_vl_embedding.py) is a model's
 # published code, kept byte-identical to the Hub file and hash-pinned by the recipe's test: it is never
 # reformatted or linted. The pattern names that exact filename only (a differently named vendored file
 # would need its own entry), so nothing else can hide behind it; force-exclude keeps the exclusion
 # working when the file is named explicitly on the command line.
-# The embeddinggemma-2 fold (rcp-vllm/src/rcp_vllm/models/embedding_gemma2/fold/) is the same
+# The embeddinggemma-2 fold (packages/rcp-vllm/src/rcp_vllm/models/embedding_gemma2/fold/) is the same
 # case: transformers 5.19.0's four embedding_gemma2 modules and vLLM nightly 8cbd5d03's
 # embedding_gemma2 model, kept byte-identical to the upstream files (only a header is added) and loaded
 # under their upstream names (the transformers modules) or by the registry's lazy string (the model) by
 # the plugin; upstream's own layout is never reformatted. Nothing else lives under that directory.
 force-exclude = true
 extend-exclude = [
-  "rcp-vllm/src/rcp_vllm/recipes/*/qwen3_vl_embedding.py",
-  "rcp-vllm/src/rcp_vllm/models/embedding_gemma2/fold/*.py",
+  "packages/rcp-vllm/src/rcp_vllm/recipes/*/qwen3_vl_embedding.py",
+  "packages/rcp-vllm/src/rcp_vllm/models/embedding_gemma2/fold/*.py",
 ]
 
 [tool.ruff.format]
@@ -65,7 +69,7 @@ exclude = ["*.md"]
 select = ["E", "F", "I", "B", "UP"]
 
 [tool.basedpyright]
-include = ["rcp/src", "rcp-core/src", "rcp-vllm/src", "rcp-test/src"]
+include = ["packages/rcp/src", "packages/rcp-core/src", "packages/rcp-vllm/src", "packages/rcp-test/src"]
 # The recipes' reference subprocesses were outside the type-checked sources before the layout move (they
 # ran as subprocesses in their own environment, never imported); the move parked them inside a src tree,
 # and the exclusions keep the checked scope what it was. Same for the node scripts the move merged
@@ -76,11 +80,11 @@ include = ["rcp/src", "rcp-core/src", "rcp-vllm/src", "rcp-test/src"]
 # harness): upstream's own optional-typing style is not this tree's to fix.
 exclude = [
     "**/__pycache__",
-    "rcp-vllm/src/rcp_vllm/recipes/**",
-    "rcp-vllm/src/rcp_vllm/models/embedding_gemma2/fold/**",
-    "rcp-test/src/rcp_test/jobs/reference_deps.py",
-    "rcp-test/src/rcp_test/jobs/report.py",
-    "rcp-test/src/rcp_test/jobs/topk_probe.py",
+    "packages/rcp-vllm/src/rcp_vllm/recipes/**",
+    "packages/rcp-vllm/src/rcp_vllm/models/embedding_gemma2/fold/**",
+    "packages/rcp-test/src/rcp_test/jobs/reference_deps.py",
+    "packages/rcp-test/src/rcp_test/jobs/report.py",
+    "packages/rcp-test/src/rcp_test/jobs/topk_probe.py",
 ]
 # "standard" rather than basedpyright's default "all": the strict-adjacent rules
 # (reportAny, reportUnusedCallResult, reportMissingTypeArgument) fire thousands

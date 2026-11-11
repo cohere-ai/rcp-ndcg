@@ -106,7 +106,7 @@ placement, geometry and tokens.
 
 The wave's recipes are grouped by their `engine.image` before submission. There is one job per image. Thus a
 digest-pinned nightly recipe runs on its own image without a change to the wave list. The pairs files under
-`rcp-test/pairs/` are the fixed request sets.
+`packages/rcp-test/pairs/` are the fixed request sets.
 
 ## Fakes and conformance on CPU afterwards
 

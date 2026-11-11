@@ -10,7 +10,7 @@ client environment of a GPU node installs the staged harness wheel (`rc_build.sh
 Anywhere else, such as a downstream's own suite, installs it **from a git subdirectory** of the repository:
 
 ```bash
-pip install "rcp-test @ git+https://github.com/cohere-ai/rcp-ndcg.git@v0.0.1#subdirectory=rcp-test"
+pip install "rcp-test @ git+https://github.com/cohere-ai/rcp-ndcg.git@v0.0.1#subdirectory=packages/rcp-test"
 ```
 
 It depends on `rcp` and `rcp-vllm` at the version of the release. The dependency never points the other way.

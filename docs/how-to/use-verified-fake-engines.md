@@ -6,10 +6,10 @@ engine per (engine, version, recipe, behaviour fingerprint). The URL host names 
 surrogate. Every reply marks which source it used.
 
 **The committed corpora are the `vllm-0.33.0` recording.** An emulator registers under the version that its
-corpus was recorded on. `rcp-test/corpora/vllm-0.33.0/` was recorded on the v0.33.0 image. The harness resolves
+corpus was recorded on. `packages/rcp-test/corpora/vllm-0.33.0/` was recorded on the v0.33.0 image. The harness resolves
 each recipe's corpus under the engine line its recipe pins. That root is `corpora/<engine>-<version>`, from the
 recipe's `engine.name` and `engine.min_version`. The `fake://vllm-0.33.0/...` host that this page uses is what
-the corpora register under. The superseded `rcp-test/corpora/vllm-0.31.0/` recording is committed beside it as
+the corpora register under. The superseded `packages/rcp-test/corpora/vllm-0.31.0/` recording is committed beside it as
 the earlier line's evidence. No emulator registers under it: a `fake://vllm-0.31.0/...` lookup is refused by
 name. That refusal is the version gate below, not a missing feature.
 
@@ -79,7 +79,7 @@ An observation corpus is raw-first (OBSERVATIONS-SPEC). It has one format and on
 knobs. The pod's Kubernetes Service links ride under the same prefix (the Services are named
 `vllm-service-...`). `rcp_test.observe.provenance` drops them, so no internal address or Service name
 enters a manifest. The repository keeps subsets (`records.jsonl.gz` and an `index.json` that names the full
-corpus) at `rcp-test/corpora/<engine>-<version>/<recipe>/<behaviour-fingerprint>/`. `find_corpora` finds
+corpus) at `packages/rcp-test/corpora/<engine>-<version>/<recipe>/<behaviour-fingerprint>/`. `find_corpora` finds
 them by scanning their manifests. Each subset has its append-only `verification.jsonl` beside the recorded
 files. The shared `_tokenizers/` store vends the `tokenizer.json` files whose SHA-256 the fingerprints hash.
 Thus the whole suite runs offline. The emulators read records through `exchanges_of`. Every derived view
@@ -95,13 +95,13 @@ alone.
 
 ## Conformance, staleness and goldens
 
-The conformance suite (`tests/conformance/`) replays every recorded exchange through the emulator's HTTP
+The conformance suite (`packages/rcp-test/tests/conformance/`) replays every recorded exchange through the emulator's HTTP
 surface. It compares the status, the recorded headers, the body and, where recorded, the raw bytes. The
 staleness check recomputes each recipe's **behaviour fingerprint**
 (`rcp_test.fingerprint.behaviour_fingerprint`, rule `rcp-fp/4`). The fingerprint has these inputs: the checkpoint id and revision. It also has the engine image, its version floor and the serve block. It also has the source hash of every plugin module that the recipe's engine runs. That includes its declared architectures' modules and its opted-in patches'. The template file's bytes, the tokenizer's SHA-256 and the client fields that change the request bytes are inputs too. The
 check fails and **names the changed inputs** when no committed corpus carries the fingerprint. The only way
-past is a dated, reasoned, unexpired entry in `tests/conformance/waivers.json`. The release checklist requires
-that file to be empty. A corpus left stale by a recipe change and awaiting its re-recording is declared in `tests/conformance/stale.json`. The entry gives the recipe, the recorded fingerprint, the inputs that moved, why and when. The
+past is a dated, reasoned, unexpired entry in `packages/rcp-test/tests/conformance/waivers.json`. The release checklist requires
+that file to be empty. A corpus left stale by a recipe change and awaiting its re-recording is declared in `packages/rcp-test/tests/conformance/stale.json`. The entry gives the recipe, the recorded fingerprint, the inputs that moved, why and when. The
 replays skip it. The suite checks that it fails the staleness gate naming exactly those inputs. The release
 checklist requires that list empty too, and `RCP_NDCG_RELEASE=1` makes the suite enforce it. The way to empty
 it is a new recording (the wave runner's `--changed-since`), never an edit. A corpus whose moved inputs shape none of its recorded exchanges is re-keyed instead. Such inputs are metadata only, such as a pooler setting that restates the engine's default. Its manifest carries the current fingerprint and a `rekeyed` entry that names what moved and
@@ -143,18 +143,18 @@ different rules never collide. `rcp-fp/4` is current. It keys the engine image a
 (`engine.image`, `engine.min_version`) and the plugin code that the recipe's engine runs
 (`plugin_sha256.<module>`). That plugin code is the shared entry modules and every declared `serve.plugin_architectures` module. It also includes every module that an opted-in `serve.patches` patch runs (its own module and the backend it registers). These inputs sit beside version 3's inputs. The rule bumps to `rcp-fp/5` when the input set or its canonicalisation changes. A change is adding or removing an input, or moving a field between the request-shaping and reply-processing classes. A bump is deliberate and recorded here, in the fingerprint
 module and in the CHANGELOG. Every committed corpus and every per-variant golden is then either re-keyed or re-recorded on the next wave. A re-key is allowed only when the moved inputs shaped none of the recorded exchanges.
-`tests/conformance/stale.json` declares the ones awaiting their recording.
+`packages/rcp-test/tests/conformance/stale.json` declares the ones awaiting their recording.
 
-The golden replays (`tests/e2e/test_golden_replay.py`) run a NanoBEIR-shaped and a ViDoRe-shaped mini through
+The golden replays (`packages/rcp-test/tests/e2e/test_golden_replay.py`) run a NanoBEIR-shaped and a ViDoRe-shaped mini through
 rcp's retrieval and rerank path against the emulators. They pin nDCG@10 and RCP-nDCG@10 to 1e-9. Every
 input must be observed, or the run fails. The pins are **regression pins** computed by this code from the
-committed corpora (`kind: regression-pin` in `tests/e2e/golden/goldens.json`). They are not independent GPU-run
+committed corpora (`kind: regression-pin` in `packages/rcp-test/tests/e2e/golden/goldens.json`). They are not independent GPU-run
 numbers. The ViDoRe retrieval view is waived until a corpus observes a page image.
 
 <!-- snippet: skip (a repository checkout with the corpora) -->
 ```bash
-RCP_UPDATE_GOLDENS=1 uv run --no-sync pytest tests/e2e/test_golden_replay.py  # recompute the pins
-RCP_APPEND_VERIFICATION=1 uv run --no-sync pytest tests/conformance -k verification_record
+RCP_UPDATE_GOLDENS=1 uv run --no-sync pytest packages/rcp-test/tests/e2e/test_golden_replay.py  # recompute the pins
+RCP_APPEND_VERIFICATION=1 uv run --no-sync pytest packages/rcp-test/tests/conformance -k verification_record
 ```
 
 ## What moved between two corpora
@@ -167,7 +167,7 @@ review before a new corpus replaces the old.
 
 <!-- snippet: skip (a repository checkout with the corpora; the path is the committed recording's) -->
 ```bash
-python -m rcp_test.changes changed --recipes-root rcp-vllm/src/rcp_vllm/recipes \
-    --corpora-root rcp-test/corpora/vllm-0.33.0
+python -m rcp_test.changes changed --recipes-root packages/rcp-vllm/src/rcp_vllm/recipes \
+    --corpora-root packages/rcp-test/corpora/vllm-0.33.0
 python -m rcp_test.changes diff --before <corpus-dir> --after <corpus-dir>
 ```

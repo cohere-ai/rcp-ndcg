@@ -66,7 +66,7 @@ def test_the_serving_recipes_are_a_declared_extra() -> None:
     that extra as its one home (so ``rcp doctor`` reports it and a missing import has an install line)."""
     from rcp.errors import EXTRA_FOR_MODULE
 
-    manifest = tomllib.loads((ROOT / "rcp" / "pyproject.toml").read_text(encoding="utf-8"))
+    manifest = tomllib.loads((ROOT / "packages" / "rcp" / "pyproject.toml").read_text(encoding="utf-8"))
     extras = manifest["project"]["optional-dependencies"]
     assert "vllm" in extras, "rcp lazily imports rcp_vllm, so the dependency must be declared as an extra"
     assert {Requirement(spec).name for spec in extras["vllm"]} == {"rcp-vllm"}

@@ -17,7 +17,7 @@ stages everything and writes a hash manifest:
 ```bash
 export RCP_STAGE_PREFIX=gs://YOUR-BUCKET/stage            # private location; operator's command line only
 export EXTRA_DIRS="/path/to/private-pairs /path/to/private-wave-lists"
-rcp-test/src/rcp_test/jobs/rc_build.sh rc0                # or rc_build.sh rc0 <commit>
+packages/rcp-test/src/rcp_test/jobs/rc_build.sh rc0                # or rc_build.sh rc0 <commit>
 ```
 
 The build runs in a detached worktree of the given commit, so a dirty checkout is fine. The staged tree under
@@ -30,10 +30,10 @@ The build runs in a detached worktree of the given commit, so a dirty checkout i
 | `wheelhouse/` | the release wheels plus every locked dependency for the node's platform |
 | `requirements-constraints.txt` | the lock's export — the install's constraints file |
 | `recipes/` | the recipe families (family.yaml + its variants table, the family's reference.py, its template, its `reference.in`/`reference.lock`), from the rcp-vllm wheel's package data |
-| `wave-lists/<wave>.txt` | one recipe id per line, per wave (the T4 scenario wave's: one scenario id per line), from `rcp-test/wave-lists/`; `submit.sh` derives one `<wave>.<image-slug>.txt` per engine image at submit time |
+| `wave-lists/<wave>.txt` | one recipe id per line, per wave (the T4 scenario wave's: one scenario id per line), from `packages/rcp-test/wave-lists/`; `submit.sh` derives one `<wave>.<image-slug>.txt` per engine image at submit time |
 | `scenarios/<id>.yaml` | the T4 run scenarios, for a `--script e2e` wave (stage them beside `recipes/`) |
-| `pairs/` | the stage-2 pairs files, from `rcp-test/pairs/` |
-| `cases/` | the reference cases, from `rcp-test/cases/` (the `--script casefill` job reads and edits them on the node; the wheel drops `cases/`) |
+| `pairs/` | the stage-2 pairs files, from `packages/rcp-test/pairs/` |
+| `cases/` | the reference cases, from `packages/rcp-test/cases/` (the `--script casefill` job reads and edits them on the node; the wheel drops `cases/`) |
 | `extra/<name>/` | the `EXTRA_DIRS` entries (private pairs, wave lists or recipes, and the wheelhouses for family pins with no index wheel such as `flash-attn`), as they are |
 | `manifest.json` | the commit, the version, the CUDA-lock wheels inert on a CPU client (`nvidia-*`, `triton`), the SHA-256 of every staged file |
 
@@ -146,7 +146,7 @@ export RCP_JOBS_CONFIG=/path/to/jobs-config.yaml     # the job CLI's -f config (
 export RCP_GCS_AUTH_FILE=/path/to/gcs_auth.sh        # mounted at /etc/rcp/gcs_auth.sh; named, never read
 export RCP_HF_TOKEN_FILE=/path/to/token              # mounted into the job and read there, never passed in an argv
 export RCP_SUBMIT_DIR=/path/to/job-outputs           # optional: where the job CLI's output files land
-rcp-test/src/rcp_test/jobs/submit.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves wave-a wave-b
+packages/rcp-test/src/rcp_test/jobs/submit.sh gs://YOUR-BUCKET/rc0 gs://YOUR-BUCKET/waves wave-a wave-b
 ```
 
 Options: `--max-jobs N` (default 1), `--priority <class>` (the `priority_class=` override; default `RCP_PRIORITY`, else `default`; verify with a dry run) and `--script bootstrap|wave0|e2e|casefill|judgecheck|topk-probe|sdpa-probe|maxsim-probe`. `RCP_JOBS_CLI=echo` prints the plan instead of submitting. `RCP_JOBS_CLI` names the job CLI
@@ -183,7 +183,7 @@ Run it through `submit.sh` (which mounts `wave0.sh` beside `bootstrap.sh`), or a
 
 ```bash
 export RCP_STAGE_PREFIX=gs://YOUR-BUCKET/stage
-rcp-test/src/rcp_test/jobs/submit.sh --script wave0 --priority high \
+packages/rcp-test/src/rcp_test/jobs/submit.sh --script wave0 --priority high \
   "$RCP_STAGE_PREFIX/rc0" gs://YOUR-BUCKET/waves wave0
 ```
 
@@ -196,19 +196,19 @@ jobs submit -f "$RCP_JOBS_CONFIG" \
   env.RCP_IMAGE=vllm/vllm-openai:v0.33.0 \
   env.RCP_IMAGE_DIGEST=sha256:0123...abcd \
   worker.command='/bin/bash /etc/rcp/files/hftoken/hf_token_env.sh /bin/bash /etc/rcp/files/wave0/wave0.sh '"$RCP_STAGE_PREFIX"'/rc0 gs://YOUR-BUCKET/waves/wave0' \
-  files.wave0.from_file=rcp-test/src/rcp_test/jobs/wave0.sh \
+  files.wave0.from_file=packages/rcp-test/src/rcp_test/jobs/wave0.sh \
   files.wave0.mount_path=/etc/rcp/files/wave0/wave0.sh \
-  files.wave0host.from_file=rcp-test/src/rcp_test/jobs/wave0_host.py \
+  files.wave0host.from_file=packages/rcp-test/src/rcp_test/jobs/wave0_host.py \
   files.wave0host.mount_path=/etc/rcp/files/wave0host/wave0_host.py \
-  files.gcshelper.from_file=rcp-test/src/rcp_test/jobs/gcs.sh \
+  files.gcshelper.from_file=packages/rcp-test/src/rcp_test/jobs/gcs.sh \
   files.gcshelper.mount_path=/etc/rcp/files/gcshelper/gcs.sh \
-  files.gcspy.from_file=rcp-test/src/rcp_test/jobs/gcs.py \
+  files.gcspy.from_file=packages/rcp-test/src/rcp_test/jobs/gcs.py \
   files.gcspy.mount_path=/etc/rcp/files/gcshelper/gcs.py \
-  files.bootstrap.from_file=rcp-test/src/rcp_test/jobs/bootstrap.sh \
+  files.bootstrap.from_file=packages/rcp-test/src/rcp_test/jobs/bootstrap.sh \
   files.bootstrap.mount_path=/etc/rcp/files/bootstrap/bootstrap.sh \
-  files.report.from_file=rcp-test/src/rcp_test/jobs/report.py \
+  files.report.from_file=packages/rcp-test/src/rcp_test/jobs/report.py \
   files.report.mount_path=/etc/rcp/files/report/report.py \
-  files.refdeps.from_file=rcp-test/src/rcp_test/jobs/reference_deps.py \
+  files.refdeps.from_file=packages/rcp-test/src/rcp_test/jobs/reference_deps.py \
   files.refdeps.mount_path=/etc/rcp/files/refdeps/reference_deps.py \
   files.gcsauth.from_file="$RCP_GCS_AUTH_FILE" files.gcsauth.mount_path=/etc/rcp/gcs_auth.sh \
   files.hftoken.from_file="$RCP_HF_TOKEN_FILE" files.hftoken.mount_path=/etc/rcp/hf_token \
@@ -219,7 +219,7 @@ jobs submit -f "$RCP_JOBS_CONFIG" \
 `WAVE0_DRY=1` prints the plan without running anything. The knobs (`WAVE0_MODEL`, `WAVE0_REVISION`,
 `WAVE0_SECOND_MODEL`, `WAVE0_BUDGET`, `WAVE0_PORT_BASE`, `WAVE0_STARTUP_TIMEOUT_S`, the minimums) are
 environment variables with the researched defaults. The report is `rcp-ndcg.wave0-report.v1`, its
-schema exported at `rcp-test/schema/wave0-report.schema.json`.
+schema exported at `packages/rcp-test/schema/wave0-report.schema.json`.
 
 ## The T4 scenario wave (`--script e2e`)
 
@@ -227,15 +227,15 @@ The end-to-end run scenarios of the GPU validation run as one job per wave throu
 The wave list names **scenario ids** (or paths), one per line:
 
 ```bash
-rcp-test/src/rcp_test/jobs/submit.sh --script e2e --priority high \
+packages/rcp-test/src/rcp_test/jobs/submit.sh --script e2e --priority high \
   "$RCP_STAGE_PREFIX/rc0" gs://YOUR-BUCKET/waves e2e
 ```
 
-The four shipped scenarios are in `rcp-test/scenarios/`, with schema `schema/scenario.schema.json`. `text-four-phases` is a NanoBEIR subset: served encoder -> served reranker -> served judge -> calibrate + evaluate. It runs twice and is compared on identities and outputs. `outage` kills the judge engine mid-tournament: the run parks and recovers once. The `wait_on_outage_s` expiry fails with `BackendUnavailableError`, and a resume finishes the run. `identity` runs the same run directory again on new engine ports: nothing recomputes. `vidore` is a ViDoRe v3 subset with page images. The judge candidates and their pinned commits live in the scenarios. Each has the `fallback` that its T0 smoke concedes to: the Flash-Next NVFP4 candidate falls back to its FP8 release. The wave's outputs (`E2E.md`, `status.json`, the run directories) upload to
+The four shipped scenarios are in `packages/rcp-test/scenarios/`, with schema `schema/scenario.schema.json`. `text-four-phases` is a NanoBEIR subset: served encoder -> served reranker -> served judge -> calibrate + evaluate. It runs twice and is compared on identities and outputs. `outage` kills the judge engine mid-tournament: the run parks and recovers once. The `wait_on_outage_s` expiry fails with `BackendUnavailableError`, and a resume finishes the run. `identity` runs the same run directory again on new engine ports: nothing recomputes. `vidore` is a ViDoRe v3 subset with page images. The judge candidates and their pinned commits live in the scenarios. Each has the `fallback` that its T0 smoke concedes to: the Flash-Next NVFP4 candidate falls back to its FP8 release. The wave's outputs (`E2E.md`, `status.json`, the run directories) upload to
 the wave's `OUT_URI`.
 
 The stage must carry the scenario YAMLs under `scenarios/` beside `recipes/`. Until `rc_build.sh`
-stages them with the recipe data, copy `rcp-test/scenarios/*.yaml` into the stage.
+stages them with the recipe data, copy `packages/rcp-test/scenarios/*.yaml` into the stage.
 `E2E_DRY=1 bash e2e.sh ...` prints the plan that the node would run.
 
 ## The judge-check job (`--script judgecheck`)
@@ -247,7 +247,7 @@ A judge's slice is the `resources.gpus` that its recipe declares, the value that
 more GPUs than the node has is refused before anything is served.
 
 ```bash
-rcp-test/src/rcp_test/jobs/submit.sh --script judgecheck --priority high \
+packages/rcp-test/src/rcp_test/jobs/submit.sh --script judgecheck --priority high \
   "$RCP_STAGE_PREFIX/rc0" gs://YOUR-BUCKET/waves judgecheck
 ```
 
@@ -273,7 +273,7 @@ python. It uploads `probe-report.json`, `probe-report.md` and the per-row dumps 
 `<OUT_PREFIX>/<wave>/topk-probe/`.
 
 ```bash
-rcp-test/src/rcp_test/jobs/submit.sh --script topk-probe --priority high \
+packages/rcp-test/src/rcp_test/jobs/submit.sh --script topk-probe --priority high \
   "$RCP_STAGE_PREFIX/rc0" gs://YOUR-BUCKET/waves topk-probe
 ```
 

@@ -96,7 +96,7 @@ canonicalisation is a new rule (`rcp-fp/5`). Corpora keyed by different rules th
 deliberate. It is recorded in the fingerprint module, in the
 [verified fake engines](../how-to/use-verified-fake-engines.md) page and in the CHANGELOG. Every committed corpus is
 then re-keyed or re-recorded on the next wave. It is re-keyed only when the moved inputs shaped none of its recorded
-exchanges. `tests/conformance/stale.json` names the corpora that await recording.
+exchanges. `packages/rcp-test/tests/conformance/stale.json` names the corpora that await recording.
 
 ## Observation corpora and their records
 
@@ -142,7 +142,7 @@ repository is that output, committed, and `tests/contract` pins it byte for byte
 | Version | Home | Bumps when |
 |---|---|---|
 | the package version | all four `pyproject.toml` files, `rcp --version` | a public-surface change (minor) or an addition (patch), as the rules above say |
-| a recipe's `schema_version` | `rcp-vllm/src/rcp_vllm/recipes/*/family.yaml` | the recipe file format changes in an incompatible way |
+| a recipe's `schema_version` | `packages/rcp-vllm/src/rcp_vllm/recipes/*/family.yaml` | the recipe file format changes in an incompatible way |
 | the behaviour fingerprint rule | `rcp_test.fingerprint.FINGERPRINT_SCHEMA` (`rcp-fp/4`) | the input set or the canonicalisation of the fingerprint changes |
 | the corpus schemas | `rcp_test.corpus` (`rcp-ndcg.observation-corpus/1`, `RECORD_SCHEMA`, `NORMALISATION_VERSION`) | the corpus format, the record shape or the normalisation rule changes |
 | an artifact tag | `schemas/*.v1.json` | that artifact changes in an incompatible way |

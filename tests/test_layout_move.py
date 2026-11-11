@@ -125,6 +125,48 @@ FIXTURE: dict[str, str] = {
     "CHANGELOG.md": "## Unreleased\n- The code under src/rcp_ndcg moved.\n",
 }
 
+#: The product suite's directories, each with one test file and one shared helper, and the core's suite
+#: beside its package: the fixture carries every source the test re-parenting and the helper extraction
+#: move, so the tool's whole table replays here.
+_MOVED_TEST_DIRS = (
+    "calibration",
+    "cli",
+    "data",
+    "eval",
+    "inference",
+    "judging",
+    "results",
+    "retrieval",
+    "runners",
+    "runs",
+    "storage",
+    "support",
+)
+FIXTURE |= {f"tests/{name}/__init__.py": "" for name in _MOVED_TEST_DIRS}
+FIXTURE |= {f"tests/{name}/test_{name}.py": f"def test_{name}():\n    assert True\n" for name in _MOVED_TEST_DIRS}
+FIXTURE |= {
+    "tests/test_end_to_end.py": "def test_end_to_end():\n    assert True\n",
+    "tests/test_errors.py": "def test_errors():\n    assert True\n",
+    "tests/test_mcp.py": "def test_mcp():\n    assert True\n",
+    "tests/test_cases_package.py": "def test_cases_package():\n    assert True\n",
+    "tests/core/__init__.py": "",
+    "tests/core/test_metric.py": "def test_metric():\n    assert True\n",
+    "tests/core/fixtures/paper_protocol_queries.json": "{}\n",
+}
+#: The modules two of a package's test directories both import: the helper extraction's sources.
+FIXTURE |= {
+    "tests/data/hub_stubs.py": '"""A hub fake."""\n',
+    "tests/data/_media_reference.py": '"""A reference oracle."""\n',
+    "tests/eval/_metrics.py": '"""A metric double."""\n',
+    "tests/results/_runs.py": '"""A run builder."""\n',
+    "tests/results/_sinks.py": '"""A sink injector."""\n',
+    "tests/inference/_budget.py": '"""A tokenizer budget."""\n',
+    "tests/inference/_pooling.py": '"""A pooling fake."""\n',
+    "tests/inference/_embed.py": '"""An embedding fake."""\n',
+    "tests/runners/shell.py": '"""A shellcheck helper."""\n',
+    "tests/runners/k8s_schema.py": '"""A manifest checker."""\n',
+}
+
 HARNESS: dict[str, str] = {
     "packages/rcp-ndcg-test/pyproject.toml": (
         '[project]\nname = "rcp-ndcg-test"\nversion = "0.0.1"\n\n'
@@ -176,59 +218,76 @@ def run_layout(worktree: Path, *args: str) -> str:
     return proc.stdout
 
 
+def test_the_split_keeps_a_workspace_key_it_does_not_regenerate() -> None:
+    """``members`` is derived from the move table; every other ``[tool.uv.workspace]`` key is the tip's own.
+
+    A transform that dropped one would lose a contributor's policy silently (the fixture carries
+    ``exclude``), so the split carries the keys it does not regenerate into the workspace manifest it
+    writes, and drops only the ``members`` row it replaces.
+    """
+    package, workspace = tool()._split_pyproject(PYPROJECT, members=["rcp", "rcp-core"])
+    assert 'members = ["packages/*"]' in workspace
+    assert 'exclude = ["packages/rcp-ndcg-vllm"]' in workspace
+    assert workspace.count("members = ") == 1  # the table's own row is replaced, never kept beside it
+    assert "exclude" not in package  # a workspace key never travels into the package manifest
+
+
 def test_the_move_performs_every_move_and_rewrite(tmp_path: Path) -> None:
     worktree = make_fixture(tmp_path)
     run_layout(worktree)
 
     # The four destinations exist and carry what moved: the root package's files under rcp/.
-    assert (worktree / "rcp" / "pyproject.toml").is_file()
-    assert (worktree / "rcp" / "MANIFEST.in").is_file()
-    assert (worktree / "rcp" / "README.md").read_text(encoding="utf-8").startswith("# Fixture")
-    assert (worktree / "rcp" / "src" / "rcp" / "__init__.py").is_file()
-    assert (worktree / "rcp-core" / "src" / "rcp_core" / "__init__.py").is_file()
-    assert (worktree / "rcp-vllm" / "jobs" / "build.sh").is_file()
-    assert (worktree / "rcp-vllm" / "src" / "rcp_vllm" / "__init__.py").is_file()
-    assert not (worktree / "packages").exists()
+    assert (worktree / "packages" / "rcp" / "pyproject.toml").is_file()
+    assert (worktree / "packages" / "rcp" / "MANIFEST.in").is_file()
+    assert (worktree / "packages" / "rcp" / "README.md").read_text(encoding="utf-8").startswith("# Fixture")
+    assert (worktree / "packages" / "rcp" / "src" / "rcp" / "__init__.py").is_file()
+    assert (worktree / "packages" / "rcp-core" / "src" / "rcp_core" / "__init__.py").is_file()
+    assert (worktree / "packages" / "rcp-vllm" / "jobs" / "build.sh").is_file()
+    assert (worktree / "packages" / "rcp-vllm" / "src" / "rcp_vllm" / "__init__.py").is_file()
+    assert not (worktree / "packages" / "rcp-ndcg-core").exists()
     assert not (worktree / "src").exists()
 
     # The pyproject split: rcp/ carries the package tables, the root the workspace and tooling.
-    package = (worktree / "rcp" / "pyproject.toml").read_text(encoding="utf-8")
+    package = (worktree / "packages" / "rcp" / "pyproject.toml").read_text(encoding="utf-8")
     workspace = (worktree / "pyproject.toml").read_text(encoding="utf-8")
     assert "[project]" in package and "[tool.setuptools.packages.find]" in package
     assert "[tool.uv.workspace]" not in package and "[tool.ruff]" not in package
     assert "[project]" not in workspace
-    assert 'members = ["rcp", "rcp-core", "rcp-vllm"]' in workspace
+    assert 'members = ["packages/*"]' in workspace
+    # The workspace key the split does not derive (`exclude`) survives it, rewritten like any other path.
+    assert 'exclude = ["packages/rcp-vllm"]' in workspace
     assert "[tool.uv.sources]" in workspace and "rcp-core = { workspace = true }" in workspace
-    assert 'include = ["rcp/src", "rcp-core/src", "rcp-vllm/src"]' in workspace
-    assert 'extend-exclude = ["rcp-vllm/recipes/*/qwen3_vl_embedding.py"]' in workspace
+    assert 'include = ["packages/rcp/src", "packages/rcp-core/src", "packages/rcp-vllm/src"]' in workspace
+    assert 'extend-exclude = ["packages/rcp-vllm/recipes/*/qwen3_vl_embedding.py"]' in workspace
     assert 'where = ["src"]' in package  # package-relative: unchanged
 
     # The rewrites reach CI, workflows, scripts, helpers, the lock and prose.
     ci = (worktree / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert "rcp-core/src/rcp_core" in ci and "packages/" not in ci
-    assert "rcp/pyproject.toml" in ci  # the bare manifest token in a workflow is the root package's
-    build = (worktree / "rcp-vllm" / "jobs" / "build.sh").read_text(encoding="utf-8")
-    assert "rcp/pyproject.toml" in build and "packages/" not in build
+    assert "packages/rcp-core/src/rcp_core" in ci and "packages/packages" not in ci
+    assert "packages/rcp/pyproject.toml" in ci  # the bare manifest token in a workflow is the root package's
+    build = (worktree / "packages" / "rcp-vllm" / "jobs" / "build.sh").read_text(encoding="utf-8")
+    assert "packages/rcp/pyproject.toml" in build and "packages/packages" not in build
     helpers = (worktree / "tests" / "snap" / "helpers.py").read_text(encoding="utf-8")
-    assert 'ROOT / "rcp" / "README.md"' in helpers
-    assert 'ROOT / "rcp-core" / "README.md"' in helpers  # the split Path spelling moved too
-    assert 'parents[2] / "rcp/src/rcp"' in helpers  # the split Path spelling of its source
-    assert 'ROOT / "rcp" / "src"' in helpers  # the source-folder helper points at the moved source
+    assert 'ROOT / "packages" / "rcp" / "README.md"' in helpers
+    assert 'ROOT / "packages" / "rcp-core" / "README.md"' in helpers  # the split Path spelling moved too
+    assert 'parents[2] / "packages/rcp/src/rcp"' in helpers  # the split Path spelling of its source
+    assert 'ROOT / "packages" / "rcp" / "src"' in helpers  # the source-folder helper points at the moved source
     assert 'package / "pyproject.toml"' in helpers  # a tmp fixture's own manifest: untouched
     # the workspace manifest read stays at the root: in the target layout it is the workspace's, not
     # the root package's (the root-pyproject-helper only rewrites the pre-move package spellings)
     lock = (worktree / "uv.lock").read_text(encoding="utf-8")
-    assert 'editable = "rcp"' in lock and 'editable = "rcp-core"' in lock
+    assert 'editable = "packages/rcp"' in lock and 'editable = "packages/rcp-core"' in lock
     assert 'editable = "."' not in lock
     changelog = (worktree / "CHANGELOG.md").read_text(encoding="utf-8")
     assert "src/rcp_ndcg moved" in changelog  # the entries below Unreleased keep the spelling they shipped with
 
     # Its own MANIFEST.in keeps the package-relative source spelling.
-    assert "recursive-include src/rcp *.py" in (worktree / "rcp" / "MANIFEST.in").read_text(encoding="utf-8")
+    manifest_in = (worktree / "packages" / "rcp" / "MANIFEST.in").read_text(encoding="utf-8")
+    assert "recursive-include src/rcp *.py" in manifest_in
 
     # HISTORY KEPT: committing the staged result and following a moved file reaches the fixture commit.
     git(worktree, "-c", "user.name=fixture", "-c", "user.email=f@example.invalid", "commit", "-qam", "the move")
-    history = git(worktree, "log", "--follow", "--oneline", "--", "rcp/src/rcp/__init__.py")
+    history = git(worktree, "log", "--follow", "--oneline", "--", "packages/rcp/src/rcp/__init__.py")
     assert "fixture" in history
 
 
@@ -240,15 +299,15 @@ def test_the_harness_follows_the_distribution_rename(tmp_path: Path) -> None:
     worktree = make_fixture(tmp_path, harness=True)
     run_layout(worktree)
 
-    assert (worktree / "rcp-test" / "src" / "rcp_test" / "__init__.py").is_file()
-    assert not (worktree / "rcp-ndcg-test").exists()
-    manifest = (worktree / "rcp-test" / "pyproject.toml").read_text(encoding="utf-8")
+    assert (worktree / "packages" / "rcp-test" / "src" / "rcp_test" / "__init__.py").is_file()
+    assert not (worktree / "packages" / "rcp-ndcg-test").exists()
+    manifest = (worktree / "packages" / "rcp-test" / "pyproject.toml").read_text(encoding="utf-8")
     assert 'name = "rcp-test"' in manifest
     assert "rcp-ndcg-test" not in manifest and "rcp_ndcg_test" not in manifest
     # the entry point follows: its name is the distribution's, its target the package's
     assert 'rcp-test = "rcp_test.engines:transport_for"' in manifest
     workspace = (worktree / "pyproject.toml").read_text(encoding="utf-8")
-    assert 'members = ["rcp", "rcp-core", "rcp-test", "rcp-vllm"]' in workspace
+    assert 'members = ["packages/*"]' in workspace
     assert "rcp-test = { workspace = true }" in workspace
     # and the history followed the moves (commit the staged result first, like the performs test)
     git(
@@ -261,7 +320,7 @@ def test_the_harness_follows_the_distribution_rename(tmp_path: Path) -> None:
         "-qam",
         "the harness rename",
     )
-    history = git(worktree, "log", "--follow", "--oneline", "--", "rcp-test/src/rcp_test/__init__.py")
+    history = git(worktree, "log", "--follow", "--oneline", "--", "packages/rcp-test/src/rcp_test/__init__.py")
     assert "fixture" in history
     # idempotent: the moved tree is already in the target layout
     assert "layout_move --check: the tree is in the target layout" in run_layout(worktree, "--check")
@@ -294,13 +353,13 @@ def test_an_optional_source_is_skipped_and_a_conflict_is_refused(tmp_path: Path)
 
     # A tip that already carries the destination beside the source is refused, the conflict listed.
     second = make_fixture(tmp_path / "second")
-    (second / "rcp-core").mkdir()
-    (second / "rcp-core" / "stale").write_text("x", encoding="utf-8")
+    (second / "packages" / "rcp-core").mkdir()
+    (second / "packages" / "rcp-core" / "stale").write_text("x", encoding="utf-8")
     proc = subprocess.run(
         [sys.executable, "tools/layout_move.py"], cwd=second, capture_output=True, text=True, check=False
     )
     assert proc.returncode == 1
-    assert "packages/rcp-ndcg-core: destination rcp-core already exists" in proc.stderr
+    assert "packages/rcp-ndcg-core: destination packages/rcp-core already exists" in proc.stderr
 
 
 def test_a_stale_old_path_left_behind_is_refused(tmp_path: Path) -> None:
@@ -345,7 +404,7 @@ def test_the_sweep_rewrites_the_module_and_leaves_the_metric_id() -> None:
         "import os, rcp_ndcg, rcp_ndcg.cli.main\n"
         "PUBLIC = rcp_ndcg.support.api_docs.PUBLIC_MODULES\n"
         'PROBE = "import rcp_ndcg"\n'
-        'SOURCE = "rcp/src/rcp_ndcg"\n'
+        'SOURCE = "packages/rcp/src/rcp"\n'
         'USAGE = ("--metrics", "rcp_ndcg")\n'
         'value = report.value("system", "rcp_ndcg", 10)\n'
     )
@@ -361,26 +420,49 @@ def test_the_sweep_rewrites_the_module_and_leaves_the_metric_id() -> None:
     assert "import os, rcp, rcp.cli.main" in rewritten
     assert "PUBLIC = rcp.support.api_docs.PUBLIC_MODULES" in rewritten
     assert 'PROBE = "import rcp"' in rewritten
-    assert 'SOURCE = "rcp/src/rcp"' in rewritten
+    assert 'SOURCE = "packages/rcp/src/rcp"' in rewritten
 
 
-@pytest.mark.parametrize("source,destination", [("pyproject.toml", "rcp/pyproject.toml"), ("src", "rcp/src")])
+@pytest.mark.parametrize(
+    "source,destination",
+    [
+        ("rcp", "packages/rcp"),
+        ("rcp-core", "packages/rcp-core"),
+        ("pyproject.toml", "packages/rcp/pyproject.toml"),
+        ("src", "packages/rcp/src"),
+    ],
+)
 def test_the_move_table_names_the_root_package(source: str, destination: str) -> None:
     module = tool()
     assert (source, destination) in module.MOVES
     assert module.OPTIONAL_SOURCES == frozenset(
-        {"packages/rcp-ndcg-test", "rcp-ndcg-test", "rcp-test/src/rcp_ndcg_test"}
+        {
+            # The harness's rename legs, the four directories a tip may still carry under their old
+            # names, and the root package's files a tip already keeps in `rcp/`.
+            "packages/rcp-ndcg-test",
+            "packages/rcp-test/src/rcp_ndcg_test",
+            "rcp",
+            "rcp-core",
+            "rcp-vllm",
+            "rcp-test",
+            "src",
+            "MANIFEST.in",
+        }
     )
     assert module.EXEMPT == frozenset(
         {
             # The transforms that must spell the old names: this one (its table is the move) and the
             # behaviour fingerprint's canonicalisation (its table maps a current spelling onto the
-            # recorded one), each with the tests that assert the table.
+            # recorded one), each with the tests that assert the table; plus the harness's two modules
+            # that name a recording tree's layout as data.
             "tools/layout_move.py",
             "tests/test_layout_move.py",
-            "rcp-test/src/rcp_test/fingerprint.py",
-            "rcp-test/tests/test_fingerprint.py",
-            "rcp-test/tests/test_wave_plugin_wheel.py",
+            "packages/rcp-test/src/rcp_test/fingerprint.py",
+            "packages/rcp-test/tests/test_fingerprint.py",
+            "packages/rcp-test/tests/test_wave_plugin_wheel.py",
+            # the harness's recorded tree spellings, as data
+            "packages/rcp-test/src/rcp_test/jobs/ledger.py",
+            "packages/rcp-test/src/rcp_test/changes.py",
         }
     ), "a new exemption is a transform's table, never a file that could be rewritten"
 

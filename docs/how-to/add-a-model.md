@@ -7,13 +7,13 @@ never served. This guide shows the format. It shows how to check a served recipe
 implementation. It also shows how a wave of recipes is submitted to the GPU host. It also shows how a model
 becomes a plugin. A plugin is the answer when the engine must run code that it does not ship
 ([the contribution path](#when-a-model-needs-a-plugin-the-contribution-path)). The package lives at
-`rcp-vllm/` and is installed into the engine image, which carries its own vLLM and torch. A family directory of your own needs none of that packaging to be *used*. `rcp-vllm serve ./my-family/ [--variant <id>]` and `recipe:./my-family/` load it through this same schema. The loader marks it unshipped and
+`packages/rcp-vllm/` and is installed into the engine image, which carries its own vLLM and torch. A family directory of your own needs none of that packaging to be *used*. `rcp-vllm serve ./my-family/ [--variant <id>]` and `recipe:./my-family/` load it through this same schema. The loader marks it unshipped and
 `unverified` ([serve a retrieval model](serve-a-model.md)). The class-specific doctrine is [adopt a
 model](adopt-a-model.md). It states what parity means for an embedding, a reranker, a late-interaction model and a judge. It also lists what to look out for.
 
 ## The family directory
 
-One directory per model family: `rcp-vllm/src/rcp_vllm/recipes/<family>/`. It is package data, shipped
+One directory per model family: `packages/rcp-vllm/src/rcp_vllm/recipes/<family>/`. It is package data, shipped
 inside the wheel. It has these four files. A family may also ship a vendored card script that its reference runs
 verbatim. That script is byte-identical to the Hub file and hash-pinned by the family's test.
 
@@ -51,8 +51,8 @@ a typo cannot silently change what is served.
 2. Pin the variant's fields in the family's test module. There is one module per family, parametrized over its
    variants. Pin every field per variant, with two mutants red per family. Run the family's stage-1 network
    tests for the new variant.
-3. Add the variant's golden. `uv run --no-sync pytest rcp-test/tests/recipes/test_family_goldens.py
-   --update-goldens` rewrites `tests/recipes/golden/` from the current tree. Review the diff, then commit. The
+3. Add the variant's golden. `uv run --no-sync pytest packages/rcp-test/tests/recipes/test_family_goldens.py
+   --update-goldens` rewrites `packages/rcp-test/tests/recipes/golden/` from the current tree. Review the diff, then commit. The
    guard compares every variant's resolved contract and fingerprint against its golden in every CI job.
 4. A new family needs its `family.yaml` (below), its reference and its family test module. It also needs its template when it needs one, and its variant goldens.
 
@@ -220,15 +220,15 @@ reference.py --mode <render|score|embed|media> --pairs <file> --out <file> \
 
   ```bash
   uv run --no-sync python -m rcp_test.jobs.reference_lock build --family <family> \
-      --in rcp-vllm/src/rcp_vllm/recipes/<family>/reference.in \
-      --out rcp-vllm/src/rcp_vllm/recipes/<family>/reference.lock \
-      --image-freeze rcp-vllm/reference-image-v0.33.0.txt \
+      --in packages/rcp-vllm/src/rcp_vllm/recipes/<family>/reference.in \
+      --out packages/rcp-vllm/src/rcp_vllm/recipes/<family>/reference.lock \
+      --image-freeze packages/rcp-vllm/reference-image-v0.33.0.txt \
       --image <the family's engine.image from family.yaml>
   ```
 
   A digest-pinned nightly may have a torch/CUDA stack that is not committed. For it, add `--image-freeze-source vllm/vllm-openai:v0.33.0`, the released image the floors were checked against. The lock then records `image-freeze-sha256: uncommitted` with that source, never a false hash.
 
-  `... check --family <family> --in ... --lock ... --image-freeze ...` validates a committed lock offline (the header hashes, every pin, the own-torch declaration). `rcp-test/tests/test_reference_lock.py` runs the check over every family. A family pin with no index
+  `... check --family <family> --in ... --lock ... --image-freeze ...` validates a committed lock offline (the header hashes, every pin, the own-torch declaration). `packages/rcp-test/tests/test_reference_lock.py` runs the check over every family. A family pin with no index
   wheel (e.g. `flash-attn`, a GitHub-release wheel) must be staged in an `EXTRA_DIRS` wheelhouse, which the
   node's install searches. The harness documents the files and installs neither.
 
@@ -254,12 +254,12 @@ mapping. The wheel registers every plugin through one `vllm.general_plugins` ent
 the plugin in the recipe. The recipe names it with `serve.plugin: rcp-vllm`, and `serve.plugin_architectures`
 names the architectures that the recipe's engine registers. A patch-only carrier leaves the list empty, and
 its `serve.patches` names key it instead. Everything below is what
-`tests/contract/test_model_plugin_shape.py` checks for every subpackage of `rcp-vllm/src/rcp_vllm/models/`.
+`tests/contract/test_model_plugin_shape.py` checks for every subpackage of `packages/rcp-vllm/src/rcp_vllm/models/`.
 A contribution that deviates fails CI, not review.
 
 ### The five files
 
-One directory per architecture family, `rcp-vllm/src/rcp_vllm/models/<family>/`:
+One directory per architecture family, `packages/rcp-vllm/src/rcp_vllm/models/<family>/`:
 
 ```text
 models/<family>/
@@ -308,7 +308,7 @@ import the helper, and never the other way round.
    `LAZY_MODEL_MODULES`. The no-torch scan imports everything else. The registration callable joins the one
    entry point. `register()` in `rcp_vllm/models/__init__.py` imports and calls `register_<family>()`. It does
    so after the version guard and the opted-in patches. Every engine process therefore runs it, whatever architecture its
-   recipe serves. `rcp-vllm/tests/test_plugin_modules.py` pins both lists.
+   recipe serves. `packages/rcp-vllm/tests/test_plugin_modules.py` pins both lists.
 5. **The recipe names the plugin.** The recipe sets `serve.plugin: rcp-vllm` with `serve.plugin_architectures:
    [<Architecture>]`, which is empty for a patch-only carrier. The rest of the family is a recipe as usual. It
    holds the template block, the explicit budget, the reference and the variant goldens. It also holds the
@@ -471,7 +471,7 @@ three environments and runs the wave runner:
 export RCP_JOBS_CONFIG=/path/to/jobs-config.yaml     # the job CLI's -f config (required, no default)
 export RCP_GCS_AUTH_FILE=/path/to/gcs_auth.sh        # mounted at /etc/rcp/gcs_auth.sh; named, never read
 export RCP_HF_TOKEN_FILE=/path/to/token              # mounted into the job and read there, never passed in an argv
-rcp-test/src/rcp_test/jobs/submit.sh gs://YOUR-BUCKET/stage/rc0 gs://YOUR-BUCKET/waves <wave-name>
+packages/rcp-test/src/rcp_test/jobs/submit.sh gs://YOUR-BUCKET/stage/rc0 gs://YOUR-BUCKET/waves <wave-name>
 ```
 
 The three variables are required. The script refuses to run without them, because no tracked file may name a
@@ -483,7 +483,7 @@ model's weights after its last use. It runs smoke, equivalence and the recorder.
 
 ## Reference cases and the conformance suite
 
-A recipe's behaviour is pinned by reference cases in the unpublished `rcp-test` package (`rcp-test/`,
-a workspace member; never on PyPI). There is one case per file under `rcp-test/cases/<recipe-id>/`. Each case carries the card's verbatim example or a generated stratum. It also carries an `expected` block with its tolerance, and the strata cell it covers. The cases are validated on every push: a malformed case or an incomplete strata grid
+A recipe's behaviour is pinned by reference cases in the unpublished `rcp-test` package (`packages/rcp-test/`,
+a workspace member; never on PyPI). There is one case per file under `packages/rcp-test/cases/<recipe-id>/`. Each case carries the card's verbatim example or a generated stratum. It also carries an `expected` block with its tolerance, and the strata cell it covers. The cases are validated on every push: a malformed case or an incomplete strata grid
 fails CI. The conformance runner sends each case through the product's role clients. The target is a live engine (`target="engine"`, the engine's `base_url` passed to `run_suite`) or a recipe-level fake engine. The fake engine is resolved through the registry by recipe id (`target="fake"`). It compares with `expected` under its
-tolerance. `expected.values: null` (a generated case before its GPU wave) is a skip, never a pass. See `rcp-test/README.md` for the case format and how to add a case. It also describes the fake-engine extension point that the verified emulators are later built from.
+tolerance. `expected.values: null` (a generated case before its GPU wave) is a skip, never a pass. See `packages/rcp-test/README.md` for the case format and how to add a case. It also describes the fake-engine extension point that the verified emulators are later built from.

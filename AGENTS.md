@@ -9,14 +9,21 @@ This file is for agents (and people) who change this repository. To use the pack
 uv sync --locked --extra dev                     # Python 3.12 or later
 uv run ruff format --check . && uv run ruff check .
 uv run basedpyright                              # the four src trees: zero errors, blocking in CI
-uv run pytest tests/ -n 4                        # the whole suite, offline
+uv run pytest tests/ -n 4                        # the root tree: the invariants, the contract and docs suites
+uv run pytest packages/rcp/tests packages/rcp-core/tests -n 4   # the product's and the core's suites
+uv run pytest packages/rcp-test/tests -n 4       # the harness's suite, in its own process
+uv run pytest packages/rcp-vllm/tests -q         # the serving package's suite, in its own process
 uv run pytest tests/contract                     # the public surface: CLI tree, exit codes, schemas, __all__
 uv run pytest tests/docs                         # Markdown links, navigation, and every documentation snippet
 ```
 
+The four suite invocations are one per tree: `packages/rcp-test/tests` and `packages/rcp-vllm/tests` are
+never collected with the root tree (both trees are named `tests`), so no single `pytest tests/` runs the
+repository. CI runs the first two as one invocation (`pytest tests/ packages/rcp/tests packages/rcp-core/tests`).
+
 On Linux the lock resolves torch with its CUDA wheels. CI, like a CPU-only machine, skips them and installs the CPU
 build instead, then runs every command with `uv run --no-sync` (see `.github/workflows/ci.yml`). CI needs no
-secrets. Run the narrowest test first, then the whole suite before you finish. The tests that gate on `[data]`,
+secrets. Run the narrowest test first, then the four suite invocations above before you finish. The tests that gate on `[data]`,
 `[mteb]` or the `mcp` SDK (the pdf and hf readers, the transformers parity check, the MCP SDK round trip) skip in a
 bare `dev` environment; CI's `gated` job installs their extras and runs the whole tree with every gate open.
 
@@ -27,7 +34,7 @@ runs per that package's README.
 
 - `rcp-core` (`rcp_core`): the metric, the gains, the scoring protocols, the public records and
   the IRT estimators. numpy and pydantic only; torch is imported lazily inside `irt/` and nowhere else.
-- `rcp/src/rcp`: the pipeline and the CLI. Imports point inward only, in this order:
+- `packages/rcp/src/rcp`: the pipeline and the CLI. Imports point inward only, in this order:
    `rcp_core → support → storage → data → inference → retrieval → judging → calibration → eval → runners → runs → results → schemas | mcp → cli`.
   Eager imports have no cycles; `schemas` and `mcp` import the CLI's command table lazily, to describe and serve it.
   The product reads six entry-point groups, one per extension seam: `rcp.runners` (job execution),
@@ -49,9 +56,9 @@ Before adding a helper, `git grep` for an existing one. A second implementation 
 | The gain `g(theta)`, pass probabilities, item and query parameters | `rcp_core.gain`, `rcp_core.schemas` |
 | Calibration (with or without the tournament, pooled judges), scoring and insertion of documents | `rcp.calibration` over `rcp_core.irt` |
 | Judging: the client, the schedules, the judgement store, cost estimates | `rcp.judging` |
-| Prompts (tournament, rubric, vision and video variants) | `rcp/src/rcp/judging/prompts/`, loaded by name |
+| Prompts (tournament, rubric, vision and video variants) | `packages/rcp/src/rcp/judging/prompts/`, loaded by name |
 | Text, image and video preprocessing, caps and chunking | `rcp.data.text_policy` (the text policy, chunking, `Preprocessing`), `rcp.data.resolution` (image and video policies), `rcp.data.prepare` (media sent to a judge), `rcp.data.templates` |
-| The geometry a checkpoint's processor recomputes (the smart resize, the fixed point) | `rcp.data.resolution`. Declared exception: `rcp_vllm/recipes/*/reference.py` are dependency-free reference subprocesses that must not import the product (no reference's `reference.in` pins a workspace distribution, so none can), so a family's reference mirrors the product's rule where the engine's own processor is the thing being checked; the mirror is a recorded copy, validated against the product on GPU (the equivalence waves) |
+| The geometry a checkpoint's processor recomputes (the smart resize, the fixed point) | `rcp.data.resolution`. Declared exception: `packages/rcp-vllm/src/rcp_vllm/recipes/*/reference.py` are dependency-free reference subprocesses that must not import the product (no reference's `reference.in` pins a workspace distribution, so none can), so a family's reference mirrors the product's rule where the engine's own processor is the thing being checked; the mirror is a recorded copy, validated against the product on GPU (the equivalence waves) |
 | Judge/role text budgets, templates and their cut policy | `rcp.data.text_budget` (the fit), `rcp.data.census` (the cut record and census), `rcp.storage.census` (the census files' record I/O), `rcp.data.templates` |
 | What a document reads as (MTEB's title join, `title: separate`) and the two query instructions (the task instruction's placement, the per-query append) | `rcp_core.records` (`Document.model_content`, `Query.format_query`/`format_content`) -- the rule once; the role clients' `normalise` stage applies it, and the sparse (BM25) path has its own join (`retrieval/_api._sparse_corpus`, mteb's BM25) |
 | Postprocess of model output (L2 normalisation, chunk-score aggregation, the late-interaction skip ids) | `rcp.data.postprocess` |
@@ -118,8 +125,8 @@ returns typed results and raises typed errors from `rcp.errors`.
 
 ## Releasing
 
-Push a tag `v<version>` whose version is that of all four `pyproject.toml` files (`rcp/`,
-`rcp-core/`, `rcp-vllm/` and the unpublished `rcp-test/`; the root manifest is the uv workspace
+Push a tag `v<version>` whose version is that of all four `pyproject.toml` files (`packages/rcp/`,
+`packages/rcp-core/`, `packages/rcp-vllm/` and the unpublished `packages/rcp-test/`; the root manifest is the uv workspace
 only). `.github/workflows/release.yml` builds the three published distributions (one `--package` per member of
 the four-member workspace; `rcp-test` is never built), checks each version against the
 tag, that `rcp` pins `rcp-core==<version>`, and `requirements-constraints.txt` against the lock (the

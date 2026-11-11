@@ -13,10 +13,10 @@ gives the method and its validation.
 
 | Distribution | What it is | README |
 |---|---|---|
-| `rcp` | The pipeline and the command line: storage, data, retrieval, judging, calibration, evaluation, runs | [rcp/README.md](rcp/README.md) |
-| `rcp-core` | The metric: nDCG, the gains, the scoring protocols, the public records, the IRT (item response theory) estimators (numpy + pydantic) | [rcp-core/README.md](rcp-core/README.md) |
-| `rcp-vllm` | The lean serving package: the GPU-validated serving recipes and `rcp-vllm serve <recipe-id>` | [rcp-vllm/README.md](rcp-vllm/README.md) |
-| `rcp-test` | The validation tooling (unpublished, [installed from a git subdirectory](rcp-test/README.md)): reference cases, the conformance suite, the equivalence harness, the recorder, the verified emulators, the wave runner | [rcp-test/README.md](rcp-test/README.md) |
+| `rcp` | The pipeline and the command line: storage, data, retrieval, judging, calibration, evaluation, runs | [packages/rcp/README.md](packages/rcp/README.md) |
+| `rcp-core` | The metric: nDCG, the gains, the scoring protocols, the public records, the IRT (item response theory) estimators (numpy + pydantic) | [packages/rcp-core/README.md](packages/rcp-core/README.md) |
+| `rcp-vllm` | The lean serving package: the GPU-validated serving recipes and `rcp-vllm serve <recipe-id>` | [packages/rcp-vllm/README.md](packages/rcp-vllm/README.md) |
+| `rcp-test` | The validation tooling (unpublished, [installed from a git subdirectory](packages/rcp-test/README.md)): reference cases, the conformance suite, the equivalence harness, the recorder, the verified emulators, the wave runner | [packages/rcp-test/README.md](packages/rcp-test/README.md) |
 
 ## Install
 

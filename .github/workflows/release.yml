@@ -108,7 +108,7 @@ jobs:
           PY
           # Release gate 2 (AGENTS.md): the --no-deps install must leave pip freeze unchanged in the
           # stock image, and must declare nothing the image does not ship.
-          python3 rcp-vllm/tests/models/check_no_deps_install.py dist/rcp_vllm-*.whl
+          python3 packages/rcp-vllm/tests/models/check_no_deps_install.py dist/rcp_vllm-*.whl
           # Release gate 3 (AGENTS.md): every recipe must dry-run from the installed wheel, so a
           # template.jinja or package-data path that resolves only in the checkout fails here.
           for id in $("$RUNNER_TEMP/wheel-vllm/bin/python" -c \

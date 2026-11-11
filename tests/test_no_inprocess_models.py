@@ -1,7 +1,7 @@
-"""No in-process model code under ``rcp/src/rcp/``.
+"""No in-process model code under ``packages/rcp/src/rcp/``.
 
 The package carries no model that loads weights. The only torch left is the core's IRT estimators,
-reached through the ``[calibrate]`` extra; nothing under ``rcp/src/rcp/`` may import torch,
+reached through the ``[calibrate]`` extra; nothing under ``packages/rcp/src/rcp/`` may import torch,
 transformers, accelerate or vllm, at module level or lazily.
 The ``[local]`` and ``[vllm]`` extras have left ``pyproject.toml``: every model is served, and the
 package installs cleanly next to an engine image without touching it.
@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parents[1] / "rcp/src/rcp"
+SRC = Path(__file__).resolve().parents[1] / "packages/rcp/src/rcp"
 
 _FRAMEWORK_IMPORT = re.compile(r"\b(?:from|import)\s+(?:torch|transformers|accelerate|vllm)\b")
 
@@ -48,18 +48,18 @@ _RENAMED_CITATIONS = (
 
 
 def _citation_files() -> list[Path]:
-    """The files a cross-reference may live in: the source trees and the manifests' comments."""
+    """The files a cross-reference may live in: the source trees, the shared session and the manifests' comments."""
     root = Path(__file__).resolve().parents[1]
     return sorted(
         path
-        for folder in (SRC, root / "rcp-vllm/src", root / "rcp-test/src")
+        for folder in (SRC, root / "packages/rcp-vllm/src", root / "packages/rcp-test/src")
         for path in folder.rglob("*.py")
         if "__pycache__" not in path.parts
-    ) + [root / "tests/conftest.py", root / "rcp/pyproject.toml"]
+    ) + [root / "tests/conftest.py", root / "tests/_session.py", root / "packages/rcp/pyproject.toml"]
 
 
 def test_no_module_under_src_imports_a_model_framework() -> None:
-    """No torch, transformers, accelerate or vllm import anywhere under ``rcp/src/rcp/``."""
+    """No torch, transformers, accelerate or vllm import anywhere under ``packages/rcp/src/rcp/``."""
     offenders = []
     for path in _modules():
         relative = path.relative_to(SRC)
@@ -70,7 +70,7 @@ def test_no_module_under_src_imports_a_model_framework() -> None:
                 continue
             if _FRAMEWORK_IMPORT.search(line):
                 offenders.append(f"{relative}:{number}: {line.strip()}")
-    assert not offenders, "in-process model imports under rcp/src/rcp/:\n" + "\n".join(offenders)
+    assert not offenders, "in-process model imports under packages/rcp/src/rcp/:\n" + "\n".join(offenders)
 
 
 def test_the_reference_code_lives_outside_the_package() -> None:
@@ -95,3 +95,14 @@ def test_no_citation_names_a_renamed_module() -> None:
         text = path.read_text(encoding="utf-8")
         for pattern, why in _RENAMED_CITATIONS:
             assert not pattern.search(text), f"{path}: {why}"
+
+
+def test_the_citation_scan_covers_the_shared_session() -> None:
+    """The session's hooks and fixtures live in ``tests/_session.py``, not in the conftest that re-exports them.
+
+    The root conftest is ``from tests._session import *``, so a citation in the session body is as stale as
+    one in a source tree: the scan follows the file the text moved to, or it stops seeing most of it.
+    """
+    root = Path(__file__).resolve().parents[1]
+    scanned = {path.relative_to(root).as_posix() for path in _citation_files()}
+    assert {"tests/conftest.py", "tests/_session.py"} <= scanned
