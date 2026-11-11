@@ -94,6 +94,10 @@ recorded ones. A rename of the distribution therefore adds one line to the alias
 fingerprint -- it does not change any canonical value, so the schema stays 4. A change to a module's code
 (the paths, the imports, the bodies) still moves the key."""
 
+_CANONICAL_PLUGIN_VERSION = "0.0.1"
+"""The plugin module's recorded ``__version__`` value. A release string is not behaviour, so the canonicalisation
+maps any version onto this one: a version bump moves no recorded key."""
+
 _CANONICAL_PLUGIN_PACKAGE = "rcp_ndcg_vllm"
 """The package spelling the committed corpora key: a plugin module's canonical name is this package plus its
 path below the package. It is the name the first recorded corpus used, not the current one; a rename maps
@@ -263,6 +267,14 @@ def _canonical_plugin_source(data: bytes) -> bytes:
         data = data.replace(alias.encode(), _CANONICAL_PLUGIN_DISTRIBUTION.encode())
     for pattern, replacement in _PRODUCT_NAME_RULES:
         data = re.sub(pattern, replacement, data)
+    # A module's own ``__version__`` is a release string, not behaviour, yet it sits in the hashed source: a
+    # version bump would re-key every recipe that ships the module. The value maps onto the recorded one, like
+    # the names above, so a release moves no recorded key.
+    data = re.sub(
+        rb"""(?m)^(__version__\s*=\s*)[\"'][^\"']*[\"']""",
+        rb'\1"' + _CANONICAL_PLUGIN_VERSION.encode() + rb'"',
+        data,
+    )
     return data
 
 

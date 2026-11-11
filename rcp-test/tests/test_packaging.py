@@ -68,7 +68,8 @@ def test_the_lock_installs_it_into_the_dev_environment() -> None:
     lock = tomllib.loads(_read(ROOT / "uv.lock"))
     entries = {package["name"]: package for package in lock["package"]}
     entry = entries.get("rcp-test")
-    assert entry is not None and entry["version"] == "0.0.1", "uv.lock pins the workspace member"
+    version = tomllib.loads(_read(ROOT / "rcp-test" / "pyproject.toml"))["project"]["version"]
+    assert entry is not None and entry["version"] == version, "uv.lock pins the workspace member's version"
     assert entry.get("source", {}).get("editable", "").endswith("rcp-test"), entry.get("source")
     dependency_names = {item["name"] for item in entry.get("dependencies", [])}
     assert {"rcp", "rcp-vllm"} <= dependency_names
@@ -76,10 +77,11 @@ def test_the_lock_installs_it_into_the_dev_environment() -> None:
 
 def test_the_package_depends_on_the_product_and_the_harness_at_the_release_version() -> None:
     data = tomllib.loads(_read(PACKAGE / "pyproject.toml"))
+    version = data["project"]["version"]
     assert data["project"]["name"] == "rcp-test"
     assert data["project"]["dependencies"] == [
-        "rcp==0.0.1",
-        "rcp-vllm==0.0.1",
+        f"rcp=={version}",
+        f"rcp-vllm=={version}",
         "numpy>=1.26",
         "pydantic>=2.11",
         "PyYAML>=6.0",

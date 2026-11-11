@@ -22,7 +22,8 @@ from pathlib import Path
 import pytest
 
 PACKAGE_DIR = Path(__file__).resolve().parents[2]
-WHEEL_NAME = "rcp_vllm-0.1.0-py3-none-any.whl"
+#: The wheel name carries the version, so the test globs it: a bump must not break this test.
+WHEEL_NAME = "rcp_vllm-*-py3-none-any.whl"
 N_FAMILIES = 24
 N_RECIPES = 44  # the variants across the families (decision 34; the ten judges are eight of the families)
 
@@ -39,13 +40,13 @@ def built_wheel(tmp_path_factory: pytest.TempPathFactory) -> Path:
         if os.environ.get("CI"):
             pytest.fail(message)
         pytest.skip(message)
-    wheel = out / WHEEL_NAME
-    if not wheel.exists():
+    wheels = sorted(out.glob(WHEEL_NAME))
+    if not wheels:
         message = f"uv build produced no {WHEEL_NAME}: {result.stdout[-300:]}"
         if os.environ.get("CI"):
             pytest.fail(message)
         pytest.skip(message)
-    return wheel
+    return wheels[0]
 
 
 def test_the_wheel_is_pure_python_and_declares_only_the_image_deps(built_wheel: Path) -> None:
