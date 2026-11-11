@@ -90,6 +90,27 @@ every reader still accepts it. All four distributions carry the tag version; `rc
   renders nothing into the `vllm serve` argv. It is a recipe-level field and not a `serve` field on purpose: every
   `serve` field is a behaviour-fingerprint input, so a home in the serve block would re-key every recipe's recorded
   corpus. The recipe schema (`rcp-vllm/schema/recipe.schema.json`, `family.schema.json`) carries both additions.
+- **A size may name its own tokenizer** (the per-size tokenizer override): `overrides.client.tokenizer` joins the
+  per-size client fields that a variant may override (`PER_VARIANT_CLIENT_FIELDS` in `rcp_vllm.recipe`). A size
+  that ships its own tokenizer files names them. The family keeps its shared default. The override replaces the
+  family's `client.tokenizer` for that one size. A sibling without an override keeps the family's tokenizer, or
+  the `model@revision` that the loader injects when the family names none. The load validates the override
+  exactly as the family-level field: a non-empty string, refused with the field named. The whitelist refusal
+  names the widened list, and `rcp-vllm/schema/recipe.schema.json` and `family.schema.json` describe the new
+  member. A key outside the list is still refused. Nothing about a size's behaviour changes silently.
+- **An embedding config declares the quantized representations a run consumes** (the quantized-embedding
+  surface): `EmbeddingEndpoint.embedding_types` takes `int8`, `uint8` or `binary`. `schemas/run-config.v1.json`
+  and `schemas/index.v1.json` carry the field. The new module `rcp.data.quantize` holds the one implementation of
+  the serving contract. A downstream that reports int8 or binary recall calls it instead of writing a second
+  rule. The module widens the vector to float64 and maps it onto `[-128, 127]`. It then truncates toward zero and
+  clamps. `uint8` adds 128, and `binary` packs eight sign bits per byte, MSB-first. It reads the vector a run
+  compares -- the Matryoshka-truncated, L2-normalised one -- never the full-width pre-selection vector.
+  `QuantizedVector.dtype` says which type reads the returned bytes. The field defaults to `None` and is omitted
+  from every identity. A config that does not choose keeps the identity and the index cache entry it had. An
+  empty list is no declaration either. A declared type is a content field, because it changes the vector a
+  downstream compares. Two declarations therefore never share one index cache entry. The reference vectors in
+  `tests/data/fixtures/quantize/reference-vectors.json` pin the bytes. The module itself is internal: it is not
+  in `PUBLIC_MODULES`. The public surface is the field and the three names it admits.
 - **The `schema list` id description states the id the command emits**: `rcp.cli.schema.SchemaInfo.id` said
   `rcp-ndcg.<name>.v1`; the exported `rcp.schema-list.v1` now says `rcp.<name>.v1`.
 
@@ -123,7 +144,9 @@ every reader still accepts it. All four distributions carry the tag version; `rc
   compatibility shim.
   The behaviour fingerprints do not move (the harness is not a fingerprint input), the committed corpora and
   the pairs corpus keep the spellings they were recorded with, the ledger's historical wave paths keep their
-  placeholders, and so do the historical entries below.
+  placeholders, and so do the historical entries below. `rcp-test/pairs/manifest.json` is the generator's own
+  record, not corpus data. It names the current spellings: `rcp-vllm.pairs-manifest.v1` and
+  `rcp_test.observe.requests`. The files it lists keep their recorded bytes, so no hash, size or row count moves.
 - **The metric id stays `rcp_ndcg`**: the names of the three shipped nDCGs are the metric's, not the package's, so
   they keep the spellings that they shipped with. These names are `MetricName`, the `--metrics`/`--metric` values
   and an `EvalReport`'s `metric` field, and they are `rcp_ndcg`, `qrel_ndcg` and `count_ndcg`. The distribution,
