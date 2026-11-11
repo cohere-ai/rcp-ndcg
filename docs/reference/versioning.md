@@ -96,7 +96,7 @@ canonicalisation is a new rule (`rcp-fp/5`). Corpora keyed by different rules th
 deliberate. It is recorded in the fingerprint module, in the
 [verified fake engines](../how-to/use-verified-fake-engines.md) page and in the CHANGELOG. Every committed corpus is
 then re-keyed or re-recorded on the next wave. It is re-keyed only when the moved inputs shaped none of its recorded
-exchanges. `tests/conformance/stale.json` names the corpora that await recording.
+exchanges. `packages/rcp-test/tests/conformance/stale.json` names the corpora that await recording.
 
 ## Observation corpora and their records
 

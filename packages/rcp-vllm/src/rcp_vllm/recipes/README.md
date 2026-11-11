@@ -13,4 +13,4 @@ every size its own tested recipe id):
 
 `<family>` matches `^[a-z0-9][a-z0-9.-]*$` and equals the directory name; each variant id is a full recipe id
 and is never a family id. See `docs/how-to/add-a-model.md` for the field-by-field guide, and the tests'
-fixtures under `tests/fixtures/recipes/` for complete examples per role.
+fixtures under `packages/rcp-test/tests/fixtures/recipes/` for complete examples per role.

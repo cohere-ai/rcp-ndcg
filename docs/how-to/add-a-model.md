@@ -52,7 +52,7 @@ a typo cannot silently change what is served.
    variants. Pin every field per variant, with two mutants red per family. Run the family's stage-1 network
    tests for the new variant.
 3. Add the variant's golden. `uv run --no-sync pytest packages/rcp-test/tests/recipes/test_family_goldens.py
-   --update-goldens` rewrites `tests/recipes/golden/` from the current tree. Review the diff, then commit. The
+   --update-goldens` rewrites `packages/rcp-test/tests/recipes/golden/` from the current tree. Review the diff, then commit. The
    guard compares every variant's resolved contract and fingerprint against its golden in every CI job.
 4. A new family needs its `family.yaml` (below), its reference and its family test module. It also needs its template when it needs one, and its variant goldens.
 
