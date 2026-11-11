@@ -111,6 +111,34 @@ class TestTheSequence:
         assert record is not None and record.usage is not None
         assert usage.usage == record.usage.model_dump()
 
+    def test_a_subscriber_sees_the_manifest_the_step_already_wrote(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The event is emitted after the record is final, not before it.
+
+        A subscriber that reads ``manifest.json`` while it is called must find the step it is being told about
+        already written. Emitting before the write would still pass every assertion about the event's own
+        fields, so the ordering is pinned here, from the subscriber's side.
+        """
+        runs = tmp_path / "runs"
+        seen: list[tuple[str, str | None]] = []
+
+        def subscribe(event: RunEvent) -> None:
+            manifest_path = next(runs.glob("*/manifest.json"), None)
+            recorded = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path else {}
+            steps = {step["name"]: step["status"] for step in recorded.get("steps", [])}
+            seen.append((event.phase, steps.get(event.step)))
+
+        monkeypatch.setattr("rcp.runs.pipeline.Emitter.installed", classmethod(lambda cls: Emitter([subscribe])))
+        Pipeline(tiny_config(data), runs_dir=str(runs)).run()
+
+        finished = [status for phase, status in seen if phase == "step_finished"]
+        assert finished, seen
+        assert all(status == "completed" for status in finished), seen
+        # `step_started` is emitted after the step is recorded as running, so its status is already there.
+        started = [status for phase, status in seen if phase == "step_started"]
+        assert started and all(status == "running" for status in started), seen
+
     def test_a_failed_step_emits_step_failed_and_the_run_stops(
         self, data: Path, tmp_path: Path, received: list[RunEvent]
     ) -> None:

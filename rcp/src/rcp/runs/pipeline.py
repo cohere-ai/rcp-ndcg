@@ -353,8 +353,10 @@ class Pipeline:
         """
         recorded = self.manifest.model_copy(deep=True)
         claims = self._store_claims()
-        self._events = Emitter.installed()
         self.layout.ensure()
+        # After the layout exists: scanning the group is a filesystem read of installed distributions, and a
+        # failure before `ensure()` would leave the promise below half-kept.
+        self._events = Emitter.installed()
         # The dataset is loaded (and a from:dataset run's first-stage pools computed) before anything is written:
         # a failure here -- a typo in --set dataset=..., a Hub error -- leaves run.yaml, the recorded config and
         # the status exactly as they were, as this method promises.
@@ -406,9 +408,7 @@ class Pipeline:
                     self.manifest.save(self.layout)
                 # After the record is final, so the event carries the status the run recorded: a step `run cancel`
                 # stopped is `cancelled` here too, not the `failed` the handler first wrote.
-                self._closed(
-                    "step_failed", step, usage=usage, detail={"error": error, "status": status.value}
-                )
+                self._closed("step_failed", step, usage=usage, detail={"error": error, "status": status.value})
                 raise
             self.manifest.save(self.layout)
         done = all((record := self.manifest.step(step)) is not None and record.succeeded for step in self.config.steps)
@@ -462,6 +462,9 @@ class Pipeline:
         inputs = self._inputs(step)
         outputs, usage = self._budgeted_step(step)
         record = self.manifest.finish_step(step, inputs=inputs, outputs=outputs, usage=usage)
+        # The record is final on disk before the event that announces it: a subscriber that reads the manifest
+        # while it is called finds the step it is being told about already written.
+        self.manifest.save(self.layout)
         self._closed(
             "step_finished", step, usage=usage, detail={"status": record.status.value, "duration_s": record.duration_s}
         )
