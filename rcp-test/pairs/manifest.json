@@ -2,7 +2,7 @@
   "schema": "rcp-vllm.pairs-manifest.v1",
   "schema_version": 1,
   "generator": {
-    "module": "rcp_ndcg_test.observe.requests",
+    "module": "rcp_test.observe.requests",
     "GENERATOR_VERSION": 3,
     "GENERATOR_SEED": "1/rcp-observe-v1",
     "SEED": "rcp-observe-v1"

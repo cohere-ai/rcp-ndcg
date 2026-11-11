@@ -537,14 +537,20 @@ def test_a_version_bump_does_not_redraw_a_row(monkeypatch: pytest.MonkeyPatch) -
 
 def test_the_committed_pairs_files_match_the_recorded_generator_identity() -> None:
     """Every committed pairs file is the artifact of ONE recorded generator identity: the manifest names
-    the generator's semantic version and its frozen sampling seed, and each file hashes, sizes and counts
-    to its entry (a file generated under another version fails here -- the integration note after
+    the generator's module, its semantic version and its frozen sampling seed, and each file hashes, sizes
+    and counts to its entry (a file generated under another version fails here -- the integration note after
     harness-fix).  Regenerate with ``python -m rcp_test.observe.requests --out rcp-test/pairs
     --reference-python <python>``."""
     import hashlib
 
+    import rcp_test.observe.requests as requests_module
+
     pairs = Path(__file__).resolve().parents[1] / "pairs"
     manifest = json.loads((pairs / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["generator"]["module"] == requests_module.__name__, (
+        "the manifest names the module the writer emits: the committed file is the writer's own record, so a "
+        "renamed package regenerates it -- the two sides cannot drift apart"
+    )
     assert manifest["generator"]["GENERATOR_VERSION"] == GENERATOR_VERSION
     assert manifest["generator"]["GENERATOR_SEED"] == GENERATOR_SEED
     entries = {entry["path"]: entry for entry in manifest["files"]}

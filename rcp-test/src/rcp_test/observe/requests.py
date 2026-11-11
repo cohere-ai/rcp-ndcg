@@ -1134,7 +1134,9 @@ def write_manifest(
         "schema": "rcp-vllm.pairs-manifest.v1",
         "schema_version": 1,
         "generator": {
-            "module": "rcp_test.observe.requests",
+            # The module that wrote the file, spelled by the module itself: a renamed package cannot leave a
+            # manifest naming a module that no longer resolves.
+            "module": __name__,
             "GENERATOR_VERSION": GENERATOR_VERSION,
             "GENERATOR_SEED": GENERATOR_SEED,
             "SEED": SEED,
