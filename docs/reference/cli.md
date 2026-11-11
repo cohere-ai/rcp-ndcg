@@ -131,7 +131,7 @@ With `--json`, stdout carries exactly one JSON document, and the logs and the pr
  "data": {"schema": "rcp.eval-score.v1", "summary": [], "per_dataset": [],
           "warnings": [{"code": "UNRANKED_QUERIES", "message": "..."}]},
  "warnings": [],
- "meta": {"version": "0.1.0", "elapsed_s": 1.84, "run_dir": null}}
+ "meta": {"version": "0.0.1", "elapsed_s": 1.84, "run_dir": null}}
 ```
 
 The `warnings` of the envelope carry the conditions that were raised while the command ran. Each warning has a code

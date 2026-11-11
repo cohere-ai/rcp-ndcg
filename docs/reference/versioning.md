@@ -128,7 +128,7 @@ manifest and layout (`rcp.run-manifest.v1`, `rcp-ndcg.run-layout.v1`) and the ju
 (`rcp.judgement-store.v1`). It also holds for the calibration (`rcp.calibration.v1`) and every other
 exported schema.
 
-0.1.0 moved the tag from `rcp-ndcg.<name>.v1` to `rcp.<name>.v1`. The run layout's own tag
+0.0.1 moved the tag from `rcp-ndcg.<name>.v1` to `rcp.<name>.v1`. The run layout's own tag
 (`rcp-ndcg.run-layout.v1`) is not a schema id, and it did not move. An artifact written before the move carries
 the old spelling, and every reader accepts both. A new artifact carries the new spelling. A judgement store keeps
 the tag that it was created with. A resume therefore writes its identity back under that tag, and it never

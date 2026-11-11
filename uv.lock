@@ -2704,7 +2704,7 @@ wheels = [
 
 [[package]]
 name = "rcp"
-version = "0.1.0"
+version = "0.0.1"
 source = { editable = "rcp" }
 dependencies = [
     { name = "bm25s" },
@@ -2814,7 +2814,7 @@ provides-extras = ["s3", "azure", "hf", "http", "mteb", "calibrate", "data", "vl
 
 [[package]]
 name = "rcp-core"
-version = "0.1.0"
+version = "0.0.1"
 source = { editable = "rcp-core" }
 dependencies = [
     { name = "numpy" },
@@ -2838,7 +2838,7 @@ provides-extras = ["irt"]
 
 [[package]]
 name = "rcp-test"
-version = "0.1.0"
+version = "0.0.1"
 source = { editable = "rcp-test" }
 dependencies = [
     { name = "numpy" },
@@ -2866,7 +2866,7 @@ provides-extras = ["test"]
 
 [[package]]
 name = "rcp-vllm"
-version = "0.1.0"
+version = "0.0.1"
 source = { editable = "rcp-vllm" }
 dependencies = [
     { name = "pydantic" },

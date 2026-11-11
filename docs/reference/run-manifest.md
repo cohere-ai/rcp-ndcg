@@ -83,7 +83,7 @@ from rcp.runs import RunManifest
 manifest = RunManifest.model_validate(
     {
         "run_id": "20260102-030405-tiny-ab12cd",
-        "code": {"package_version": "0.1.0", "python_version": "3.12", "platform": "linux"},
+        "code": {"package_version": "0.0.1", "python_version": "3.12", "platform": "linux"},
         "path": "runs/20260102-030405-tiny-ab12cd",
         "datasets": [
             {"name": "tiny", "subset": "test", "internal": False, "args": {"qrels_uri": "qrels.jsonl"}},

@@ -12,7 +12,7 @@ node's bootstrap installs into the client environment); anywhere else it install
 subdirectory**:
 
 ```bash
-pip install "rcp-test @ git+https://github.com/cohere-ai/rcp-ndcg.git@v0.1.0#subdirectory=rcp-test"
+pip install "rcp-test @ git+https://github.com/cohere-ai/rcp-ndcg.git@v0.0.1#subdirectory=rcp-test"
 ```
 
 No published package names it, and the release workflow builds only the three published distributions by

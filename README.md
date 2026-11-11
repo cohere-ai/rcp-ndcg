@@ -32,7 +32,7 @@ The rendered pages are at [the documentation site](https://cohere-ai.github.io/r
 the concepts, the how-to guides and the command line. It also holds the recipe catalog and the [compatibility and
 versioning policy](docs/reference/versioning.md). The pages are in `docs/`. `mkdocs build --strict` renders them.
 [The quickstart](docs/quickstart.md) is a 30-minute introduction from the install to a scored run.
-[CHANGELOG.md](CHANGELOG.md) states the public surface and the changes in 0.1.0. `experiments/run_all.py`
+[CHANGELOG.md](CHANGELOG.md) states the public surface and the changes in 0.0.1. `experiments/run_all.py`
 reproduces the tables of the paper from the public data. [REPRODUCIBILITY.md](REPRODUCIBILITY.md) is the record.
 Contributors and coding agents change this repository under [AGENTS.md](AGENTS.md). [CITATION.cff](CITATION.cff)
 holds the paper reference.

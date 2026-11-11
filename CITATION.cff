@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use RCP-nDCG, please cite the paper below."
 title: "RCP-nDCG"
 type: software
-version: 0.1.0
+version: 0.0.1
 license: Apache-2.0
 repository-code: "https://github.com/cohere-ai/rcp-ndcg"
 authors:
