@@ -27,8 +27,10 @@ lists the locations a source's reader reads without reading them. A **remote** n
 the same function fingerprints the objects its reader reads from the backend's own metadata: an object's size
 and change stamp (its etag/generation, else its mtime), or a streamed SHA-256 when the backend reports neither;
 a prefix is its sorted listing. A remote location the backend cannot answer for is refused -- an identity keyed
-on the URI alone would reuse work over bytes nobody checked. A Hub, ``suite:`` or ``mteb:`` source carries its
-resolved commit and pays no content digest.
+on the URI alone would reuse work over bytes nobody checked. A source read at a commit (``hf://``, ``mteb:``, a
+shipped suite) carries no content digest. A **suite** is data: its identity is the definition its file states,
+together with the commit its data is read at (:func:`_suite_definition_digest`), so an edited downstream
+``suite.yaml`` is another dataset whether or not it pins a commit.
 """
 
 from __future__ import annotations
@@ -46,7 +48,7 @@ from uuid import uuid4
 from rcp.errors import DataError, RcpNdcgWarning
 from rcp.storage.artifacts import artifact_ref
 from rcp.storage.uri import is_remote
-from rcp.support.identity import hash_strings
+from rcp.support.identity import hash_payload, hash_strings
 from rcp.support.logging import get_logger
 from rcp.support.urls import safe_url
 
@@ -58,8 +60,15 @@ _TRUE = {"1", "true", "yes", "on"}
 
 #: Reader schemes whose location is remote or carries a commit: ``hf://``, ``suite:`` and ``mteb:`` name remote
 #: data (a Hub source is pinned by its resolved commit). Every other scheme names a location on this host -- a
-#: reader the digest does not know is not a source it may leave out of an identity.
+#: reader the digest does not know is not a source it may leave out of an identity. A ``suite:`` URI's own file
+#: is a location on this host when nothing pins it (:func:`_unpinned_suite_file`), which is handled before this
+#: list is read.
 _COMMITTED_SCHEMES = ("hf", "suite", "mteb")
+
+#: The reader-option suffix that names a location the reader *writes* (``media_out_uri``: where a Hub reader
+#: writes the media it decodes). An output is neither content nor an input: it never enters an identity, and a
+#: mirror never lists it. Every other option whose name ends in ``_uri`` names a location the reader reads.
+_OUTPUT_OPTION_SUFFIX = "_out_uri"
 
 #: The per-process digest cache for local dataset files: ``(resolved path, size, mtime_ns) -> digest``.
 #: The files of a local dataset do not change under a run, and a resume check computes the identity many times;
@@ -262,20 +271,23 @@ def _cached_commit(repo_id: str, ref: str) -> str | None:
 
 
 def dataset_uri_revision(uri: str | None, revision: str | None = None) -> dict[str, Any] | None:
-    """The resolved commit of a Hub dataset URI (``hf://org/repo[/subset][@rev]``, ``suite:<name>``), else ``None``.
+    """The resolved commit of a dataset URI (``hf://org/repo[/subset][@rev]``, ``suite:<name|path>``), else ``None``.
 
     Part of every identity that reads the dataset. The Hub loaders read the data at the commit resolved here, so
     the data and its identity agree; a moved upstream (a new commit behind ``main``) is read, and recorded, by the
-    next process. An ``mteb:`` task records the revision mteb's own task metadata pins (the extra is required:
-    the data could not have been loaded without it).
+    next process. A ``suite:`` URI takes its repository and its revision from the suite definition it names: the
+    shipped suite, or the ``suite.yaml`` at the path (:func:`rcp.data.io.suite.resolve_suite_spec`). A downstream
+    suite is named like a shipped one. An ``mteb:`` task records the revision mteb's own task metadata pins (the
+    extra is required: the data could not have been loaded without it).
 
     Args:
         uri: The dataset URI a :class:`~rcp.data.Dataset` was loaded from.
-        revision: The revision it was loaded at (overrides one in the URI).
+        revision: The revision it was loaded at (overrides one in the URI, and the one a suite file declares).
 
     Returns:
-        ``{"repo", "commit", "verified"}`` for a Hub dataset or an ``mteb:`` task (its metadata's pinned
-        dataset revision); ``None`` for any other source.
+        ``{"repo", "commit", "verified"}`` for a Hub dataset, a ``suite:`` suite or an ``mteb:`` task (its
+        metadata's pinned dataset revision); ``None`` for any other source, and for a ``suite:`` name that is no
+        suite (the loader refuses it with its own error).
     """
     if not uri:
         return None
@@ -284,12 +296,13 @@ def dataset_uri_revision(uri: str | None, revision: str | None = None) -> dict[s
 
         return MtebTaskReader(uri.removeprefix("mteb:")).revision_payload()
     if uri.startswith("suite:"):
-        from rcp.data.dataset import SUITES
+        from rcp.data.io.suite import resolve_suite_spec
 
-        suite = SUITES.get(uri.removeprefix("suite:"))
-        if suite is None:
+        spec = resolve_suite_spec(uri.removeprefix("suite:"))
+        if spec is None:
             return None
-        repo = suite.repo
+        repo = spec.repo
+        revision = revision or spec.revision
     elif uri.startswith("hf://"):
         path, _, uri_revision = uri.removeprefix("hf://").partition("@")
         repo = "/".join(path.strip("/").split("/")[:2])
@@ -299,13 +312,82 @@ def dataset_uri_revision(uri: str | None, revision: str | None = None) -> dict[s
     return {"repo": repo, **resolve_revision(repo, revision).identity()}
 
 
+def _suite_definition_digest(name_or_path: str) -> str | None:
+    """The digest of the definition a downstream suite file states, else ``None``.
+
+    A suite is data: its identity is the definition its file states, together with the commit its data is read
+    at. The definition digests as the validated :class:`~rcp.data.io.suite.SuiteSpec`, its canonical JSON -- never
+    as the file's bytes, so a re-serialised or re-commented file states the same suite and keeps the identity,
+    while an edit to ``subsets``, ``protocol``, ``name``, ``repo``, ``revision`` or ``gains`` is another dataset.
+
+    The four shipped suites are package data, released with the code and frozen by tests; their identity is their
+    name, so a recorded run's ``suite:<name>`` URI keeps it and they carry no definition digest. The distinction
+    is the resolution order of :func:`~rcp.data.io.suite.resolve_suite_spec`: a *name* in the package's
+    ``suites/`` directory is package data, and anything else is a file the caller points at -- a path to the
+    package's own file included, which is then a suite the caller owns.
+
+    Args:
+        name_or_path: The ``suite:`` URI's remainder (a shipped suite name, or a path).
+
+    Returns:
+        The SHA-256 of the definition for a downstream suite; ``None`` for a shipped suite and for a path that
+        is no suite at all (the loader refuses that one with its own error).
+    """
+    from rcp.data.io.suite import resolve_suite_spec, shipped_suite_names
+
+    if name_or_path in shipped_suite_names():
+        return None
+    spec = resolve_suite_spec(name_or_path)
+    return None if spec is None else hash_payload(spec.model_dump(mode="json"))
+
+
+def _unpinned_suite_file(name_or_path: str) -> Path | None:
+    """The suite file a ``suite:`` URI names when nothing pins it, else ``None``.
+
+    The four shipped suites are files of this package, so nothing outside the package names them. A suite file
+    outside the package that declares no full commit is a file on this host, and a mirror lists it; one that
+    declares a commit names no local location (the commit names the data, and the definition is in the identity
+    either way: :func:`_suite_definition_digest`).
+
+    Args:
+        name_or_path: The ``suite:`` URI's remainder (a shipped suite name, or a path).
+
+    Returns:
+        The ``suite.yaml`` path of an unpinned suite outside the package, else ``None``.
+    """
+    from rcp.data.io.suite import resolve_suite_spec, shipped_suite_names, suite_file
+
+    if name_or_path in shipped_suite_names():
+        return None
+    spec = resolve_suite_spec(name_or_path)
+    if spec is None or is_commit(spec.revision):
+        return None
+    return suite_file(name_or_path)
+
+
+def _reader_inputs(options: Mapping[str, Any] | None) -> list[tuple[str, str]]:
+    """``(option, location)`` of every reader option that names a location the reader *reads*.
+
+    An option whose name ends in ``_uri`` names a location (``qrels_uri``, ``queries_uri``); one that ends in
+    :data:`_OUTPUT_OPTION_SUFFIX` names a location the reader writes (``media_out_uri``), which is not content.
+    """
+    return [
+        (key, value)
+        for key, value in (options or {}).items()
+        if key.endswith("_uri") and not key.endswith(_OUTPUT_OPTION_SUFFIX) and isinstance(value, str)
+    ]
+
+
 def dataset_local_locations(uri: str, options: Mapping[str, Any] | None = None) -> dict[str, str]:
     """``{name: location}`` of the local locations a dataset URI's reader reads, without reading them.
 
     The dataset location of a reader scheme whose location is not remote (``jsonl:``, ``beir:``, ``images:``,
     ``videos:``, ``frames:``, ``pdf:`` and a third party's own scheme alike) is ``dataset``; every reader option
     whose name ends in ``_uri`` and whose value is a local path is ``dataset.options.<key>``. A committed source
-    (``hf://``, ``suite:``, ``mteb:``) and a remote option value are absent: nothing local is named there.
+    (``hf://``, ``mteb:``, a shipped suite) and a remote option value are absent: nothing local is named there.
+    A ``suite:`` URI is ``dataset`` when its suite file is outside the package and declares no full commit
+    (:func:`_unpinned_suite_file`). That location is the file the suite reader reads. An option that names a
+    location the reader *writes* (``media_out_uri``) is no input: it is absent too.
 
     Args:
         uri: The dataset URI a :class:`~rcp.data.Dataset` was loaded from.
@@ -313,38 +395,56 @@ def dataset_local_locations(uri: str, options: Mapping[str, Any] | None = None) 
     """
     locations: dict[str, str] = {}
     scheme, sep, rest = uri.partition(":")
-    if sep and rest and scheme not in _COMMITTED_SCHEMES and not is_remote(rest):
-        locations["dataset"] = rest
-    for key, value in (options or {}).items():
-        if key.endswith("_uri") and isinstance(value, str) and not is_remote(value):
+    if sep and rest:
+        if scheme == "suite":
+            file = _unpinned_suite_file(rest)
+            if file is not None:
+                locations["dataset"] = str(file)
+        elif scheme not in _COMMITTED_SCHEMES and not is_remote(rest):
+            locations["dataset"] = rest
+    for key, value in _reader_inputs(options):
+        if not is_remote(value):
             locations[f"dataset.options.{key}"] = value
     return locations
 
 
 def dataset_content_digest(uri: str, options: Mapping[str, Any] | None = None) -> dict[str, str]:
-    """``{name: digest}`` of the files a dataset URI's reader reads (empty for a source with a resolved commit).
+    """``{name: digest}`` of the content a dataset URI's source states (empty for a source read at a commit).
 
     The one home of a dataset source's content identity, consumed by the run steps' identity
     (:meth:`rcp.runs.config.DatasetSource.identity`) and by the judgement store's dataset identity alike.
-    The names are :func:`dataset_local_locations`'s, so an identity can say which location moved. A local
-    location digests as its bytes (a file) or its sorted listing (a directory); a remote non-Hub location is
-    fingerprinted from the backend's metadata -- an object's size and change stamp, or a streamed SHA-256 when
-    the backend reports neither, and a prefix as its sorted listing -- so a replaced object at the same URI
-    moves the digest like an edited file. A Hub, ``suite:`` or ``mteb:`` source has a resolved commit and pays
-    no digest here.
+    A local location digests as its bytes (a file) or its sorted listing (a directory); a remote non-Hub
+    location is fingerprinted from the backend's metadata -- an object's size and change stamp, or a streamed
+    SHA-256 when the backend reports neither, and a prefix as its sorted listing -- so a replaced object at the
+    same URI moves the digest like an edited file. Those names are :func:`dataset_local_locations`'s, so an
+    identity can say which location moved.
+
+    A **suite** source is named by the definition its file states, under ``definition``
+    (:func:`_suite_definition_digest`): an edited downstream ``suite.yaml`` is another dataset whether or not it
+    pins a commit, and a shipped suite carries none. A source read at a commit (``hf://``, ``mteb:``, a shipped
+    suite) carries no digest at all: its bytes are the repository's, and nothing on this host names them. A
+    reader option that names an output location (``media_out_uri``) is not content either.
 
     Args:
         uri: The dataset URI a :class:`~rcp.data.Dataset` was loaded from.
         options: The reader options it was loaded with (``qrels_uri``, ``queries_uri``, ...).
 
     Returns:
-        ``{name: sha256}`` for every location; empty when the source has a resolved commit.
+        ``{name: sha256}`` for every location and for a downstream suite's definition; empty when the source is
+        read at a commit.
 
     Raises:
         DataError: a remote location the backend cannot answer for (missing, unreachable, or no backend
             installed): nothing there can name the bytes, and keying on the URI alone would reuse work over
             bytes nobody checked.
     """
+    scheme, sep, rest = uri.partition(":")
+    if sep and rest:
+        if scheme == "suite":
+            definition = _suite_definition_digest(rest)
+            return {"definition": definition} if definition is not None else {}
+        if scheme in _COMMITTED_SCHEMES:
+            return {}
     return {
         name: digest
         for name, location in _dataset_locations(uri, options).items()
@@ -358,8 +458,8 @@ def _dataset_locations(uri: str, options: Mapping[str, Any] | None) -> dict[str,
     scheme, sep, rest = uri.partition(":")
     if sep and rest and scheme not in _COMMITTED_SCHEMES and is_remote(rest):
         locations["dataset"] = rest
-    for key, value in (options or {}).items():
-        if key.endswith("_uri") and isinstance(value, str) and is_remote(value):
+    for key, value in _reader_inputs(options):
+        if is_remote(value):
             locations[f"dataset.options.{key}"] = value
     return locations
 

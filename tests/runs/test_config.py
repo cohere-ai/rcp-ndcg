@@ -487,6 +487,38 @@ def test_the_shipped_configs_validate() -> None:
         assert isinstance(config.judge, str) and isinstance(config.judge_config(), JudgeConfig)
 
 
+class TestTheDatasetIdentity:
+    """What names the data of a run's steps: the source, the commit it resolves to, and the bytes nothing pins.
+
+    A reader option that names an output location (``media_out_uri``, where the reader writes what it decodes)
+    is not content: a source read at a commit keeps the identity it had, so the media a run writes never makes
+    its own steps stale, and a remote output is never fingerprinted.
+    """
+
+    def test_a_hub_source_with_a_local_media_output_keeps_its_identity(self, tmp_path: Path) -> None:
+        from rcp.runs.config import DatasetSource
+
+        media = tmp_path / "media"
+        media.mkdir()
+        commit = "a" * 40
+        source = DatasetSource(uri=f"hf://org/repo@{commit}", options={"media_out_uri": str(media)})
+
+        identity = source.identity()
+
+        assert set(identity) == {"uri", "options", "resolved"}, "the commit is the content: nothing is digested"
+        assert identity["resolved"] == {"repo": "org/repo", "commit": commit, "verified": True}
+        (media / "decoded.bin").write_text("one\n", encoding="utf-8")
+        assert source.identity() == identity, "the media the reader writes never makes the step stale"
+
+    def test_a_remote_media_output_is_not_fingerprinted(self) -> None:
+        from rcp.runs.config import DatasetSource
+
+        commit = "a" * 40
+        source = DatasetSource(uri=f"hf://org/repo@{commit}", options={"media_out_uri": "s3://YOUR-BUCKET/media"})
+
+        assert "content" not in source.identity(), "an output location names no bytes this source reads"
+
+
 class TestRunnerOptions:
     @pytest.mark.parametrize("name", ["local", "slurm", "kubernetes"])
     def test_the_typed_options_are_the_runners_own_model(self, name: str) -> None:

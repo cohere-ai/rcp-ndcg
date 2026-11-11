@@ -212,12 +212,38 @@ def shipped_suite_specs() -> tuple[SuiteSpec, ...]:
     return tuple(SuiteReader(str(shipped_suite_path(name))).spec for name in shipped_suite_names())
 
 
+def resolve_suite_spec(name_or_path: str) -> SuiteSpec | None:
+    """The suite a ``suite:`` URI names: a shipped suite first, then the suite file at the path.
+
+    The one home of the resolution order. :func:`rcp.data.load_dataset` reads it, and so does the identity
+    layer (:func:`rcp.data.revisions.dataset_uri_revision`).
+
+    Args:
+        name_or_path: The ``suite:`` URI's remainder: a shipped suite name (``trecdl``), or a path to a suite
+            directory or to its ``suite.yaml``.
+
+    Returns:
+        The validated :class:`SuiteSpec`, or ``None`` when the argument names neither a shipped suite nor an
+        existing path.
+
+    Raises:
+        ConfigError: The path exists but is no suite (a directory without ``suite.yaml``, or a file that does not
+            validate).
+    """
+    if name_or_path in shipped_suite_names():
+        return read_suite_spec(shipped_suite_path(name_or_path))
+    if not Path(name_or_path).exists():
+        return None
+    return SuiteReader(name_or_path).spec
+
+
 __all__ = [
     "SHIPPED_SUITE_PACKAGE",
     "SUITE_FILE",
     "SuiteReader",
     "SuiteSpec",
     "read_suite_spec",
+    "resolve_suite_spec",
     "shipped_suite_names",
     "shipped_suite_path",
     "shipped_suite_specs",

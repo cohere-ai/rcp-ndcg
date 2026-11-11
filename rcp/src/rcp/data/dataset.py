@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError, field_validator
@@ -33,7 +32,7 @@ from rcp_core.records import Document, Query
 from rcp.data.io import READERS, Provenance, get_reader
 from rcp.data.io.base import SourceReader
 from rcp.data.io.hub import HubReader, hub_subsets
-from rcp.data.io.suite import SuiteReader, SuiteSpec, shipped_suite_names, shipped_suite_path, shipped_suite_specs
+from rcp.data.io.suite import SuiteReader, SuiteSpec, resolve_suite_spec, shipped_suite_specs
 from rcp.data.revisions import resolve_revision
 from rcp.errors import ConfigError, DataError
 from rcp.support.logging import get_logger
@@ -481,18 +480,14 @@ def _load_suite_uri(
     options: dict[str, Any],
 ) -> Dataset:
     """``suite:<name>`` or ``suite:<path>``: a registered (shipped) suite first, then a suite directory."""
-    spec = _SUITE_SPECS.get(name_or_path)
-    suite = SUITES.get(name_or_path)
-    name = name_or_path
-    if suite is None and name_or_path in shipped_suite_names():
-        spec = SuiteReader(str(shipped_suite_path(name_or_path))).spec
-        suite, name = Suite(spec.repo, spec.subsets), spec.name
-    if suite is None:
-        path = Path(name_or_path)
-        if not path.exists() and "/" not in name_or_path and "\\" not in name_or_path:
+    spec = _SUITE_SPECS.get(name_or_path) or resolve_suite_spec(name_or_path)
+    if spec is None:
+        if "/" not in name_or_path and "\\" not in name_or_path:
             raise ConfigError(f"unknown suite {name_or_path!r}", hint=f"public suites: {sorted(SUITES)}")
-        spec = SuiteReader(name_or_path).spec
-        suite, name = Suite(spec.repo, spec.subsets), spec.name
+        spec = SuiteReader(name_or_path).spec  # a path that is no suite: the reader's own refusal
+    # A shipped name keeps the view's own entry (``SUITES`` is public, and a caller may narrow it); anything else
+    # is the file's, and so is the protocol of either.
+    suite, name = SUITES.get(name_or_path) or Suite(spec.repo, spec.subsets), spec.name
     options = {**options}
     if split is not None:
         options["split"] = split

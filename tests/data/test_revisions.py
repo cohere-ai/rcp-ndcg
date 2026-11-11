@@ -356,6 +356,38 @@ class TestTheLocalDatasetContentDigest:
             "dataset.options.qrels_uri": str(qrels),
         }
 
+    def test_a_reader_option_that_names_an_output_is_not_content(self, tmp_path: Path) -> None:
+        """``media_out_uri`` is where the reader *writes* what it decodes: an output is neither content nor an
+        input, so it enters no digest and no mirror listing -- a committed source keeps the identity it had, a
+        remote output is never fingerprinted, and a local one never moves the digest as the reader fills it."""
+        from rcp.data.revisions import dataset_content_digest, dataset_local_locations
+
+        media = tmp_path / "media"
+        media.mkdir()
+        (media / "decoded-1.bin").write_text("one\n", encoding="utf-8")
+        for committed in ("hf://org/repo", "suite:trecdl", "mteb:NanoNFCorpus"):
+            assert dataset_content_digest(committed, {"media_out_uri": str(media)}) == {}, committed
+            assert dataset_local_locations(committed, {"media_out_uri": str(media)}) == {}, committed
+        assert dataset_content_digest("suite:trecdl", {"media_out_uri": "s3://YOUR-BUCKET/media"}) == {}, (
+            "an output location is not read, so it is never fingerprinted"
+        )
+
+        corpus = tmp_path / "corpus"
+        corpus.mkdir()
+        (corpus / "a.png").write_text("a\n", encoding="utf-8")
+        qrels = tmp_path / "qrels.jsonl"
+        qrels.write_text("{}\n", encoding="utf-8")
+        options = {"qrels_uri": str(qrels), "media_out_uri": str(media)}
+        before = dataset_content_digest(f"images:{corpus}", options)
+        assert set(before) == {"dataset", "dataset.options.qrels_uri"}, "only the reader's inputs are digested"
+        assert dataset_local_locations(f"images:{corpus}", options) == {
+            "dataset": str(corpus),
+            "dataset.options.qrels_uri": str(qrels),
+        }
+
+        (media / "decoded-2.bin").write_text("two\n", encoding="utf-8")
+        assert dataset_content_digest(f"images:{corpus}", options) == before, "media the reader writes is not content"
+
     def test_a_remote_object_is_fingerprinted_and_a_replaced_one_moves_the_digest(self) -> None:
         """A remote non-Hub source has no commit to pin it: the object's own metadata (or its bytes, when the
         backend reports neither a size nor a change stamp) names it, so a replaced object at the same URI is

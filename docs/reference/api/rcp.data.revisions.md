@@ -19,7 +19,7 @@ ResolvedRevision(repo_id: str, commit: str | None)
 
 ## `dataset_content_digest`
 
-function — ``{name: digest}`` of the files a dataset URI's reader reads (empty for a source with a resolved commit).
+function — ``{name: digest}`` of the content a dataset URI's source states (empty for a source read at a commit).
 
 ```text
 dataset_content_digest(uri: str, options: Mapping[str, Any] | None = None) -> dict[str, str]
@@ -35,7 +35,7 @@ dataset_local_locations(uri: str, options: Mapping[str, Any] | None = None) -> d
 
 ## `dataset_uri_revision`
 
-function — The resolved commit of a Hub dataset URI (``hf://org/repo[/subset][@rev]``, ``suite:<name>``), else ``None``.
+function — The resolved commit of a dataset URI (``hf://org/repo[/subset][@rev]``, ``suite:<name|path>``), else ``None``.
 
 ```text
 dataset_uri_revision(uri: str | None, revision: str | None = None) -> dict[str, Any] | None

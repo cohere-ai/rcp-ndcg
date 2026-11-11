@@ -263,7 +263,8 @@ class Pipeline:
 
         A local source has no commit: it enters by the digest of the files its reader reads
         (:func:`rcp.data.revisions.dataset_content_digest`, the one home the judgement store's dataset
-        identity consumes too), so an edited ``rows.jsonl`` makes every step that read it stale.
+        identity consumes too), so an edited ``rows.jsonl`` makes every step that read it stale. A suite enters
+        by the definition its file states, so an edited downstream ``suite.yaml`` does too.
 
         The formatting's own inputs are in the step payloads: the title mode and the instruction policy are
         CONTENT fields of the retriever, the reranker and the judge configs (``identity_payload``), and the

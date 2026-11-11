@@ -100,6 +100,74 @@ when the config declares it else the config's only split — and needs neither `
 datasets also run through stock `mteb`, with the `rcp_ndcg_tasks.py` file each dataset ships, or through
 `rcp.eval.mteb` ([the MTEB tutorial](how-to/mteb-integration.md)).
 
+## Suites as data
+
+A suite is a directory with a `suite.yaml`, or that file's own path. The four shipped suites (`nanobeir`, `bright`,
+`vidore`, `trecdl`) are files of the package. They read through the same reader, so a downstream suite has the same
+shape:
+
+```yaml
+kind: suite
+name: my-suite
+repo: your-org/my-benchmark
+subsets: [task-a, task-b]
+protocol: plain
+revision: null
+gains: true
+```
+
+| Field | Meaning |
+|---|---|
+| `kind` | The discriminator, `suite`. A file for another kind is refused, and so is an unknown key. |
+| `name` | The suite's name: what a report calls it. |
+| `repo` | The Hugging Face dataset repository that holds the subsets, `owner/name`. |
+| `subsets` | The repository's subset names, in scoring order. At least one, each once. |
+| `protocol` | The preset every subset is scored with ([scoring protocols](concepts/protocols.md)). |
+| `revision` | The Hub revision the data is read at: a commit, a tag, a branch, or `null` for `main`. |
+| `gains` | Whether the released data carries calibrated gains (the qrels `gain` and `theta` columns). |
+
+`load_dataset("suite:<name>")` resolves the name in three steps. It reads a shipped suite first (`nanobeir`,
+`bright`, `vidore`, `trecdl`). It then reads a directory at that path that carries a `suite.yaml`. Last, it reads
+the YAML file at that path. A file that does not validate is refused at load, naming the file and the field.
+
+The suite's `revision` pins the data of every subset, and `subset=` narrows a load to one of them. A subset that
+comes back at another revision is refused, and the message names both revisions.
+
+An identity names a suite by the definition its file states, together with the commit its data is read at. A
+suite's `revision` is the commit of its repository; the definition — `name`, `repo`, `subsets`, `protocol`,
+`revision`, `gains` — says which of that repository the suite is. A downstream author who changes any of those
+fields has a new dataset, and a resume re-runs the steps that read it; one who re-writes the same definition
+(another key order, a comment, a flow sequence instead of a block one) keeps the dataset they had. The four
+shipped suites are the exception: they are package data released with the code (and frozen by the project's own
+tests), so their identity is the suite name — `suite:trecdl` — and it does not move ([runs](concepts/runs.md),
+[revisions and identities](#revisions-and-identities)).
+
+```python
+from pathlib import Path
+
+from rcp.data.revisions import dataset_content_digest
+
+suite = Path("my-suite")
+suite.mkdir()
+file = suite / "suite.yaml"
+file.write_text(
+    "kind: suite\nname: my-suite\nrepo: your-org/my-benchmark\n"
+    "subsets: [task-a]\nprotocol: plain\nrevision: null\n",
+    encoding="utf-8",
+)
+before = dataset_content_digest("suite:my-suite")
+print(before)  # {'definition': '<sha256 of the definition the file states>'}
+print(dataset_content_digest("suite:trecdl"))  # {}: a shipped suite is named by its name
+
+# The same definition written another way is the same dataset.
+file.write_text(file.read_text(encoding="utf-8").replace("kind: suite\n", "# a comment\nkind: suite\n"),
+                encoding="utf-8")
+print(dataset_content_digest("suite:my-suite") == before)  # True
+
+file.write_text(file.read_text(encoding="utf-8").replace("[task-a]", "[task-a, task-b]"), encoding="utf-8")
+print(before != dataset_content_digest("suite:my-suite"))  # True: an edited suite is another dataset
+```
+
 ## Other formats, and adding one
 
 The readers and writers are entry points of the `rcp.readers` and `rcp.writers` groups — the same seam
@@ -139,6 +207,12 @@ Hub once per process, then the local cache when offline), `is_commit(revision)` 
 a full 40-character lowercase hex commit (so it resolves to itself), and `dataset_uri_revision(uri, revision)`
 reduces a dataset URI and revision to the identity payload's `{repo, commit, verified}`. A commit the resolution
 could not find is `None` with a typed `UNPINNED_REVISION` warning — never an invented value.
+
+A source that no commit pins is named by its content instead: `dataset_content_digest(uri, options)` digests what
+its reader reads — a local file's bytes, a directory's sorted listing, a remote object's backend fingerprint — so
+an edited `rows.jsonl` is another dataset. A source read at a commit (a `hf://` dataset, an `mteb:` task, a
+shipped suite) carries no digest, and neither does a reader option that names an *output* location such as
+`media_out_uri`: nothing there names bytes the run reads.
 
 ## Other data sources
 
