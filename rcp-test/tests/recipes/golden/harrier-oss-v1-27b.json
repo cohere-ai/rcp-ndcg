@@ -147,6 +147,7 @@
    ],
    "score_scale": "cosine"
   },
+  "relevant_spans": false,
   "resources": {
    "gpus": 1
   },

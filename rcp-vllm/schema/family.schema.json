@@ -320,7 +320,7 @@
         },
         "pooler_config": {
           "additionalProperties": true,
-          "description": "vLLM --pooler-config, a JSON object; keys must be PoolerConfig fields at the pinned engine",
+          "description": "vLLM --pooler-config, a JSON object; keys must be PoolerConfig fields at the pinned engine, or a field rcp_vllm.recipe.PLUGIN_FIELDS declares a plugin provides (the embed chunker's knobs)",
           "title": "Pooler Config",
           "type": "object"
         },
@@ -650,6 +650,12 @@
       ],
       "default": null,
       "title": "Scoring"
+    },
+    "relevant_spans": {
+      "default": false,
+      "description": "the family's deployment honours span-level relevance in a rerank request (the plugin's relevant_spans wire field): a capability declaration, rendered nowhere, and the family's shared block rather than a per-size override -- the served route's accepted request shape is part of what a family shares",
+      "title": "Relevant Spans",
+      "type": "boolean"
     },
     "licence": {
       "minLength": 1,

@@ -153,6 +153,7 @@
    ],
    "score_scale": "probability"
   },
+  "relevant_spans": false,
   "resources": {
    "gpus": 1
   },

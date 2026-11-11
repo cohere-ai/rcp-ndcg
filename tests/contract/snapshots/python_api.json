@@ -26760,6 +26760,13 @@
             "required": false,
             "type": "rcp_vllm.recipe.ReferenceSpec | None"
           },
+          "relevant_spans": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
+          },
           "resources": {
             "alias": null,
             "default": "<required>",
@@ -26906,6 +26913,13 @@
             "frozen": false,
             "required": false,
             "type": "rcp_vllm.recipe.ReferenceSpec | None"
+          },
+          "relevant_spans": {
+            "alias": null,
+            "default": false,
+            "frozen": false,
+            "required": false,
+            "type": "bool"
           },
           "resources": {
             "alias": null,
