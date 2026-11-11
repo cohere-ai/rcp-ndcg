@@ -405,6 +405,16 @@ def test_a_plugin_rename_cannot_move_a_fingerprint(tmp_path: Path, monkeypatch: 
     assert before["serve.plugin"] == "rcp-ndcg-vllm"
     assert before["plugin_sha256.rcp_ndcg_vllm.models"].startswith("sha256:")
 
+    # A recipe file that still spells serve.plugin the recorded way -- every wave record and every archived
+    # recipe does -- keys the same plugin, so an old recipe file still fingerprints.
+    def recorded_spelling(data: dict) -> dict:
+        data["serve"]["plugin"] = "rcp-ndcg-vllm"
+        data["serve"]["plugin_architectures"] = []
+        return data
+
+    archived = load_recipe(_copy(tmp_path, rewrite=recorded_spelling, rename="plugin-rename-recorded"))
+    assert fingerprint.fingerprint_inputs(archived, tokenizer_sha256_value="0" * 64) == after
+
 
 def test_a_product_rename_cannot_move_a_plugin_fingerprint() -> None:
     """The plugin sources name the product too, and the recorded bytes spell its package ``rcp_ndcg`` and its
@@ -435,6 +445,22 @@ def test_a_product_rename_cannot_move_a_plugin_fingerprint() -> None:
     for current, recorded in pairs:
         assert _canonical_plugin_source(current) == recorded
         assert _canonical_plugin_source(recorded) == recorded
+
+
+def test_the_plugin_name_helpers_touch_only_the_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The name maps rewrite the distribution's own name and nothing beside it: a foreign spec that merely
+    begins with the name keeps its spelling, and the inverse map refuses a key it did not make (naming it)
+    instead of handing the wheel cross-check a module no wheel carries."""
+    from rcp_test import fingerprint
+
+    assert fingerprint._canonical_plugin_text("rcp-vllm[extra]>=1") == "rcp-ndcg-vllm[extra]>=1"
+    assert fingerprint._canonical_plugin_text("rcp-vllm-nightly>=1") == "rcp-vllm-nightly>=1"
+    assert fingerprint._current_plugin_module("rcp_ndcg_vllm.models.topk.model") == "rcp_vllm.models.topk.model"
+    with pytest.raises(HarnessError, match="not a canonical plugin key"):
+        fingerprint._current_plugin_module("foreign_plugin.models")
+    monkeypatch.setattr(fingerprint, "PLUGIN_ENGINE_MODULES", ())
+    with pytest.raises(HarnessError, match="PLUGIN_ENGINE_MODULES"):
+        fingerprint._current_plugin_module("rcp_ndcg_vllm.models")
 
 
 def test_the_plugin_module_hashes_never_import_a_package_init(monkeypatch: pytest.MonkeyPatch) -> None:

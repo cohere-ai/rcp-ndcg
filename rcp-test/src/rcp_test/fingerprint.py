@@ -273,18 +273,25 @@ def _canonical_plugin_source(data: bytes) -> bytes:
     return data
 
 
+def _continues_distribution_name(rest: str) -> bool:
+    """Whether ``rest`` continues a distribution name (PEP 503's letters, digits, ``-``, ``_`` and ``.``)."""
+    return bool(rest) and (rest[0].isalnum() or rest[0] in "-_.")
+
+
 def _canonical_plugin_text(spec: str) -> str:
     """A plugin spec with its leading distribution name in the recorded spelling; the rest is unchanged.
 
     ``serve.plugin`` is a pip requirement spec, so only the leading name is the distribution; its extras, its
-    version specifiers and a URL are not. An unknown name (a foreign plugin, which
+    version specifiers and a URL are not. A name that merely begins with a known one (``rcp-vllm-nightly``)
+    is a different distribution, and any name the map does not know (a foreign plugin, which
     :func:`plugin_module_hashes` refuses by name) is returned as written.
     """
     text = spec.strip()
     for alias in (*_PLUGIN_PACKAGE_ALIASES, *_PLUGIN_DISTRIBUTION_ALIASES):
-        if text.lower().startswith(alias):
-            return _CANONICAL_PLUGIN_DISTRIBUTION + text[len(alias) :]
-    return spec
+        rest = text[len(alias) :]
+        if text.lower().startswith(alias) and not _continues_distribution_name(rest):
+            return _CANONICAL_PLUGIN_DISTRIBUTION + rest
+    return text
 
 
 def _canonical_plugin_module(module: str) -> str:
@@ -308,12 +315,31 @@ def _canonical_plugin_module(module: str) -> str:
 
 
 def _current_plugin_module(module: str) -> str:
-    """The current dotted module name of a canonical plugin key (the path of the staged wheel's member)."""
+    """The current dotted module name of a canonical plugin key (the path of the staged wheel's member).
+
+    The current package name is the one the shipped declaration names
+    (:data:`~rcp_vllm.models.PLUGIN_ENGINE_MODULES`), so the two sides of the wheel cross-check stay one
+    spelling apart.
+
+    Raises:
+        HarnessError: the declaration is empty (no package name to map onto), or ``module`` is not a
+            canonical key (a name this function did not make, which no wheel carries under it).
+    """
+    if not PLUGIN_ENGINE_MODULES:
+        raise HarnessError(
+            f"rcp_vllm.models.PLUGIN_ENGINE_MODULES is empty, so the canonical plugin key {module!r} cannot be "
+            "mapped onto the current package name; the shipped declaration must name the plugin's entry modules"
+        )
     package = PLUGIN_ENGINE_MODULES[0].partition(".")[0]
     if module == _CANONICAL_PLUGIN_PACKAGE:
         return package
     prefix = _CANONICAL_PLUGIN_PACKAGE + "."
-    return package + "." + module[len(prefix) :] if module.startswith(prefix) else module
+    if not module.startswith(prefix):
+        raise HarnessError(
+            f"{module!r} is not a canonical plugin key (the recorded package {_CANONICAL_PLUGIN_PACKAGE!r} plus "
+            "the module's path below it), so the staged wheel carries no member to hash under it"
+        )
+    return package + "." + module[len(prefix) :]
 
 
 def _template_file_sha(recipe: Recipe) -> str:
@@ -429,7 +455,9 @@ def plugin_module_hashes(recipe: Recipe) -> dict[str, str]:
     """
     if recipe.serve.plugin is None:
         return {}
-    if plugin_distribution_name(recipe.serve.plugin) != "rcp-vllm":
+    # The recorded spelling of the plugin's name is the shipped plugin too (the alias map says so, and every
+    # wave record and archived recipe keeps it), so the guard reads the canonicalised spec's name.
+    if plugin_distribution_name(_canonical_plugin_text(recipe.serve.plugin)) != _CANONICAL_PLUGIN_DISTRIBUTION:
         raise HarnessError(
             f"recipe {recipe.id}: serve.plugin {recipe.serve.plugin!r} is not the shipped plugin, so the "
             "behaviour fingerprint cannot resolve the modules its engine runs; a foreign plugin needs its "
