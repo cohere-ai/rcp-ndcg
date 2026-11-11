@@ -19,7 +19,7 @@ in the repository, not on this page. `tests/contract/snapshots/` and `schemas/` 
   (`tests/contract/snapshots/cli.json`, `exit_codes.json`; [the command line](cli.md)).
 - **The MCP tools** `rcp mcp serve` exposes (`tests/contract/snapshots/mcp_tools.json`).
 - **The packaging**: distributions, extras and entry-point groups (`tests/contract/snapshots/packaging.json`).
-- **The JSON Schemas** exported to `schemas/` (47 `*.v1.json` files in this release) and the `rcp-vllm` recipe
+- **The JSON Schemas** exported to `schemas/` (49 `*.v1.json` files in this release) and the `rcp-vllm` recipe
   schemas (`tests/contract/snapshots/vllm_cli.json`).
 
 Everything else is internal and can change without notice. The internal modules are `rcp.cli`,
@@ -128,7 +128,7 @@ manifest and layout (`rcp.run-manifest.v1`, `rcp-ndcg.run-layout.v1`) and the ju
 (`rcp.judgement-store.v1`). It also holds for the calibration (`rcp.calibration.v1`) and every other
 exported schema.
 
-0.0.1 moved the tag from `rcp-ndcg.<name>.v1` to `rcp.<name>.v1`. The run layout's own tag
+0.1.0 moved the tag from `rcp-ndcg.<name>.v1` to `rcp.<name>.v1`. The run layout's own tag
 (`rcp-ndcg.run-layout.v1`) is not a schema id, and it did not move. An artifact written before the move carries
 the old spelling, and every reader accepts both. A new artifact carries the new spelling. A judgement store keeps
 the tag that it was created with. A resume therefore writes its identity back under that tag, and it never
