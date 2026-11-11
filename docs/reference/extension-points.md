@@ -16,10 +16,10 @@ then. The seam stays in this package and the plugin stays in yours.
 | Run-event subscriber | `rcp.events` | nothing: every run publishes to every installed subscriber |
 | Artifact cache (`CacheStore`) | no group: a protocol | your own code passes the store |
 
-## The lookup every group shares
+## The lookup that five groups share
 
-Six of the eight groups resolve a name through `rcp.support.entrypoints`, so one name has one lookup and one
-policy:
+Five of the eight groups resolve a name through `rcp.support.entrypoints`: runners, readers, writers, results and
+metrics. One name has one lookup, and the three rules below are the policy of these five name-selecting groups:
 
 - An unknown name is a `ConfigError` (exit 3). Its hint names the group and the installed entries.
 - A name that two installed distributions provide is a `ConfigError` that names both providers. A plugin never
@@ -27,8 +27,9 @@ policy:
 - An entry point that does not import is a `ConfigError` that names the entry point and its own failure. A broken
   plugin never disappears from the list silently.
 
-The other two groups do not select by name. `rcp.adapters` loads its entries and refuses a class that would take
-a shipped adapter's `(role, name)`. `rcp.fake_transports` asks each provider for a URL until one answers.
+The other three groups do not resolve a name through that lookup. `rcp.adapters` selects by `(role, name)` in its
+own registry. `rcp.fake_transports` asks every provider for a URL until one answers. `rcp.events` loads every
+installed subscriber and selects nothing.
 
 ## Job runners (`rcp.runners`)
 
@@ -349,7 +350,8 @@ the writer table knows the shape is absent.
 
 ### A minimal writer
 
-This writer writes the ranking shape as one JSON object per line. It reports the count the conversion prints.
+This writer writes the ranking shape as one JSON object per line. It reports the count the conversion prints. A
+record's query text is `example.text`: `query` is an alias, for construction only.
 
 ```python
 import json
@@ -371,7 +373,7 @@ class CandidateJsonlWriter(SinkWriter):
             for example in examples:
                 row = {
                     "query_id": example.id,
-                    "query": example.query,
+                    "query": example.text,
                     "doc_ids": example.doc_ids,
                     "docs": example.docs,
                     "qrels": example.qrels,
@@ -379,6 +381,15 @@ class CandidateJsonlWriter(SinkWriter):
                 handle.write(json.dumps(row) + "\n")
                 written += 1
         return written
+```
+
+One record, written to a file, returns the count:
+
+```python
+example = RankingExample(
+    query_id="q1", query="What is RCP?", doc_ids=["d1"], docs=["A document."], qrels={"d1": 1.0}
+)
+assert CandidateJsonlWriter().write_examples([example], "candidates.jsonl") == 1
 ```
 
 ## Result sinks (`rcp.results`)
