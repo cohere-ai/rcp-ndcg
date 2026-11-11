@@ -9,14 +9,21 @@ This file is for agents (and people) who change this repository. To use the pack
 uv sync --locked --extra dev                     # Python 3.12 or later
 uv run ruff format --check . && uv run ruff check .
 uv run basedpyright                              # the four src trees: zero errors, blocking in CI
-uv run pytest tests/ -n 4                        # the whole suite, offline
+uv run pytest tests/ -n 4                        # the root tree: the invariants, the contract and docs suites
+uv run pytest packages/rcp/tests packages/rcp-core/tests -n 4   # the product's and the core's suites
+uv run pytest packages/rcp-test/tests -n 4       # the harness's suite, in its own process
+uv run pytest packages/rcp-vllm/tests -q         # the serving package's suite, in its own process
 uv run pytest tests/contract                     # the public surface: CLI tree, exit codes, schemas, __all__
 uv run pytest tests/docs                         # Markdown links, navigation, and every documentation snippet
 ```
 
+The four suite invocations are one per tree: `packages/rcp-test/tests` and `packages/rcp-vllm/tests` are
+never collected with the root tree (both trees are named `tests`), so no single `pytest tests/` runs the
+repository. CI runs the first two as one invocation (`pytest tests/ packages/rcp/tests packages/rcp-core/tests`).
+
 On Linux the lock resolves torch with its CUDA wheels. CI, like a CPU-only machine, skips them and installs the CPU
 build instead, then runs every command with `uv run --no-sync` (see `.github/workflows/ci.yml`). CI needs no
-secrets. Run the narrowest test first, then the whole suite before you finish. The tests that gate on `[data]`,
+secrets. Run the narrowest test first, then the four suite invocations above before you finish. The tests that gate on `[data]`,
 `[mteb]` or the `mcp` SDK (the pdf and hf readers, the transformers parity check, the MCP SDK round trip) skip in a
 bare `dev` environment; CI's `gated` job installs their extras and runs the whole tree with every gate open.
 
@@ -118,7 +125,7 @@ returns typed results and raises typed errors from `rcp.errors`.
 
 ## Releasing
 
-Push a tag `v<version>` whose version is that of all four `pyproject.toml` files (`rcp/`,
+Push a tag `v<version>` whose version is that of all four `pyproject.toml` files (`packages/rcp/`,
 `packages/rcp-core/`, `packages/rcp-vllm/` and the unpublished `packages/rcp-test/`; the root manifest is the uv workspace
 only). `.github/workflows/release.yml` builds the three published distributions (one `--package` per member of
 the four-member workspace; `rcp-test` is never built), checks each version against the
