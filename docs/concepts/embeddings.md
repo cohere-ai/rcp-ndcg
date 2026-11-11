@@ -1,18 +1,18 @@
 # Embedding endpoints
 
 Dense embeddings cross one wire shape: OpenAI `POST {base_url}/embeddings`. The self-hosted engines (vLLM,
-TEI, Infinity) and the OpenAI API answer it as is; the hosted APIs (Cohere, Voyage, Gemini) are profiles
-of the same adapters. A config selects the wire with `api`, and one role client owns every content decision --
-the prompts, the normalisation, the batching -- so no engine's defaults (silent truncation, unprompted
-pooling changes) ever reach your vectors. This is the one embedding path: the retrieval commands
-(`rcp retrieval index|search`, a run's `retrieve` step) build their `EmbeddingClient` or `PoolingClient`
-from a retriever config's `encoder` on exactly this layer.
+TEI, Infinity) and the OpenAI API answer it as it is. The hosted APIs (Cohere, Voyage, Gemini) are profiles of
+the same adapters. A config selects the wire with `api`. One role client owns every content decision: the
+prompts, the normalisation and the batching. No engine's defaults therefore ever reach your vectors, such as
+silent truncation or unprompted pooling changes. This is the one embedding path. The retrieval commands build
+their `EmbeddingClient` or `PoolingClient` from a retriever config's `encoder`, on exactly this layer. The
+commands are `rcp retrieval index|search` and a run's `retrieve` step.
 
 ## The config
 
-An embedding endpoint is an `EmbeddingEndpoint` (`rcp.inference.config`): the endpoint fields
-(`model`, `revision`, `api_key_env`, `headers_env`, `concurrency`, the timeouts, retries and
-`wait_on_outage_s`) plus the fields its wire protocol needs.
+An embedding endpoint is an `EmbeddingEndpoint` (`rcp.inference.config`). It holds the endpoint fields:
+`model`, `revision`, `api_key_env`, `headers_env`, `concurrency`, the timeouts, retries and
+`wait_on_outage_s`. It also holds the fields that its wire protocol needs.
 
 | Field | What it does |
 |---|---|
@@ -27,48 +27,48 @@ An embedding endpoint is an `EmbeddingEndpoint` (`rcp.inference.config`): the en
 | `concurrency` | Batch requests in flight at once |
 | `recipe`, `tokenizer`, `max_tokens`, `query_max_tokens` | Declared for the served engine's settings and the client-side text budget (below): a self-hosted config must declare both `tokenizer` and `max_tokens`, and the client cuts the content spans itself (`on_overflow: cut`, the default; `chunk` pools scores by max, and an embedding has none to pool, so it is refused). The hosted profiles take no `dimensions` (their APIs fix the output dimension); a config that sets `dimensions` on one is refused when the request is built (the API has no such parameter). `max_tokens` caps the document shape; `query_max_tokens` (per-shape budgets) caps the query shape whole -- an asymmetric or late-interaction embedder caps queries and documents differently -- and must not exceed `max_tokens` |
 
-Two hosted shortcuts: a config with no `base_url` points at the profile's public URL
-(`https://api.cohere.com/v2` for Cohere, and so on), and a profile that requires a key raises a
-`CredentialsError` naming its variables when none is set. The profile's variables travel only to the
-profile's own default host: any other `base_url` (a served engine, a third party, a gateway) carries a key
-only through an explicit `api_key_env` -- a variable set for one vendor must never authenticate a request
-somewhere else.
+Two shortcuts exist for hosted profiles. A config with no `base_url` points at the profile's public URL
+(`https://api.cohere.com/v2` for Cohere, and so on). A profile that requires a key raises a `CredentialsError`
+naming its variables when none is set. The profile's variables travel only to the profile's own default host.
+Any other `base_url` carries a key only through an explicit `api_key_env`. A served engine, a third party and
+a gateway are such hosts. A variable set for one vendor must never authenticate a request somewhere else.
 
 ## The wire adapters
 
-An adapter turns one role's request into HTTP calls and the replies back into vectors. The embedding adapters
-are registered under their names and are stateless:
+An adapter turns one role's request into HTTP calls, and it turns the replies back into vectors. The embedding
+adapters are registered under their names, and they are stateless:
 
-* `openai_embeddings` sends `{"model", "input": [texts], "encoding_format": "float"}` plus `dimensions` when
-  the config sets one, and reads `data[].embedding` in `data[].index` order (float lists or base64 float32).
-  `request_shape: messages` sends the chat-style embeddings input instead -- each item its own conversation
-  of one user message (one conversation alone, a list of them for a batch: vLLM reads one conversation as one
-  embedding), lowered with image parts and video parts (sampled frames as image parts, a `video_url` container
-  per the role's `video_policy`) for the vision-language embedders. The engine renders every chat-shaped
-  request through its chat template, which places each media part inside the user turn, so the item carries
-  its content (the prompt and the cut content span), never the framed render: the served chat template must
-  render the declared template's frame around it, once, and the request carries the declared
-  `add_special_tokens` (the chat route's own default is false). A frame that ends with the chat template's
-  generation prompt (the assistant header, Qwen3-VL-Embedding's) declares `add_generation_prompt: true`, which
-  every `messages` request then carries (the chat route's default is false, and the header would be missing);
-  the flag is refused on any other route. `request_shape: token_ids` sends the ids the
-  client fitted; the hosted profiles implement text only.
+* `openai_embeddings` sends `{"model", "input": [texts], "encoding_format": "float"}`, plus `dimensions` when the config
+  sets one. It reads `data[].embedding` in `data[].index` order (float lists or base64 float32).
+  `request_shape: messages` sends the chat-style embeddings input instead. Each item is its own conversation of one user
+  message. A single item is one conversation alone. A batch is a list of conversations. This is because vLLM reads one
+  conversation as one embedding. For the vision-language embedders, the item is lowered with image parts and video
+  parts. Sampled frames become image parts, and a `video_url` container follows the role's `video_policy`. The engine
+  renders every chat-shaped request through its chat template, which places each media part inside the user turn. The
+  item therefore carries its content (the prompt and the cut content span), never the framed render. The served chat
+  template must render the declared template's frame around it, once. The request carries the declared
+  `add_special_tokens`; the chat route's own default is false. A frame can end with the chat template's generation
+  prompt, such as the assistant header of Qwen3-VL-Embedding. That frame declares `add_generation_prompt: true`, which
+  every `messages` request then carries. The chat route's default is false, and the header would be missing. The flag is
+  refused on any other route. `request_shape: token_ids` sends the ids that the client fitted. The hosted profiles
+  implement text only.
 * `cohere` sends `{"model", "texts", "input_type", "embedding_types": ["float"]}` to `POST {base_url}/embed`,
   with `input_type` `search_query` / `search_document`, and reads `embeddings.float`.
 * `voyage` sends the OpenAI body with an `input_type` of `query` / `document`, and reads the OpenAI
   `data[].embedding` shape.
 * `gemini` sends `POST {base_url}/models/{model}:batchEmbedContents` with one `requests` entry per text
-  (`models/<model>`, `taskType` `RETRIEVAL_QUERY` / `RETRIEVAL_DOCUMENT`), puts the key in `x-goog-api-key`,
-  and reads `embeddings[].values`.
+  (`models/<model>`, `taskType` `RETRIEVAL_QUERY` / `RETRIEVAL_DOCUMENT`). It puts the key in `x-goog-api-key`. It reads
+  `embeddings[].values`.
 
-Every adapter refuses media on the text and token-ids routes with a `CapabilityError` naming the media type
-(the `messages` route carries it), maps an over-length HTTP 400 ("maximum context length") onto a `CapabilityError` whose hint names
-`max_tokens` and `batch_size`, and a batch-cap HTTP 413 onto a `CapabilityError` naming `batch_size`. Any other
-HTTP 400 or 422 is a `RequestRejectedError` for that one request.
+Every adapter refuses media on the text and token-ids routes with a `CapabilityError` that names the media
+type. The `messages` route carries it. An over-length HTTP 400 ("maximum context length") maps onto a
+`CapabilityError` whose hint names `max_tokens` and `batch_size`. A batch-cap HTTP 413 maps onto a
+`CapabilityError` naming `batch_size`. Any other HTTP 400 or 422 is a `RequestRejectedError` for that one
+request.
 
-Names are scoped by role: the rerank role registers its own `cohere` and `voyage` wires, and a config selects
-only among its own role's names. The adapters are usable on their own -- build the role's request, read the
-calls, parse the replies:
+Names are scoped by role. The rerank role registers its own `cohere` and `voyage` wires, and a config selects
+only among its own role's names. The adapters are usable on their own. Build the role's request, read the
+calls, and parse the replies:
 
 ```python
 from rcp.inference import EncodeRole, get_adapter
@@ -85,12 +85,13 @@ print(call.path, sorted(call.json))
 
 ## The client
 
-`EmbeddingClient` (`rcp.inference.clients`) applies the config's content decisions and sends the batches
-through a transport -- its own, built from the config, or one you pass as `sender` (any `Sender` with the sync
-bridge `run`; a transport's is used as is and pointed at the profile's credential facts). The config declares
-the content; the client applies it, on the shared client base (`RoleClient` -- the adapter lookup, the hosted
-profile's URL, the transport, the sync bridge, `close()`/`await aclose()` and the context managers, and the
-fan-out under one `asyncio.TaskGroup`):
+`EmbeddingClient` (`rcp.inference.clients`) applies the config's content decisions. It sends the batches
+through a transport: its own, built from the config, or one you pass as `sender`. Any `Sender` with the sync
+bridge `run` works. A transport's own bridge is used as it is, and it is pointed at the profile's credential
+facts. The config declares the content, and the client applies it. Both sit on the shared client base,
+`RoleClient`. That base holds the adapter lookup, the hosted profile's URL, the transport and the sync
+bridge. It also holds `close()` and `await aclose()`, the context managers, and the fan-out under one
+`asyncio.TaskGroup`:
 
 ```python
 from rcp.inference.config import EmbeddingEndpoint
@@ -109,50 +110,50 @@ config = EmbeddingEndpoint(
 print(config.api, config.batch_size, config.concurrency)
 ```
 
-`client.encode(contents, role)` is synchronous and `client.aencode(contents, role)` asynchronous; both return
-an `Embeddings` with one vector per content, in the input's order. The client:
+`client.encode(contents, role)` is synchronous, and `client.aencode(contents, role)` is asynchronous. Both
+return an `Embeddings` with one vector per content, in the input's order. The client does five things:
 
-* prepends `query_prompt` / `doc_prompt` per side, through one private seam, and then fits every request into
-  the declared budget: the side's shape (`query` or `document`), only content spans cut, the template
-  re-attached with its anchors, every cut recorded in the census (a hosted profile that declares no limit sends
-  every item whole; a self-hosted config must declare its budget);
-* slices the items into `batch_size`-sized requests and keeps at most `concurrency` in flight under one
-  `asyncio.TaskGroup` (a failing request cancels its siblings), reassembling in the input's order whatever
-  order the replies arrive in;
-* applies the declared Matryoshka head (`mrl_dim`, through `rcp.data.mrl`) when the config selects an
-  output dimension: the full-width reply is normalised when `normalize`, then truncation cuts and
-  renormalises (or the learned projection applies its matrix), and every changed row carries an
-  `mrl_cut` `ProcessingRecord` ([matryoshka heads](matryoshka.md));
+* it prepends `query_prompt` / `doc_prompt` per side, through one private seam. It then fits every request into
+  the declared budget. The side's shape (`query` or `document`) decides the budget, and only content spans are cut.
+  The template is re-attached with its anchors, and every cut is recorded in the census. A hosted profile that
+  declares no limit sends every item whole. A self-hosted config must declare its budget;
+* it slices the items into `batch_size`-sized requests, and it keeps at most `concurrency` in flight under one
+  `asyncio.TaskGroup`. A failing request cancels its siblings. The replies are reassembled in the input's order,
+  whatever order they arrive in;
+* it applies the declared Matryoshka head (`mrl_dim`, through `rcp.data.mrl`) when the config selects an
+  output dimension. The full-width reply is normalised when `normalize` is set. Truncation then cuts and
+  renormalises, or the learned projection applies its matrix. Every changed row carries an `mrl_cut`
+  `ProcessingRecord` ([matryoshka heads](matryoshka.md));
 * L2-normalises when `normalize` and no head is selected;
-* resolves nothing credential-wise: the key is the transport's, from `api_key_env` (else the profile's own
-  variables, which apply only to the profile's own default host), sent in the profile's header.
+* it resolves nothing credential-wise. The key is the transport's, from `api_key_env`, or else from the profile's own
+  variables. Those variables apply only to the profile's own default host. The key is sent in the profile's header.
 
-The vectors are raw float32 from the adapter -- the normalisation is the client's content decision, not the
-wire's. Each adapter's `usage()` reports the input tokens its API names (OpenAI's `usage.prompt_tokens`,
-Cohere's billed units; Gemini reports none), for the transport's accounting. `dimensions` and `batch_size`
-change what is computed (request packing can move a bf16 batch's numbers) and are content; `base_url`,
-`concurrency` and the credentials change where and how fast, and are runtime.
+The vectors are raw float32 from the adapter. The normalisation is the client's content decision, not the
+wire's. Each adapter's `usage()` reports the input tokens that its API names, for the transport's accounting.
+OpenAI names them in `usage.prompt_tokens`, Cohere reports billed units, and Gemini reports none.
+`dimensions` and `batch_size` change what is computed, and request packing can move a bf16 batch's numbers.
+Both are content. `base_url`, `concurrency` and the credentials change where and how fast. They are runtime.
 
 ## Identity
 
-Two runs share an index only if they computed the same vectors. Which model, checkpoint and wire adapter
-computed them (`api`, `model`, `revision`, `recipe`, the prompts, `normalize`, `dimensions`, `mrl_kind`,
-`mrl_dims`, `mrl_range`, `mrl_projection`, `mrl_dim`, `batch_size`, `max_images`, `max_videos`) is content
-and enters the identity; where and how fast (`base_url`, `concurrency`, the timeouts) is runtime and
-never does. The tokenizer's name is runtime and its digest is content
-([the tokenizer's digest](text-budgets.md#the-tokenizers-digest)): the `retrieve`/`rerank` step identities and the
-index identity key on it.
+Two runs share an index only if they computed the same vectors. The model, checkpoint and wire adapter that
+computed them are content, and they enter the identity. These are `api`, `model`, `revision`, `recipe`,
+the prompts, `normalize`, `dimensions`, `mrl_kind`, `mrl_dims`, `mrl_range`, `mrl_projection`, `mrl_dim`
+, `batch_size`, `max_images` and `max_videos`. Where and how fast they ran is runtime, and it never enters
+the identity: `base_url`, `concurrency` and the timeouts. The tokenizer's name is runtime, and its digest is
+content ([the tokenizer's digest](text-budgets.md#the-tokenizers-digest)). The `retrieve` /`rerank` step
+identities and the index identity key on that digest.
 
 ## Text budgets
 
-A self-hosted role config declares its budget explicitly (`tokenizer` + `max_tokens`; a config with one and
-not the other is refused): the client fits every request through the one text-budget mechanism
-(`rcp.data.preprocess.fit`), cutting each text at token boundaries of the declared `tokenizer`, with the
-template re-attached around the cut so every anchor survives, and every cut recorded -- each census row
-naming its shape's budget (`budget_tokens`: the query rows a declared `query_max_tokens`, the document rows
-`max_tokens`). The template can also declare a per-shape content normalisation (`normalize`:
-`"strip"`, `"lowercase"` -- the reference and the engine see the same text). Never engine-side:
-no request asks for truncation, and an over-length HTTP 400 from an engine maps to a `CapabilityError` whose
-hint names `max_tokens` and `batch_size`. A hosted profile may declare only `max_tokens` (its documented
-limit): the content is sent uncut and the limit is recorded as the effective budget (`budget_source:
-vendor`). See [text budgets for served roles](text-budgets.md) for the mechanism.
+A self-hosted role config declares its budget explicitly: `tokenizer` + `max_tokens`. A config with one and
+not the other is refused. The client fits every request through the one text-budget mechanism
+(`rcp.data.preprocess.fit`). It cuts each text at token boundaries of the declared `tokenizer`. The
+template is re-attached around the cut, so every anchor survives, and every cut is recorded. Each census row
+names its shape's budget in `budget_tokens`: the query rows a declared `query_max_tokens`, and the document
+rows `max_tokens`. The template can also declare a per-shape content normalisation in `normalize`: `"strip"`
+or `"lowercase"`. The reference and the engine then see the same text. Nothing is cut engine-side. No request
+asks for truncation. An over-length HTTP 400 from an engine maps to a `CapabilityError` whose hint names
+`max_tokens` and `batch_size`. A hosted profile may declare only `max_tokens`, its documented limit. The
+content is then sent uncut, and the limit is recorded as the effective budget (`budget_source: vendor`). See
+[text budgets for served roles](text-budgets.md) for the mechanism.

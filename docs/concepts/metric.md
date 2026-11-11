@@ -1,13 +1,14 @@
 # The metric: RCP-nDCG
 
-RCP-nDCG is nDCG@k whose gains come from calibrated LLM judgements instead of human relevance labels. This page
-defines the metric and its gain. The other pages explain where the calibrated abilities come from:
-[the tournament](tournament.md), [the rubric](rubric.md) and [the calibration](calibration.md).
+RCP-nDCG is nDCG@k. nDCG (normalised discounted cumulative gain) scores a ranking by its discounted gains,
+divided by the best score for the query. The gains of RCP-nDCG come from calibrated LLM judgements, not from
+human relevance labels. This page defines the metric and its gain. The other pages explain where the
+calibrated abilities come from: [the tournament](tournament.md), [the rubric](rubric.md) and [the calibration](calibration.md).
 
 ## nDCG
 
-For a ranking $\pi$ of a query's documents, with $d_{\pi(r)}$ at rank $r$, the discounted cumulative gain and
-its normalised form at cutoff $k$ are
+For a ranking $\pi$ of a query's documents, $d_{\pi(r)}$ is the document at rank $r$. The discounted
+cumulative gain (DCG) and its normalised form (nDCG) at cutoff $k$ are
 
 $$
 \mathrm{DCG@}k(\pi) = \sum_{r=1}^{k} \frac{G\bigl(d_{\pi(r)}\bigr)}{\log_2(r+1)},
@@ -15,10 +16,10 @@ $$
 \mathrm{nDCG@}k(\pi) = \frac{\mathrm{DCG@}k(\pi)}{\mathrm{DCG@}k(\pi^*)}.
 $$
 
-The ideal ranking $\pi^*$ sorts the query's documents by decreasing gain. The gain $G(d)$ enters linearly: a
-document with twice the gain counts twice as much. Documents without a gain count 0.
+The ideal ranking $\pi^*$ sorts the query's documents by decreasing gain. The gain $G(d)$ enters linearly. A
+document with twice the gain counts twice. A document without a gain counts 0.
 
-Three metrics in this package share this formula and differ only in the gain $G$:
+Three metrics in this package use this formula. They differ only in the gain $G$:
 
 | Metric | Gain $G(d)$ | Ideal ranking over |
 |---|---|---|
@@ -28,10 +29,10 @@ Three metrics in this package share this formula and differ only in the gain $G$
 
 ## The gain
 
-Stage B asks the judge $C = 5$ binary criteria about each document ([the rubric](rubric.md)). The calibration
-fits, for every criterion $c$, a discrimination $\gamma_c > 0$ and a difficulty $\beta_c$ that all queries
-share, and it gives document $d_i$ of query $q_j$ a calibrated ability $\tilde\theta_{ij}$ in logits. With
-the logistic link $\sigma(x) = 1 / (1 + e^{-x})$, the probability that the document passes criterion $c$ is
+Stage B (the rubric stage) asks the judge $C = 5$ binary criteria about each document ([the rubric](rubric.md)). The calibration fits two parameters for every criterion $c$. The first is a
+discrimination $\gamma_c > 0$. The second is a difficulty $\beta_c$, which all queries share. The calibration
+also gives document $d_i$ of query $q_j$ a calibrated ability $\tilde\theta_{ij}$ in logits. The logistic link
+$\sigma(x) = 1 / (1 + e^{-x})$ gives the probability that the document passes criterion $c$:
 
 $$
 P_c(\tilde\theta_{ij}) = \sigma\bigl(\gamma_c\,(\tilde\theta_{ij} - \beta_c)\bigr).
@@ -43,16 +44,18 @@ $$
 g(\tilde\theta_{ij}) = \frac{\sum_c \gamma_c\, \sigma\bigl(\gamma_c\,(\tilde\theta_{ij} - \beta_c)\bigr)}{\sum_c \gamma_c}.
 $$
 
-The gain is monotone in $\tilde\theta_{ij}$ and lies in $[0, 1]$: the sigmoid saturates in float, so the gain is
-exactly 0.0 or 1.0 where a criterion is certainly failed or certainly passed, never an open interval. It rises
-smoothly from 0 to 1 as the ability grows. Weighting by $\gamma_c$ makes it rise fastest where the criteria
-measure most precisely. RCP-nDCG@k is nDCG@k with $G(d_i) = g(\tilde\theta_{ij})$.
+The gain increases monotonically with $\tilde\theta_{ij}$, and it is in $[0, 1]$. The sigmoid saturates in
+float. The gain is therefore exactly 0.0 or 1.0 where a criterion is certainly failed or certainly passed. It
+is never an open interval. The gain rises smoothly from 0 to 1 as the ability grows. The weight $\gamma_c$
+makes it rise fastest where the criteria measure most precisely. RCP-nDCG@k is nDCG@k with $G(d_i) =
+g(\tilde\theta_{ij})$.
 
-The calibrated ability is a positive affine map of the query's tournament score,
-$\tilde\theta_{ij} = \tau_j \hat\theta^{\mathrm{BT}}_i + \alpha_j$ with $\tau_j > 0$ ([the calibration](calibration.md)).
-Sorting a query's documents by $\tilde\theta_{ij}$, or by $g(\tilde\theta_{ij})$, therefore reproduces their
-Stage A order, and the ideal ranking of RCP-nDCG is the Stage A order of the calibrated pool. A document outside
-the calibrated pool has no ability and gets gain 0.
+The calibrated ability is a positive affine map of the query's tournament score. The map is $\tilde\theta_{ij}
+= \tau_j \hat\theta^{\mathrm{BT}}_i + \alpha_j$, with $\tau_j > 0$ ([the calibration](calibration.md)). A
+positive affine map keeps the order of the values. Sorting a query's documents by $\tilde\theta_{ij}$, or by
+$g(\tilde\theta_{ij})$, therefore reproduces their Stage A (tournament) order. The ideal ranking of RCP-nDCG
+is the Stage A order of the calibrated pool. A document outside the calibrated pool has no ability, and it
+gets gain 0.
 
 ## Count-nDCG
 
@@ -63,21 +66,22 @@ $$
 G_{\mathrm{Count}}(d_i) = \frac{\sum_c S_{ijc}}{C\, n_{ij}}.
 $$
 
-Documents with equal pass shares tie. Count-nDCG needs no tournament and no calibration: its gains come from the
-rubric windows alone. `rcp.calibration.count_gains(judgements)` is the one derivation (the windows'
-per-criterion pass counts through `count_gain`); pass it to `rcp.eval.evaluate(..., count_gains=...)`, or
-score it on the command line with
+Documents with equal pass shares tie. Count-nDCG needs no tournament and no calibration. Its gains come from
+the rubric windows alone. `rcp.calibration.count_gains(judgements)` is the one derivation. It reads the
+windows' per-criterion pass counts through `count_gain`. Pass its result to
+`rcp.eval.evaluate(..., count_gains=...)`. To score it on the command line, use
 `rcp eval score --metrics count_ndcg --judgements <rubric store>`.
 
 ## qrel-nDCG
 
-qrel-nDCG uses the human grade as the gain, linearly (grade 2 counts twice grade 1). The exponential gain
-$2^{\mathrm{grade}} - 1$ is available as an option (`qrel_gain(grade, "exponential")`). Its ideal ranking takes
-every positive qrel of the query, including positives outside the scored candidates, as trec_eval does.
+qrel-nDCG uses the human grade as the gain, linearly. Grade 2 counts twice grade 1. The exponential gain
+$2^{\mathrm{grade}} - 1$ is available as an option (`qrel_gain(grade, "exponential")`). Its ideal ranking
+takes every positive qrel of the query. That includes positives outside the scored candidates, as trec_eval
+does.
 
 ## In code
 
-The formulas live in the core package `rcp_core`, which needs only numpy and pydantic:
+The formulas live in the core package `rcp_core`. It needs only numpy and pydantic:
 
 ```python
 from rcp_core import count_gain, gain, ndcg, pass_probabilities
@@ -92,16 +96,17 @@ print(pass_probabilities(1.4, items))  # P_c for C1..C5
 print(count_gain([3, 3, 2, 1, 0], placements=3))  # Count-nDCG gain of a document seen in 3 windows
 ```
 
-- `ndcg(scores, gains, *, k=10, ties="group_mean", ideal=None)` takes either a score mapping, which it ranks under
-  a [tie rule](protocols.md), or an ordered list of document ids. `ideal` gives the gains the ideal ranking is
-  built from; it defaults to all values of `gains`. Scores, gains and ideal gains must be finite numbers, and a
-  gain must not be negative: a non-finite one is refused, not NaN'd through the sums, and a negative one is
-  refused rather than returned as an nDCG outside `[0, 1]`.
-- `gain(theta, items)` and `pass_probabilities(theta, items)` accept a scalar or an array of abilities. `items` is
-  an `ItemParams`, a `Calibration`'s `items`, or any mapping with `gamma` and `beta`.
-- `count_gain(passes, placements)` gives the Count-nDCG gain, and its pass counts are counts: a fractional or
-  out-of-range one is refused, not read as a share. `qrel_gain(grade, scheme="linear")` gives the qrel gain;
-  `scheme="exponential"` (`2**grade - 1`) refuses a grade whose `2**grade` would overflow, i.e. grades >= 1024.
+- `ndcg(scores, gains, *, k=10, ties="group_mean", ideal=None)` takes a score mapping, which it ranks under a
+  [tie rule](protocols.md), or an ordered list of document ids. `ideal` gives the gains that build the ideal
+  ranking. It defaults to all values of `gains`. Scores, gains and ideal gains must be finite numbers. A gain must
+  not be negative. A non-finite gain is refused, not NaN'd through the sums. A negative gain is refused, not
+  returned as an nDCG outside `[0, 1]`.
+- `gain(theta, items)` and `pass_probabilities(theta, items)` accept a scalar ability or an array of abilities.
+  `items` is an `ItemParams`, a `Calibration`'s `items`, or any mapping with `gamma` and `beta`.
+- `count_gain(passes, placements)` gives the Count-nDCG gain. Its pass counts are counts: a fractional or
+  out-of-range count is refused, not read as a share. `qrel_gain(grade, scheme="linear")` gives the qrel gain.
+  `scheme="exponential"` (`2**grade - 1`) refuses a grade whose `2**grade` would overflow, that is, grades >=
+  1024.
 
-To score whole runs on a benchmark, with the paper's per-suite rules, use `rcp.eval.evaluate`
-([scoring protocols](protocols.md) and [the evaluation API](../reference/api/rcp.eval.md)).
+To score whole runs on a benchmark, use `rcp.eval.evaluate` with the paper's per-suite rules. See
+[scoring protocols](protocols.md) and [the evaluation API](../reference/api/rcp.eval.md).
