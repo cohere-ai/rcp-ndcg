@@ -1,12 +1,14 @@
 """The metric plugins the registry tests install through the ``rcp.metrics`` entry-point group.
 
-They are the seam's test doubles: one metric that takes a cutoff (MAP), one that ignores it (MRR), and one
-that takes a shipped metric's name (the duplicate-name policy refuses it). ``install_metrics`` points the
-registry's ``entry_points`` at the entries a test passes, the way ``tests/results/_sinks.py`` does for sinks.
+They are the seam's test doubles: one metric that takes a cutoff (MAP), one that ignores it (MRR), one whose
+value is undefined (NaN), one that breaks the return contract (a string), and one that takes a shipped
+metric's name (the duplicate-name policy refuses it). ``install_metrics`` points the registry's
+``entry_points`` at the entries a test passes, the way ``tests/results/_sinks.py`` does for sinks.
 """
 
 from __future__ import annotations
 
+import math
 from collections.abc import Collection, Mapping, Sequence
 from importlib.metadata import EntryPoint
 
@@ -87,6 +89,26 @@ class MeanReciprocalRank(Metric):
             if labels.get(doc_id, 0.0) > 0:
                 return 1.0 / rank
         return 0.0
+
+
+class NanValue(MeanAveragePrecision):
+    """A plugin whose value is undefined: the contract reads ``nan`` as ``None``, not as a value to average."""
+
+    name = "nan_value"
+
+    def score(
+        self,
+        query: str,
+        ranking: Mapping[str, float],
+        labels: Mapping[str, float],
+        *,
+        protocol: Protocol,
+        k: int,
+        candidates: Sequence[str] | None = None,
+        excluded: Collection[str] = (),
+    ) -> float | None:
+        del query, ranking, labels, protocol, k, candidates, excluded
+        return math.nan
 
 
 class NotANumber(MeanAveragePrecision):
