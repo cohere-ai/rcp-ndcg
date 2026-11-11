@@ -54,7 +54,7 @@ notes: >-
   131072, concurrency 256, decoding json_schema, image_processor gemma4,
   max_images 10, max_videos 0. Thinking OFF by default, thinking on as a declared client choice; video via
   `wire: frames` only; audio out of scope.
-  No bf16 31B sibling ships in 0.0.1: the family carries the NVFP4 release only; a bf16 sibling
+  No bf16 31B sibling ships in 0.1.0: the family carries the NVFP4 release only; a bf16 sibling
   would be a third variant with the 26B bf16's weight class (~62 GB, TP1).
   Licence: the Hub tag is `other` with `license_name: apache-license-2.0` and the card states Apache License 2.0
   ("ready for commercial/non-commercial use"); the YAML's `other` + license_name is a spelling, not a different

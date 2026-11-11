@@ -129,7 +129,7 @@ def test_no_reference_environment_pins_a_workspace_distribution() -> None:
     assert not offenders, "reference.in files must not pin a workspace distribution:\n" + "\n".join(offenders)
 
 
-#: The owner's explicit disposition list for 0.0.1 (AGENTS.md): a ``failed`` variant ships only when named.
+#: The owner's explicit disposition list for 0.1.0 (AGENTS.md): a ``failed`` variant ships only when named.
 _OWNER_DISPOSED = frozenset({"topk-embed-v1-small", "topk-embed-v1-xsmall"})
 
 

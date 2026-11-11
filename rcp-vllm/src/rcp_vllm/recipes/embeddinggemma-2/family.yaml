@@ -13,7 +13,7 @@
 id: embeddinggemma-2
 schema_version: "1"   # the recipe file format version (the contract between rcp and rcp-vllm)
 role: embed
-input: [text, image, video]     # the checkpoint's modalities (card); audio is out of scope for 0.0.1
+input: [text, image, video]     # the checkpoint's modalities (card); audio is out of scope for 0.1.0
 licence: apache-2.0
 engine:
   name: vllm

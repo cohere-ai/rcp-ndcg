@@ -199,7 +199,7 @@ parse_deployment_overrides(pairs: Iterable[str]) -> dict[str, Any]
 
 ## `plugin_distribution_name`
 
-function — The distribution name a pip spec installs (``rcp-vllm==0.0.1`` -> ``rcp-vllm``).
+function — The distribution name a pip spec installs (``rcp-vllm==0.1.0`` -> ``rcp-vllm``).
 
 ```text
 plugin_distribution_name(spec: str) -> str

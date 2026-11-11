@@ -26,7 +26,7 @@ and it bumps only when the record changes in an incompatible way. Within `v1`:
 
 The rule is the repository's artifact rule. [The results record](results-record.md) spells it out for the
 exported results. [Compatibility and versioning](versioning.md#artifact-tags) states it for every artifact. A
-change to an existing field's meaning or type is a new tag (`rcp-ndcg.run-manifest.v2`), never a silent
+change to an existing field's meaning or type is a new tag (`rcp.run-manifest.v2`), never a silent
 reinterpretation of `v1`.
 
 ## The fields
@@ -83,7 +83,7 @@ from rcp.runs import RunManifest
 manifest = RunManifest.model_validate(
     {
         "run_id": "20260102-030405-tiny-ab12cd",
-        "code": {"package_version": "0.0.1", "python_version": "3.12", "platform": "linux"},
+        "code": {"package_version": "0.1.0", "python_version": "3.12", "platform": "linux"},
         "path": "runs/20260102-030405-tiny-ab12cd",
         "datasets": [
             {"name": "tiny", "subset": "test", "internal": False, "args": {"qrels_uri": "qrels.jsonl"}},

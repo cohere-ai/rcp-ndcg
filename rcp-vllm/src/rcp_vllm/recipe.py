@@ -283,7 +283,7 @@ def _pep503_name(name: str) -> str:
 
 
 def plugin_distribution_name(spec: str) -> str:
-    """The distribution name a pip spec installs (``rcp-vllm==0.0.1`` -> ``rcp-vllm``).
+    """The distribution name a pip spec installs (``rcp-vllm==0.1.0`` -> ``rcp-vllm``).
 
     One home for the rule the recipe loader, the ``rcp-vllm serve`` console and the harness's
     behaviour fingerprint all need: only the requirement's leading name is the distribution, PEP 503-

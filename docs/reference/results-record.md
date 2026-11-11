@@ -11,7 +11,7 @@ change to either one is a reviewed diff with a CHANGELOG entry. The how-to is
 
 * Within `v1`, fields are only ever **added**. An added field is optional or has a default. A reader of the first `v1`
   therefore keeps reading later `v1` records.
-* A change to the meaning or the type of an **existing** field is a new schema id (`rcp-ndcg.result-record.v2`). It is
+* A change to the meaning or the type of an **existing** field is a new schema id (`rcp.result-record.v2`). It is
   never a silent reinterpretation of `v1`.
 * The `schema` field names the version of the record. A sink is a result destination, and it refuses a record whose
   schema it does not know. A v2 record written as v1 would corrupt the file instead of failing.
