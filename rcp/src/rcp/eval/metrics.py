@@ -17,6 +17,10 @@ The lookup is :mod:`rcp.support.entrypoints`'s one policy: a name provided by mo
 distribution is refused, naming the providers. The shipped three are entries of the group too (synthesised here,
 because they ship inside this package), so a plugin that publishes ``rcp`` is refused by the same policy rather
 than silently replacing the built-in.
+
+A caller reads this module through :mod:`rcp.eval`, which re-exports :data:`METRICS`, :data:`METRICS_GROUP`,
+:class:`Metric`, :func:`metric_class` and :func:`registered_metrics`. It is not a module of its own in
+:data:`rcp.support.api_docs.PUBLIC_MODULES`, so its generated page is ``rcp.eval``'s.
 """
 
 from __future__ import annotations
@@ -78,7 +82,9 @@ class Metric(abc.ABC):
             excluded: The document ids the benchmark removes for the query.
 
         Returns:
-            The value, or ``None`` when it is undefined for the query.
+            The value, or ``None`` when it is undefined for the query. ``nan`` is one spelling of undefined: the
+            seam drops such a row as ``None``, with no warning, the way qrel-nDCG drops a query without a positive
+            grade. ``inf`` and a value that is not a number are refused (:class:`~rcp.errors.DataError`).
         """
 
 
@@ -148,7 +154,11 @@ def _entries() -> tuple[EntryPoint, ...]:
 
 
 def registered_metrics() -> tuple[str, ...]:
-    """The metric names: the shipped three first, then the installed plugins, sorted."""
+    """The metric names: the shipped three first, then the installed plugins, sorted.
+
+    A plugin's name that a shipped metric already holds is left out of this listing, so every name appears
+    once: choosing that name is refused by :func:`metric_class`'s duplicate-name policy instead.
+    """
     plugins = registered_names(entry_points(group=METRICS_GROUP), METRICS_GROUP)
     return (*METRICS, *(name for name in plugins if name not in METRICS))
 
