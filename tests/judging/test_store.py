@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -199,6 +200,34 @@ def test_a_zero_byte_identity_file_is_absent_not_a_crash(tmp_path: Path) -> None
     assert store.identities() == {}, "the empty file is treated as the store's torn tail"
     store.claim("tournament", {"a": 2}, family)
     assert store.identities()["tournament"]["identity"] == {"a": 2}
+
+
+def test_a_resumed_pre_rename_store_keeps_the_tag_it_was_created_with(tmp_path: Path) -> None:
+    """A store written before the rename carries ``rcp-ndcg.judgement-store.v1``, and the pre-rename code reads
+    that tag alone (an equality check): a pass resumed into the store writes its identity back under the tag it
+    read, so resuming rewrites nothing the store's own code would then refuse."""
+    store = JudgementStore(tmp_path)
+    family = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
+    store.claim("tournament", {"a": 1}, family)
+    path = store.identity_path
+    path.write_text(re.sub(r'"rcp\.', '"rcp-ndcg.', path.read_text(encoding="utf-8")), encoding="utf-8")
+    assert json.loads(path.read_text(encoding="utf-8"))["schema"] == "rcp-ndcg.judgement-store.v1"
+
+    JudgementStore(tmp_path).claim("rubric", {"a": 1}, family.model_copy(update={"stage": "rubric"}))
+
+    written = json.loads(path.read_text(encoding="utf-8"))
+    assert written["schema"] == "rcp-ndcg.judgement-store.v1", "a resumed pass migrated the tag in place"
+    assert set(JudgementStore(tmp_path).identities()) == {"tournament", "rubric"}
+
+
+def test_a_new_store_writes_the_current_tag(tmp_path: Path) -> None:
+    """The other direction: a store created now carries ``rcp.judgement-store.v1``."""
+    from rcp.judging.store import STORE_SCHEMA
+
+    store = JudgementStore(tmp_path)
+    family = JudgementFamily(stage="tournament", judge_model="m", prompt_hash="p", parse_version=1)
+    store.claim("tournament", {"a": 1}, family)
+    assert json.loads(store.identity_path.read_text(encoding="utf-8"))["schema"] == STORE_SCHEMA
 
 
 @pytest.mark.parametrize("prefix", ["rcp", "rcp-ndcg"])

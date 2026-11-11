@@ -279,8 +279,23 @@ class JudgementStore:
         finally:
             os.close(fd)
 
+    def _schema_tag(self) -> str:
+        """The tag ``identity.json`` carries: :data:`STORE_SCHEMA` for a new store, else the tag it was created with.
+
+        A store written before the rename carries ``rcp-ndcg.judgement-store.v1``, and the code of that day reads
+        that tag alone (an equality check), so a pass resumed into it writes the identity back under the same tag:
+        resuming a store never migrates it in place. A missing or torn file -- which :meth:`identities` reads as a
+        new store -- gets the current tag.
+        """
+        try:
+            payload = json.loads(self.identity_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return STORE_SCHEMA
+        tag = payload.get("schema") if isinstance(payload, dict) else None
+        return tag if tag in accepted_schema_ids("judgement-store") else STORE_SCHEMA
+
     def _write_identities(self, entries: dict[str, dict[str, Any]]) -> None:
-        payload = {"schema": STORE_SCHEMA, "stages": entries}
+        payload = {"schema": self._schema_tag(), "stages": entries}
         StoreIdentity.model_validate(payload)  # the file is what the exported schema describes
         # A temp file and a rename (the one storage helper): `run status` counts a running pass's windows while
         # the pass claims its stages, and a rewrite in place would serve it an empty or partial file
