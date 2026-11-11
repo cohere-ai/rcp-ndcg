@@ -1,7 +1,7 @@
 {
   "format": 1,
-  "note": "The golden digests for emb_utils/base/hashing.py. The owner is the authority. W64 copies these bytes into rcp-ndcg, so a divergence fails on both sides. A tagged object names a value that JSON cannot carry.",
-  "owner": "rcp-ndcg/rcp-core/src/rcp_core/_hashing.py",
+  "note": "The golden digests for emb_utils/base/hashing.py. The owner is the authority. W64 copies these bytes into rcp, so a divergence fails on both sides. A tagged object names a value that JSON cannot carry.",
+  "owner": "packages/rcp-core/src/rcp_core/_hashing.py",
   "relations": [
     {
       "a": "key-order-1",
