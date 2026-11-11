@@ -1,0 +1,394 @@
+{
+  "schema": "rcp-ndcg.observation-corpus/1",
+  "record_schema": 2,
+  "normalisation_version": 1,
+  "engine": {
+    "name": "vllm",
+    "image": "vllm/vllm-openai:v0.33.0",
+    "version": "0.33.0",
+    "image_digest": "sha256:d825baf9ce4b1b6bfc5ecc7b79880c7e6748c65a72d697ce3d47607aafa84c6e",
+    "serve_argv": [
+      "vllm",
+      "serve",
+      "jinaai/jina-embeddings-v5-text-small",
+      "--revision",
+      "dd76d535f5447ca3897a9c893fb1e612ead98192",
+      "--served-model-name",
+      "jina-embeddings-v5-text-small",
+      "--host",
+      "0.0.0.0",
+      "--port",
+      "8100",
+      "--tensor-parallel-size",
+      "1",
+      "--runner",
+      "pooling",
+      "--dtype",
+      "bfloat16",
+      "--max-model-len",
+      "32768",
+      "--trust-remote-code",
+      "--hf-overrides",
+      "{\"is_matryoshka\": true, \"jina_task\": \"retrieval\", \"matryoshka_dimensions\": [32, 64, 128, 256, 512, 768, 1024]}",
+      "--pooler-config",
+      "{}",
+      "--max-num-batched-tokens",
+      "32768"
+    ],
+    "env": {
+      "RCP_NDCG_VLLM_PATCHES": "",
+      "VLLM_BUILD_COMMIT": "4ba787ec9959e566d3b587a796dff07673324da5",
+      "VLLM_BUILD_PIPELINE": "019d130e-464e-4ff7-b84b-492992c0c06b",
+      "VLLM_BUILD_URL": "https://buildkite.com/vllm/release-v2/builds/9673",
+      "VLLM_ENABLE_CUDA_COMPATIBILITY": "0",
+      "VLLM_IMAGE_TAG": "vllm/vllm-openai:v0.33.0",
+      "VLLM_PORT": "9100",
+      "VLLM_USAGE_SOURCE": "production-docker-image"
+    },
+    "started": "2026-11-09T20:19:33+00:00",
+    "ready_wait_s": 58.468,
+    "gpus": {
+      "model": [
+        "NVIDIA B200"
+      ],
+      "count": 8
+    },
+    "driver": "580.126.09",
+    "vllm_version": "0.33.0",
+    "vllm_commit": {
+      "unavailable": "the engine environment reports no vllm_commit"
+    },
+    "torch": "2.14.0+cu130",
+    "cuda": "13.0"
+  },
+  "model": {
+    "id": "jinaai/jina-embeddings-v5-text-small",
+    "revision": "dd76d535f5447ca3897a9c893fb1e612ead98192",
+    "weights": {
+      "adapters/classification/adapter_model.safetensors": "7f5e78c6a4db89dbffe999bb8f8008488c8e28b7e3ba74f303427f8338b4df28",
+      "adapters/clustering/adapter_model.safetensors": "ed07343a61c6e131c91c019a5e31114602bf50ef191cc224fd3b3c621deb2229",
+      "adapters/retrieval/adapter_model.safetensors": "08a27f64bb74149586a963479c8f96e426615e56261039bc92d783bb874ef5a2",
+      "adapters/text-matching/adapter_model.safetensors": "0cd9b767a8734330384b0813f3ca6f3b4e79d4649c5f7e0b6b814ddcc1502585",
+      "model.safetensors": "5d82c788538b8a39772cbb90230fdea33913db5764b535af30a8dc3409d50069"
+    },
+    "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+    "template_sha256": {
+      "unavailable": "the recipe serves no template file (the model's own chat template applies)"
+    },
+    "plugin": {
+      "name": "rcp-ndcg-vllm",
+      "io_processor_plugin": null,
+      "wheel": "rcp_ndcg_vllm-0.0.1-py3-none-any.whl",
+      "wheel_sha256": "9ee32572f8dfdf5c1a35e3e783078edd283642f5a8affafaf96ffd7486ab6d16"
+    },
+    "hf_overrides": {
+      "jina_task": "retrieval",
+      "is_matryoshka": true,
+      "matryoshka_dimensions": [
+        32,
+        64,
+        128,
+        256,
+        512,
+        768,
+        1024
+      ]
+    },
+    "pooler_config": {},
+    "mm_processor_kwargs": {},
+    "dtype": "bfloat16"
+  },
+  "recipe": {
+    "id": "jina-embeddings-v5-text-small",
+    "shipped": false,
+    "file_sha256": "148e8e81864067fe84acb11de7ceb0a46fc9b835e31b08b610f8b7090e21e0e2",
+    "behaviour_fingerprint": "ce3a71ba2a6d098162b5aacfcaf070e449774faaa2bd4b0437aa28a40535f88d",
+    "fingerprint_inputs": {
+      "fingerprint_schema": "rcp-fp/4",
+      "model": "jinaai/jina-embeddings-v5-text-small",
+      "revision": "dd76d535f5447ca3897a9c893fb1e612ead98192",
+      "engine.image": "vllm/vllm-openai:v0.33.0",
+      "engine.min_version": "0.33.0",
+      "serve.chat_template": "null",
+      "serve.convert": "null",
+      "serve.dtype": "bfloat16",
+      "serve.extra_args": "[]",
+      "serve.hf_overrides": "{\"is_matryoshka\":true,\"jina_task\":\"retrieval\",\"matryoshka_dimensions\":[32,64,128,256,512,768,1024]}",
+      "serve.io_processor_plugin": "null",
+      "serve.limit_mm_per_prompt": "null",
+      "serve.max_model_len": "32768",
+      "serve.mm_processor_kwargs": "{}",
+      "serve.patches": "[]",
+      "serve.plugin": "rcp-ndcg-vllm",
+      "serve.plugin_architectures": "[]",
+      "serve.pooler_config": "{}",
+      "serve.runner": "pooling",
+      "serve.trust_remote_code": "true",
+      "plugin_sha256.rcp_ndcg_vllm.models": "sha256:58bb613843ba9b2339ef014287edef8ece758727d34c2cf679298a4b1d37486d",
+      "plugin_sha256.rcp_ndcg_vllm.models.version_guard": "sha256:f704eb481669980b6c270a6a69a78db2d5237f22d32e5e2dd3b72d3e68a312e5",
+      "plugin_sha256.rcp_ndcg_vllm.models.pplx": "sha256:7f94f3ada56dfe78b352769275987c3ebd50da8c92df13d5318e0102e317b6df",
+      "plugin_sha256.rcp_ndcg_vllm.models.pplx.config": "sha256:a23599cbe5dac0b9ae9ad585063ca75151f3d3101801d3e7d8b315c5a3d6a8de",
+      "plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config": "sha256:942cdfeb17a6267c8c24ce67b934948299c940a5fb1f4b320f5f2aeedb52a479",
+      "plugin_sha256.rcp_ndcg_vllm.models.topk": "sha256:645587c3d16d0595f4ff4c4858fe0965b60ed908a33eeb38c1fd84698ce3be68",
+      "plugin_sha256.rcp_ndcg_vllm.models.topk.config": "sha256:9e5cafe3eb26b0357184158c443c60a01dffec385cc5db6b9d932e8e1499df48",
+      "plugin_sha256.rcp_ndcg_vllm.models.topk.plugin": "sha256:59590cade14dc1b5de1509a3c2c5e5585bbee38b0512b26b291d679bf18d6a86",
+      "plugin_sha256.rcp_ndcg_vllm.patches": "sha256:acefa9a5969e9f9d8cf31406450d4bd5b6bf1b702722dc01c0568581ecefa85d",
+      "template_file": "absent",
+      "tokenizer_sha256": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+      "client.api": "openai_embeddings",
+      "client.batch_size": "32",
+      "client.doc_prompt": "",
+      "client.empty_doc": "send",
+      "client.instruction": "none",
+      "client.max_images": "0",
+      "client.max_tokens": "32768",
+      "client.max_videos": "0",
+      "client.media_sides": "[\"query\",\"document\"]",
+      "client.on_overflow": "cut",
+      "client.query_prompt": "",
+      "client.request_shape": "text",
+      "client.template": "{\"add_special_tokens\":true,\"anchor\":\"last_content\",\"anchor_markers\":[],\"document\":[{\"fixed\":\"Document:\"},{\"fixed\":\" \"},{\"content\":\"document\"}],\"normalize\":[],\"query\":[{\"fixed\":\"Query:\"},{\"fixed\":\" \"},{\"content\":\"query\"}]}"
+    },
+    "status": {
+      "state": "unverified",
+      "image": null,
+      "date": null,
+      "report": null
+    },
+    "declared_dim": null,
+    "outputs": "per_token",
+    "document_skip_engine_side": false,
+    "document_skip_token_ids": []
+  },
+  "collector": {
+    "package": "rcp-ndcg-vllm",
+    "version": "0.0.1",
+    "commit": {
+      "unavailable": "RCP_SOURCE_COMMIT is not set (the release candidate's manifest records the commit)"
+    },
+    "generator_version": 3,
+    "generator_seed": "1/rcp-observe-v1",
+    "corpus_plan_version": 5,
+    "record_schema": 2,
+    "seed": "rcp-observe-v1",
+    "dataset_commits": {
+      "fabianschmidt-cohere/rcp-ndcg-nanobeir": "4517f2cb9e342479725bf0931a329998b4d35038",
+      "fabianschmidt-cohere/rcp-ndcg-bright": "1bee160c00bf8ea7576a41879a62cb2d4fbd9319",
+      "fabianschmidt-cohere/rcp-ndcg-vidore-v3": "4e5ca46e2f9c050b18a7f170c23e3ade66f78a4e",
+      "fabianschmidt-cohere/rcp-ndcg-trecdl": "4f1f664491d50419bc24a7c24bd5aa366992b4a5"
+    },
+    "wave_id": "wave",
+    "job_id": {
+      "unavailable": "RCP_JOB_ID is not set"
+    },
+    "started": "2026-11-09T20:21:36+00:00",
+    "finished": "2026-11-09T20:23:18+00:00",
+    "host_sha256": "ebc9919cadf34ab5234d42c97550efc60d697788d7bf93696aa97df030f7f7d9",
+    "module": "rcp_ndcg_test.record.record_corpus",
+    "batch_sizes": [
+      1,
+      2,
+      8,
+      32
+    ],
+    "passes": [
+      {
+        "repetition": "same_process_1",
+        "server_run_id": "jina-embeddings-v5-text-small@2026-11-09T20:19:33+00:00"
+      },
+      {
+        "repetition": "same_process_2",
+        "server_run_id": "jina-embeddings-v5-text-small@2026-11-09T20:19:33+00:00"
+      },
+      {
+        "repetition": "after_restart",
+        "server_run_id": "jina-embeddings-v5-text-small@2026-11-09T20:23:01+00:00"
+      }
+    ]
+  },
+  "plan": {
+    "corpus_plan_version": 5,
+    "request_ids": [
+      "pairs:0",
+      "pairs:1",
+      "pairs:2",
+      "pairs:3",
+      "pairs:4",
+      "pairs:5",
+      "pairs:6",
+      "pairs:7",
+      "pairs:8",
+      "pairs:9",
+      "pairs:10",
+      "pairs:11",
+      "pairs:12",
+      "pairs:13",
+      "pairs:14",
+      "pairs:15",
+      "pairs:16",
+      "pairs:17",
+      "pairs:18",
+      "pairs:19",
+      "pairs:20",
+      "pairs:21",
+      "pairs:22",
+      "pairs:23",
+      "pairs:24",
+      "ladder:over_by_1",
+      "ladder:over_2x",
+      "ladder:over_10x",
+      "ladder:over_by_1:uncut",
+      "ladder:over_2x:uncut",
+      "ladder:over_10x:uncut",
+      "mrl:dimensions=32",
+      "mrl:dimensions=64",
+      "mrl:dimensions=128",
+      "mrl:dimensions=256",
+      "mrl:dimensions=512",
+      "mrl:dimensions=768",
+      "mrl:dimensions=1024",
+      "wire:encoding_format=base64"
+    ],
+    "strata": {
+      "length:over_by_1": {
+        "present": true,
+        "content_tokens": 32766
+      },
+      "length:over_2x": {
+        "present": true,
+        "content_tokens": 65522
+      },
+      "length:over_10x": {
+        "present": true,
+        "content_tokens": 327610
+      },
+      "content:ascii_prose:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:code:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:cjk:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:rtl:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:emoji_zwj:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:combining_marks:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:whitespace_only:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:empty:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:long_token_url:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:long_token_base64:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "content:special_token_spellings:uncut": {
+        "present": false,
+        "reason": "the kind fits the budget: its pairs row carries it"
+      },
+      "mrl:dimensions=32": {
+        "present": true
+      },
+      "mrl:dimensions=64": {
+        "present": true
+      },
+      "mrl:dimensions=128": {
+        "present": true
+      },
+      "mrl:dimensions=256": {
+        "present": true
+      },
+      "mrl:dimensions=512": {
+        "present": true
+      },
+      "mrl:dimensions=768": {
+        "present": true
+      },
+      "mrl:dimensions=1024": {
+        "present": true
+      },
+      "mrl": {
+        "present": true,
+        "kind": "truncation",
+        "dims": [
+          32,
+          64,
+          128,
+          256,
+          512,
+          768,
+          1024
+        ],
+        "referent": "the recipe's declared Matryoshka output dimensions, one bare engine request each"
+      },
+      "wire:encoding_format=base64": {
+        "present": true
+      },
+      "edge:invalid_embed_dtype": {
+        "present": false,
+        "reason": "/v1/embeddings takes no embed_dtype (the /pooling route's field)"
+      },
+      "media:request_set": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:too_many_images": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:corrupt_image": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:too_many_videos": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:corrupt_video": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "media:video": {
+        "present": false,
+        "reason": "the recipe is text-only"
+      },
+      "edge:while_loading": {
+        "present": true
+      }
+    }
+  },
+  "integrity": {
+    "files": {
+      "nondeterminism.json": {
+        "sha256": "279fbc11df1194224c49ac495733269ce184c61ef1e08234182f4a374e2f16ae",
+        "bytes": 159340
+      },
+      "records.jsonl": {
+        "sha256": "b85d36fc613986936a0312dc0bb209666558845b97c3d89426bddec3cf812760",
+        "bytes": 56591835
+      }
+    },
+    "records_count": 652,
+    "manifest_sha256": "5d3799b425f9f2ac1add24372e5581df7b5354531bb44bcf3d78de2497432bf5"
+  }
+}

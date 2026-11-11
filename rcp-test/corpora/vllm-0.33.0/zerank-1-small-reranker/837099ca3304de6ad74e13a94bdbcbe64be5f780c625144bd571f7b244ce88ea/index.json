@@ -1,0 +1,58 @@
+{
+  "schema": "rcp-ndcg.observation-subset/1",
+  "full_corpus": {
+    "path": "gs://YOUR-BUCKET/observations/vllm-0.33.0/zerank-1-small-reranker",
+    "manifest_file_sha256": "dee9ddda898830bc2fada70f11999350112e5505eb18e6bd55d9b03e085e0bc9",
+    "manifest_sha256": "10988f0e074302de770303be42ef7b167397772fbc6324c873113ff28e075c5b"
+  },
+  "sampling": {
+    "rule": "the first record of every stratum, then corpus order until the budget; corpus order kept",
+    "budget_bytes": 2097152,
+    "strata_covered": [
+      "content:ascii_prose",
+      "content:cjk",
+      "content:code",
+      "content:combining_marks",
+      "content:emoji_zwj",
+      "content:empty",
+      "content:long_token_base64",
+      "content:long_token_url",
+      "content:rtl",
+      "content:special_token_spellings",
+      "content:whitespace_only",
+      "edge:top_n_over_documents",
+      "edge:while_loading",
+      "length:at_90",
+      "length:at_budget",
+      "length:median",
+      "length:over_10x",
+      "length:over_2x",
+      "length:over_by_1",
+      "length:over_cap",
+      "length:over_query_cap",
+      "length:short",
+      "length:tiny",
+      "protocol",
+      "source:bright",
+      "source:nanobeir",
+      "tokenize",
+      "wire:instruction=on",
+      "wire:top_n=1",
+      "wire:top_n=all",
+      "wire:use_activation=false",
+      "wire:use_activation=true"
+    ],
+    "rows": 412,
+    "of_rows": 412
+  },
+  "files": {
+    "nondeterminism.json": {
+      "sha256": "44bcaf5ce27e06f50ca17deb926d63f59f1959cb2328c1c26e78ffcb2a98f25d",
+      "bytes": 79741
+    },
+    "records.jsonl.gz": {
+      "sha256": "3364e5c183b78b8b8ce4da3c86c4e532e2b54eab4647eadc49edf85c8fe6bf31",
+      "bytes": 771887
+    }
+  }
+}
