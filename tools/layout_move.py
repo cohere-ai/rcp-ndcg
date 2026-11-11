@@ -232,12 +232,14 @@ STALE: tuple[tuple[str, ...], ...] = (
         "CHANGELOG.md",
         "tests/docs/test_changelog.py",
         "rcp-test/src/rcp_test/jobs/ledger.py",
+        "rcp-test/tests/test_ledger.py",
     ),
     (
         r"(?:(?<!\w)|(?<=\\[ntr]))rcp_ndcg_test(?!\w)",
         "CHANGELOG.md",
         "tests/docs/test_changelog.py",
         "rcp-test/src/rcp_test/jobs/ledger.py",
+        "rcp-test/tests/test_ledger.py",
     ),
 )
 """What must be gone after the sweep: patterns that can only mean a path the move took away. Each
@@ -298,10 +300,12 @@ def _apply_rewrites(text: str, name: Path) -> tuple[str, list[str]]:
         if rule in (
             "core-name",
             "main-name",
+            "test-name",
+            "test-module",
             "vllm-name",
             "vllm-module",
-        ) and name.as_posix() == ("rcp-test/src/rcp_test/jobs/ledger.py"):
-            continue  # its source list names pre-rename trees' layouts as data, never a live path
+        ) and name.as_posix() in ("rcp-test/src/rcp_test/jobs/ledger.py", "rcp-test/tests/test_ledger.py"):
+            continue  # both spell pre-rename trees' names as data: the source list, and the test that pins it
         if rule == "main-name" and name.as_posix() == "tests/judging/test_store.py":
             continue  # its parametrize list spells both identity tags as data: a pre-rename store carries the old one
         if rule.startswith("test-") and name.as_posix() == "tests/docs/test_changelog.py":

@@ -27,6 +27,12 @@ incompatibly, independently of the package version. All four distributions carry
 
 ### Public surface
 
+- **A run publishes what it does as data** (the run-event stream): `rcp.support.events` defines `RunEvent`
+  (`run_id`, `step`, `phase`, `at`, `usage`, `detail`), the four phases `step_started`, `step_finished`,
+  `step_failed` and `usage`, and `Emitter`, the emitter `Pipeline.run` builds. A subscriber is a callable
+  installed in the optional `rcp.events` entry-point group. It is called synchronously, in run order. A
+  subscriber that raises is logged once and never fails the run, and a run with no subscriber emits nothing
+  and records the same manifest. A step `run cancel` stopped reports `cancelled` in `detail.status`.
 - **The serving recipes are a declared extra, and the three kept modules say why they stay** (the four hygiene
   items of the downstream-surface work): `rcp` declares `vllm = ["rcp-vllm"]`, so `pip install "rcp[vllm]"`
   installs the sibling a `recipe:` config needs, a `recipe:` config without it is refused naming that install
