@@ -100,7 +100,7 @@ def test_control_d_the_wrong_pooling_fails_the_gates(rerank_wave: dict[str, Any]
     """fixture-embed declares ``seq_pooling_type: LAST``: the variant flips THAT key (adding ``pooling_type``
     beside it, as before, makes vLLM refuse the config: "Cannot set both")."""
     variant = next(v for v in control_variants(load_recipe(RECIPES / "fixture-embed")) if v["control"] == "(d)")
-    assert variant["recipe"].serve.pooler_config == {"seq_pooling_type": "MEAN"}
+    assert variant["recipe"].serve.pooler_config.model_dump() == {"seq_pooling_type": "MEAN"}
     for wave in (rerank_wave, embed_wave):
         assert _caught(_controls(wave), "(d)")["caught"] is True
 

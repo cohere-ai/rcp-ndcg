@@ -181,7 +181,7 @@ def test_the_recipe_loads_and_declares_the_served_path(variant_id: str) -> None:
     assert recipe.serve.runner == "pooling" and recipe.serve.convert is None
     assert recipe.serve.dtype == "bfloat16"
     assert recipe.serve.chat_template is None and recipe.serve.trust_remote_code is False
-    assert recipe.serve.pooler_config == {} and recipe.serve.plugin is None
+    assert recipe.serve.pooler_config.model_dump() == {} and recipe.serve.plugin is None
     assert recipe.resources.gpus == 1  # bf16 weights + KV fit one 80 GB-class GPU at every size
     assert recipe.reference.kind == "transformers" and recipe.reference.score_scale == "cosine"
     assert recipe.reference.known_deviations == ["over_cap_cut_differs"]

@@ -51,6 +51,8 @@ class Recipe(pydantic.main.BaseModel)
 
 - `reference: rcp_vllm.recipe.ReferenceSpec | None` = None
 
+- `relevant_spans: bool` = False
+
 - `resources: rcp_vllm.recipe.Resources`
 
 - `revision: str`
@@ -90,6 +92,8 @@ class RecipeFamily(pydantic.main.BaseModel)
 - `notes: str` = ''
 
 - `reference: rcp_vllm.recipe.ReferenceSpec | None` = None
+
+- `relevant_spans: bool` = False
 
 - `resources: rcp_vllm.recipe.Resources`
 

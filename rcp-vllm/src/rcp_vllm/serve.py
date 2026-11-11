@@ -38,7 +38,14 @@ import subprocess
 import sys
 
 from .errors import RecipeError
-from .recipe import Recipe, load_recipe, parse_deployment_overrides, plugin_distribution_name, serve_argv
+from .recipe import (
+    Recipe,
+    load_recipe,
+    parse_deployment_overrides,
+    plugin_distribution_name,
+    plugin_install_line,
+    serve_argv,
+)
 
 __all__ = ["build_parser", "run_console"]
 
@@ -99,8 +106,7 @@ def _check_plugin(spec: str | None, *, engine_python: str | None = None) -> None
             return
         where = "this environment"
     raise SystemExit(
-        f"recipe names plugin {spec!r}, which {where} does not carry.\n"
-        f"install it first: pip install --no-deps {shlex.quote(spec)}"
+        f"recipe names plugin {spec!r}, which {where} does not carry.\ninstall it first: {plugin_install_line(spec)}"
     )
 
 

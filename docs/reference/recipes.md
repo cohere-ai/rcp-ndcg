@@ -147,6 +147,57 @@ A fallback changes how the model is served. It does not change what the model co
 
 A generic deployment serves the same weights with the same numerics. The gate and the limits are the same.
 
+## Plugin-provided fields
+
+Part of the serving surface exists only in the plugin, never in the stock engine: the embed chunker's three
+knobs and the rerank route's span-level relevance (every embed and rerank change is the plugin's, and none of
+it waits on an upstream release). `rcp_vllm.recipe.PLUGIN_FIELDS` is the one declaration of them, each field
+with the plugin distribution that honours it; the loader reads that table, never a list of names of its own.
+
+| field | what the recipe declares | rendered as |
+|---|---|---|
+| `serve.pooler_config.chunk_length` | the embed chunker's chunk size | inside `--pooler-config` |
+| `serve.pooler_config.chunk_weighting` | how a document's chunk scores aggregate | inside `--pooler-config` |
+| `serve.pooler_config.normalize_aggregated_embeddings` | whether the aggregated document vector is L2-normalised | inside `--pooler-config` |
+| `relevant_spans` | the rerank route accepts span-level relevance (the plugin's `relevant_spans` wire field) | nothing |
+
+A recipe that declares one names the plugin in `serve.plugin`. The knobs are `PoolerConfig` fields, so they
+ride inside the `--pooler-config` JSON the engine already parses, and the rendered command carries them. Both
+exported schemas declare them as optional properties of `serve.pooler_config` (the object stays open, so a
+stock `PoolerConfig` field still passes), and the loader remains the authority on which keys exist:
+
+```yaml
+# a family's shared serve block: the chunk knobs beside the plugin that provides them
+serve:
+  runner: pooling
+  dtype: bfloat16
+  max_model_len: 8192
+  plugin: rcp-vllm
+  pooler_config: {chunk_length: 512, chunk_weighting: linear, normalize_aggregated_embeddings: true}
+```
+
+`rcp-vllm serve <id> --dry-run` renders that block as `--pooler-config '{"chunk_length": 512,
+"chunk_weighting": "linear", "normalize_aggregated_embeddings": true}'`. A key that is neither a field of the
+pinned engine nor a row of the table is refused by name (the engine rejects an unknown key), and
+`serve.extra_args` may not carry `--pooler-config`: `serve_argv` renders it, and the engine keeps the last
+occurrence.
+
+**The loader refuses what the target cannot honour.** A recipe that declares one of these fields without
+`serve.plugin` -- or with a plugin that does not provide it -- is refused at load, by name, before any engine
+sees the argv. If the plugin is declared but this environment does not carry it, the refusal names the plugin
+and its exact install line (`pip install --no-deps <spec>`, the recipe's own `serve.plugin` spec). "Installed"
+is judged through the `vllm.general_plugins` entry-point group vLLM loads in every engine process -- the group
+the packaging snapshot records for this wheel -- so the capability is present when the mechanism that finds the
+plugin says so, never because the recipe claims it.
+
+`relevant_spans` is the one declared field that renders nothing: it says that the deployment honours
+span-level relevance in a rerank request, which the engine accepts per request, and the plugin provides that
+wire. Only a rerank recipe may declare it (the spans come back scored with a document), and the loader refuses
+it without the plugin, exactly as it refuses a chunk knob. It is a recipe-level field rather than a `serve`
+one on purpose: every `serve` field is a behaviour-fingerprint input, while this capability changes the request
+shape the deployment accepts, not how the engine computes -- a `serve` home would re-key every recipe's
+recorded corpus.
+
 ## The catalog's columns
 
 - `id` is the recipe id of the variant. It is the lowercased canonical Hub repository name of the model, and it is the

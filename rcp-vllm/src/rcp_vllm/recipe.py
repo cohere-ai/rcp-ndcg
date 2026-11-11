@@ -48,6 +48,14 @@ A recipe may also be **a file of the operator's own**: ``rcp-vllm serve ./family
 unshipped (:attr:`Recipe.shipped`) with ``status: unverified``, and identifies it by the content hash of its
 resolved form (:attr:`Recipe.identity`) instead of a shipped id.
 
+Some fields of the serving surface exist only in the product's own plugin, not in the stock engine.
+:data:`PLUGIN_FIELDS` is the one declaration of them -- the embed chunker's three ``pooler_config`` knobs, which
+ride inside the ``--pooler-config`` JSON the engine parses, and the rerank route's ``relevant_spans``
+capability, which renders nothing at all -- each with the plugin distribution that honours it. A recipe that
+declares one names that plugin in ``serve.plugin``, and the environment that loads the recipe must carry it:
+the loader refuses by name, with the plugin's ``pip install`` line, rather than let the engine reject the field
+or silently never honour it.
+
 Public names (pinned by ``tests/contract``):
 
 - :func:`load_recipe` -- the resolved recipe of a variant id, or of a family directory (``variant`` selects one
@@ -70,9 +78,11 @@ Everything else in this module is internal.
 from __future__ import annotations
 
 import hashlib
+import importlib.metadata
 import json
 import math
 import re
+import shlex
 import warnings
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -82,7 +92,16 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml  # pyright: ignore[reportMissingModuleSource]
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from .errors import RecipeError
 from .models import ARCHITECTURE_MODULES
@@ -112,6 +131,32 @@ _PINNED_VLLM_REF = "v0.33.0"
 ``vllm/vllm-openai:v0.33.0``); a field that exists only past the tag is refused, because the engine's
 argparse/``TypeAdapter`` rejects it at CLI parse."""
 
+PLUGIN_FIELDS: Mapping[str, str] = {
+    # The serve fields the stock engine at _PINNED_VLLM_REF does not carry, and the plugin distribution that
+    # honours each one, keyed by the recipe path. The embed chunker's three knobs widen
+    # ``PoolerConfig`` and the rerank route's ``relevant_spans`` replaces the scoring request and response
+    # models -- all of it is the product's own plugin, never an engine feature, so a recipe that declares one
+    # names the plugin (``serve.plugin``) and the environment that loads it carries the plugin.
+    "serve.pooler_config.chunk_length": "rcp-vllm",
+    "serve.pooler_config.chunk_weighting": "rcp-vllm",
+    "serve.pooler_config.normalize_aggregated_embeddings": "rcp-vllm",
+    "relevant_spans": "rcp-vllm",
+}
+"""The fields a plugin provides and the pinned engine does not, keyed by the recipe path and valued by the
+plugin distribution (PEP 503 name) that honours each one -- the one declaration the loader reads.
+
+A pooler key is a ``serve.pooler_config.<key>`` row (it rides inside the ``--pooler-config`` JSON the engine
+parses); ``relevant_spans`` is the rerank route's wire capability, which renders nothing at all (see
+:attr:`Recipe.relevant_spans`).  A field outside this table and outside
+:data:`PINNED_POOLER_CONFIG_FIELDS` is refused: the engine rejects an unknown pooler key, so a table entry is
+the only way a recipe may name one."""
+
+_PLUGIN_ENTRY_POINT_GROUP = "vllm.general_plugins"
+"""The entry-point group vLLM loads in every engine process -- the group this wheel registers in, recorded by
+the packaging snapshot (``tests/contract/snapshots/packaging.json``).  The loader reads it to decide whether a
+plugin-provided field's plugin is installed, so "installed" is the repository's own plugin mechanism and never
+a second one."""
+
 PINNED_POOLER_CONFIG_FIELDS = (
     "task",
     "pooling_type",
@@ -128,8 +173,9 @@ PINNED_POOLER_CONFIG_FIELDS = (
     "returned_token_ids",
 )
 """Every field of vLLM's ``PoolerConfig`` at the pinned release (``vllm/config/pooler.py`` at
-:data:`_PINNED_VLLM_REF`); ``serve.pooler_config`` keys are validated against this tuple, because the
-engine rejects unknown keys (r-vllm-drift risk 2).  ``enable_flash_late_interaction`` (default ``True`` at
+:data:`_PINNED_VLLM_REF`); ``serve.pooler_config`` keys are validated against this tuple and
+:data:`PLUGIN_FIELDS`, because the engine rejects unknown keys (r-vllm-drift risk 2).
+``enable_flash_late_interaction`` (default ``True`` at
 the pinned release) is accepted because the engine's parser carries it; no shipped recipe sets it, and the
 field is inert for all of them: the engine applies ``late_interaction_params`` on the scoring route only,
 and the late-interaction recipes score MaxSim client-side."""
@@ -231,6 +277,11 @@ _REQUIREMENT_NAME = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?")
 """The PEP 508 requirement name: letters, digits and ``-_.`` inside, starting and ending alphanumeric."""
 
 
+def _pep503_name(name: str) -> str:
+    """A distribution name, PEP 503-normalised (``rcp_vllm`` and ``rcp-vllm`` name one distribution)."""
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
 def plugin_distribution_name(spec: str) -> str:
     """The distribution name a pip spec installs (``rcp-vllm==0.0.1`` -> ``rcp-vllm``).
 
@@ -248,7 +299,52 @@ def plugin_distribution_name(spec: str) -> str:
         raise RecipeError(
             f"serve.plugin {spec!r}: the form is NAME, NAME==VERSION, NAME[extras]==VERSION or NAME @ URL"
         )
-    return re.sub(r"[-_.]+", "-", match.group(0)).lower()
+    return _pep503_name(match.group(0))
+
+
+def plugin_install_line(spec: str) -> str:
+    """The shell line that installs a plugin's pip ``spec`` into the environment the engine runs in.
+
+    One home for the line the loader's refusal and the ``rcp-vllm serve`` console both print: the spec is
+    quoted, because it is pasted into a shell and a ranged spec's ``>=`` would otherwise redirect.
+    """
+    return f"pip install --no-deps {shlex.quote(spec)}"
+
+
+def _installed_plugins() -> frozenset[str]:
+    """The PEP 503 names of the installed distributions that register a ``vllm.general_plugins`` entry point.
+
+    The one home of "this plugin is installed": :data:`_PLUGIN_ENTRY_POINT_GROUP` is the group vLLM loads in
+    every engine process, and the group the packaging snapshot records for this wheel, so a plugin's presence
+    is judged by the mechanism the repository already finds plugins with -- never by importing the plugin's
+    own modules (they import vLLM and torch).  Reading installed metadata never imports anything.
+    """
+    return frozenset(
+        _pep503_name(distribution)
+        for entry in importlib.metadata.entry_points(group=_PLUGIN_ENTRY_POINT_GROUP)
+        if (distribution := getattr(getattr(entry, "dist", None), "name", None)) is not None
+    )
+
+
+def _plugin_pooler_keys() -> tuple[str, ...]:
+    """The ``serve.pooler_config`` keys a plugin provides (the table's ``serve.pooler_config.<key>`` rows)."""
+    prefix = "serve.pooler_config."
+    return tuple(path[len(prefix) :] for path in PLUGIN_FIELDS if path.startswith(prefix))
+
+
+def declared_plugin_fields(recipe: Recipe) -> tuple[str, ...]:
+    """The plugin-provided fields ``recipe`` declares, by recipe path, in :data:`PLUGIN_FIELDS` order.
+
+    Inputs: a loaded (or hand-built) recipe.  Outputs: the paths of the table's fields it sets -- a
+    ``serve.pooler_config`` key that is a table row (whatever its value), and ``relevant_spans`` when the
+    recipe declares the capability -- so the loader reads one list rather than re-deriving which field needs
+    which plugin.
+    """
+    pooler = set(recipe.serve.pooler_config.model_dump())
+    declared = {f"serve.pooler_config.{key}" for key in _plugin_pooler_keys() if key in pooler}
+    if recipe.relevant_spans:
+        declared.add("relevant_spans")
+    return tuple(path for path in PLUGIN_FIELDS if path in declared)
 
 
 def _no_extra() -> dict[str, Any]:
@@ -320,6 +416,38 @@ _SERVE_ARGV_FLAG_FIELDS: Mapping[str, str] = {
 }
 
 
+class PluginPoolerConfig(BaseModel):
+    """The ``serve.pooler_config`` keys a plugin provides, typed so the exported schema declares them.
+
+    The stock ``PoolerConfig`` at :data:`_PINNED_VLLM_REF` carries none of these three knobs, so
+    :data:`PLUGIN_FIELDS` names them and the plugin that honours them; ``extra="allow"`` keeps every stock
+    field, and :meth:`ServeConfig._pooler_keys_exist_at_the_pinned_engine` still refuses a key that is
+    neither.  The three are optional and a recipe sets only the ones it needs, so the serializer writes back
+    exactly the keys the recipe declared: an unset knob appears in neither ``--pooler-config`` nor the
+    recipe's resolved form (its digest and behaviour fingerprint).
+
+    Attributes:
+        chunk_length: The embed chunker's chunk size (tokens).
+        chunk_weighting: How a document's chunk scores aggregate into its one vector (``linear``).
+        normalize_aggregated_embeddings: Whether the aggregated document vector is L2-normalised.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    chunk_length: int | None = Field(default=None, description="the embed chunker's chunk size (tokens)")
+    chunk_weighting: str | None = Field(
+        default=None, description="how a document's chunk scores aggregate into its one vector (``linear``)"
+    )
+    normalize_aggregated_embeddings: bool | None = Field(
+        default=None, description="whether the aggregated document vector is L2-normalised"
+    )
+
+    @model_serializer(mode="wrap")
+    def _as_declared(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        """The keys the recipe declared, in the engine's own shape: an unset knob is absent, not ``null``."""
+        return {key: value for key, value in handler(self).items() if key in self.model_fields_set}
+
+
 class ServeConfig(BaseModel):
     """Everything rendered into the ``vllm serve`` argv — nothing implicit.
 
@@ -347,9 +475,11 @@ class ServeConfig(BaseModel):
     chat_template: str | None = Field(
         default=None, description="chat template file in the recipe directory, given to vLLM --chat-template"
     )
-    pooler_config: dict[str, Any] = Field(
-        default_factory=dict,
-        description="vLLM --pooler-config, a JSON object; keys must be PoolerConfig fields at the pinned engine",
+    pooler_config: PluginPoolerConfig = Field(
+        default_factory=PluginPoolerConfig,
+        description="vLLM --pooler-config, a JSON object; keys must be PoolerConfig fields at the pinned engine, "
+        "or a field rcp_vllm.recipe.PLUGIN_FIELDS declares a plugin provides (the embed chunker's three knobs, "
+        "declared below)",
     )
     trust_remote_code: bool = Field(default=False, description="vLLM --trust-remote-code flag")
     max_model_len: int = Field(gt=0, description="vLLM --max-model-len; at least every client budget")
@@ -396,12 +526,22 @@ class ServeConfig(BaseModel):
 
     @field_validator("pooler_config")
     @classmethod
-    def _pooler_keys_exist_at_the_pinned_engine(cls, value: dict[str, Any]) -> dict[str, Any]:
-        unknown = sorted(set(value) - set(PINNED_POOLER_CONFIG_FIELDS))
+    def _pooler_keys_exist_at_the_pinned_engine(cls, value: PluginPoolerConfig) -> PluginPoolerConfig:
+        """Every key is one the served engine parses: a ``PoolerConfig`` field at the pin, or a field
+        :data:`PLUGIN_FIELDS` declares a plugin provides.
+
+        The two are different questions, and the second is the loader's: this check says a key is a field at
+        all, while :meth:`Recipe._plugin_fields_are_honoured` says the target can honour it (the plugin is
+        declared and installed).  A key in neither set would be rejected by the engine's own parser, so it is
+        refused here with both lists.
+        """
+        plugin_keys = _plugin_pooler_keys()
+        unknown = sorted(set(value.model_dump()) - set(PINNED_POOLER_CONFIG_FIELDS) - set(plugin_keys))
         if unknown:
             raise ValueError(
                 f"pooler_config keys {unknown} are not PoolerConfig fields at vLLM {_PINNED_VLLM_REF} "
-                f"(known: {', '.join(PINNED_POOLER_CONFIG_FIELDS)}); the engine rejects unknown keys"
+                f"(known: {', '.join(PINNED_POOLER_CONFIG_FIELDS)}; plugin-provided: {', '.join(plugin_keys)}); "
+                "the engine rejects unknown keys"
             )
         return value
 
@@ -711,6 +851,8 @@ class Recipe(BaseModel):
         input: The input modalities the model accepts, a non-empty subset of ``[text, image, video]``.
         scoring: Rerank only: ``pointwise`` (documents scored independently) or ``listwise`` (the whole
             candidate set in one prompt; the product endpoint's ``listwise`` flag).
+        relevant_spans: Rerank only: the deployment honours span-level relevance in a rerank request (the
+            plugin's ``relevant_spans`` wire field).  A capability declaration, rendered nowhere.
         licence: SPDX identifier of the model's licence, or ``see-model-card``.
         engine: The engine image and the startup timeout.
         resources: The GPUs the engine occupies (``--tensor-parallel-size``).
@@ -745,6 +887,14 @@ class Recipe(BaseModel):
     role: Role
     input: list[Literal["text", "image", "video"]] = Field(min_length=1)
     scoring: Literal["pointwise", "listwise"] | None = None
+    relevant_spans: bool = Field(
+        default=False,
+        description="the deployment honours span-level relevance in a rerank request (the plugin's "
+        "relevant_spans wire field): a capability declaration that renders nothing, and it stays outside the "
+        "serve block on purpose -- every serve field is a behaviour-fingerprint input, while this one changes "
+        "the request shape the deployment accepts, not how the engine computes, so a serve-block home would "
+        "re-key every recipe's recorded corpus",
+    )
     licence: str = Field(min_length=1)
     engine: EngineSpec
     resources: Resources
@@ -955,6 +1105,54 @@ class Recipe(BaseModel):
         _video_pruning_agrees(self)
         _document_skip_agrees(self)
         _media_keep_agrees(self)
+        return self
+
+    @model_validator(mode="after")
+    def _plugin_fields_are_honoured(self) -> Recipe:
+        """A field the pinned engine does not carry is declared only beside the plugin that provides it.
+
+        The embed chunker's three ``PoolerConfig`` knobs and the rerank route's ``relevant_spans`` wire field
+        are the product's own plugin, never an engine feature.  So a recipe that declares one names that plugin
+        in ``serve.plugin``, and the environment loading the recipe carries it
+        -- judged through :data:`_PLUGIN_ENTRY_POINT_GROUP`, the group vLLM loads.  Anything else is refused by
+        name with the plugin's install line: the engine would reject the knob (its ``PoolerConfig`` has no such
+        field) and would never honour the wire field (its scoring protocol has no such field), which is exactly
+        the silent drop the declaration exists to prevent.
+        """
+        paths = declared_plugin_fields(self)
+        if not paths:
+            return self
+        if self.relevant_spans and self.role != "rerank":
+            raise ValueError(
+                f"relevant_spans is declared, but role={self.role}: the plugin's relevant-spans wire answers a "
+                "rerank request (a document's spans come back scored), so only a rerank recipe declares that "
+                "the deployment honours it"
+            )
+        declared = " and ".join(paths)
+        provided = sorted({PLUGIN_FIELDS[path] for path in paths})
+        # One plugin today, and the check below keeps it that way: serve.plugin is one spec, so a table whose
+        # fields needed two plugins would be refused rather than half-honoured.
+        plugin = provided[0]
+        if self.serve.plugin is None:
+            raise ValueError(
+                f"{declared} is not a field the pinned engine (vLLM {_PINNED_VLLM_REF}) carries: the plugin "
+                f"{plugin} provides it. Declare serve.plugin: {plugin} and install it "
+                f"({plugin_install_line(plugin)})"
+            )
+        named = plugin_distribution_name(self.serve.plugin)
+        if named != plugin:
+            raise ValueError(
+                f"{declared} is provided by the plugin {plugin}, but serve.plugin names {self.serve.plugin!r} "
+                f"({named}): that plugin does not provide the field, so the served engine would reject it or "
+                f"never honour it. Declare serve.plugin: {plugin}, or drop {declared}"
+            )
+        missing = sorted(set(provided) - _installed_plugins())
+        if missing:
+            raise ValueError(
+                f"{declared} is provided by the plugin {missing[0]}, which this environment does not carry "
+                f"(no {_PLUGIN_ENTRY_POINT_GROUP} entry point from it). Install it first: "
+                f"{plugin_install_line(self.serve.plugin)}, or drop {declared}"
+            )
         return self
 
 
@@ -1772,6 +1970,13 @@ class RecipeFamily(BaseModel):
     role: Role
     input: list[Literal["text", "image", "video"]] = Field(min_length=1)
     scoring: Literal["pointwise", "listwise"] | None = None
+    relevant_spans: bool = Field(
+        default=False,
+        description="the family's deployment honours span-level relevance in a rerank request (the plugin's "
+        "relevant_spans wire field): a capability declaration, rendered nowhere, and the family's shared block "
+        "rather than a per-size override -- the served route's accepted request shape is part of what a family "
+        "shares",
+    )
     licence: str = Field(min_length=1)
     engine: EngineSpec
     resources: Resources
@@ -1982,6 +2187,7 @@ def _expand_variant(family: RecipeFamily, variant: Variant, directory: Path, yam
         "role": family.role,
         "input": family.input,
         "scoring": family.scoring,
+        "relevant_spans": family.relevant_spans,
         "licence": variant.licence or family.licence,
         "engine": family.engine.model_dump(mode="json"),
         "resources": (variant.overrides.resources or family.resources).model_dump(mode="json"),
@@ -2192,8 +2398,11 @@ def serve_argv(
     ``serve.plugin``, ``serve.io_processor_plugin``, ``serve.plugin_architectures`` and ``serve.patches`` render
     nothing: the first two name pip packages installed before the engine starts, the third declares which
     plugin architectures the fingerprint keys, and the last is rendered into the engine's environment by the
-    ``rcp-vllm serve`` console.  A pooling recipe whose client's largest budget reaches
-    ``serve.max_model_len`` exactly renders ``--max-num-batched-tokens`` at that budget when nothing sets one
+    ``rcp-vllm serve`` console.  A plugin-provided pooler knob renders inside ``--pooler-config`` (the engine's
+    own JSON), and :attr:`Recipe.relevant_spans` renders nothing at all: it declares that the deployment
+    honours the plugin's spans wire, which the engine accepts per request.  A pooling recipe whose client's
+    largest budget reaches ``serve.max_model_len`` exactly renders ``--max-num-batched-tokens`` at that budget
+    when nothing sets one
     (vllm-1 decision 6(b): the engine's own GPU-dependent default would chunk an at-budget prompt the
     recipe declares whole); an explicit smaller value is warned about and replaced by that safe value.
     Raises :class:`RecipeError` when the recipe sets
@@ -2229,7 +2438,7 @@ def serve_argv(
                 "load_recipe, or clear serve.chat_template"
             )
         argv += ["--chat-template", str(directory / recipe.serve.chat_template)]
-    argv += ["--pooler-config", json.dumps(recipe.serve.pooler_config, sort_keys=True)]
+    argv += ["--pooler-config", json.dumps(recipe.serve.pooler_config.model_dump(), sort_keys=True)]
     if recipe.serve.mm_processor_kwargs:
         argv += ["--mm-processor-kwargs", json.dumps(recipe.serve.mm_processor_kwargs, sort_keys=True)]
     if recipe.serve.limit_mm_per_prompt is not None:
