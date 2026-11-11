@@ -20,644 +20,13 @@ submodules of `retrieval`, `judging`, `calibration`, `runs` and `runners`) is in
 pull request that changes `tests/contract/snapshots/` or `schemas/` must add an entry here; CI checks it.
 
 Every artifact schema carries its own version (`rcp.<name>.v1`), bumped only when that artifact changes
-incompatibly, independently of the package version. `rcp-ndcg.<name>.v1` is the spelling from before 0.1.0, and
+incompatibly, independently of the package version. `rcp-ndcg.<name>.v1` is the spelling from before 0.0.1, and
 every reader still accepts it. All four distributions carry the tag version; `rcp` pins
 `rcp-core==<version>`; `rcp-vllm` pins no sibling; `rcp-test` is never published.
 
 ## Unreleased
 
-## 0.1.0 — 2026-11-11
-
-### Public surface
-
-- **A run publishes what it does as data** (the run-event stream): `rcp.support.events` defines `RunEvent`
-  (`run_id`, `step`, `phase`, `at`, `usage`, `detail`), the four phases `step_started`, `step_finished`,
-  `step_failed` and `usage`, and `Emitter`, the emitter `Pipeline.run` builds. A subscriber is a callable
-  installed in the optional `rcp.events` entry-point group. It is called synchronously, in run order. A
-  subscriber that raises is logged once and never fails the run, and a run with no subscriber emits nothing
-  and records the same manifest. A step `run cancel` stopped reports `cancelled` in `detail.status`.
-- **The run manifest holds every dataset and suite a run read, and the producer's own visibility statement** (the
-  run manifest's added `v1` fields): `RunManifest` gains four optional fields, and `schemas/run-manifest.v1.json`
-  carries them. `path` is the run directory the manifest was last written in, which `RunManifest.save` records;
-  the `steps` artifact paths are relative to it, so a manifest read away from its run directory resolves them.
-  `datasets` is one `DatasetEntry` per source the run read: the `dataset` provenance (`name`, `revisions`,
-  `subset`, `split`, `task`) plus `args`, the reader arguments that selected the slice, and `internal`, the
-  producer's statement that the source is not for publication. `internal` defaults to `false` and is never an
-  inference: the product reads the field and does not decide it, so a source the producer did not mark is not
-  internal. `suites` is one `SuiteEntry` per suite read, with the `entries` the run evaluated. `rows` is the
-  downstream row schema the run's rows were written as (`{schema}`, a free string the package never
-  interprets). `dataset` stays the run's primary dataset. Each field is optional with a default, so a manifest
-  written by the first `v1` validates unchanged, and the reader still refuses a field it does not know.
-  `rcp run` writes `path` and the primary `dataset`; a downstream producer writes `datasets`, `suites` and
-  `rows`. The new [run manifest](docs/reference/run-manifest.md) page states every field. The embedded `Usage`
-  record is closed in every exported schema that carries it (`additionalProperties: false`, the model's
-  `extra="forbid"`), as the shipped reader already was.
-- **The serving recipes are a declared extra, and the three kept modules say why they stay** (the four hygiene
-  items of the downstream-surface work): `rcp` declares `vllm = ["rcp-vllm"]`, so `pip install "rcp[vllm]"`
-  installs the sibling a `recipe:` config needs, a `recipe:` config without it is refused naming that install
-  line, and `rcp_vllm` joins the error map (so `rcp doctor` reports the extra and a stray import gets the install
-  command); `rcp.data.preprocess` is kept as the one import path for the text machinery, and its docstring and
-  `docs/concepts/preprocessing.md` now say so; `rcp.eval.mteb` is kept in the product behind the `[mteb]` extra,
-  with a test that imports it and runs its mteb-only branch under that extra; and `rcp.judging.tokens` is kept
-  beside `TextBudget` because an estimate runs where no tokenizer can count, a split
-  `docs/concepts/text-budgets.md` states.
-- **A metric is an entry point, and the shipped three are its first members** (the metric seam): a package
-  registers a metric class under the seventh entry-point group, `rcp.metrics`. The class follows `rcp.eval.Metric`:
-  it has a `name`, a `k_required` and the `score` of one query. `rcp.eval.metric_class`, `registered_metrics`,
-  `METRICS` and `METRICS_GROUP` are the one lookup, and one duplicate-name policy applies to a plugin that
-  publishes a shipped name. `rcp eval score --metric NAME` is repeatable and scores a registered metric beside
-  `--metrics`. `rcp eval compare --metric` now names any metric that the report holds, not only the three shipped
-  metrics. The `metric` fields of `schemas/{eval-report,eval-score,comparison}.v1.json` are strings, because the
-  `enum` is gone. An old report still reads, and a plugin's name is admitted. The CLI and MCP `metric` inputs
-  follow. `tests/contract/snapshots/` and the generated API pages are regenerated.
-- **A suite is data, and a downstream suite is named by its own bytes**: `load_dataset("suite:<name>")` reads the
-  four shipped suites from `rcp/data/suites/<name>.yaml` through one suite reader, and the result is byte-identical
-  to the literal `SUITES`. A suite directory or its `suite.yaml` loads by path (`suite:<path>`), and the new
-  `schemas/suite.v1.json` is the format. A subset read at a revision other than the suite's is refused, and the
-  refusal names both. The identity of a downstream suite is its repository at the resolved commit. When that
-  `suite.yaml` declares no full commit, the identity also includes the bytes of the file, so an edited suite is
-  another dataset. The four shipped suites are package data, and they keep their identity.
-- **A recipe declares the fields only the plugin provides, and the loader refuses what the target cannot honour**
-  (the plugin-field surface): `rcp_vllm.recipe.PLUGIN_FIELDS` is the one declaration of the serving fields that the
-  stock engine lacks. These fields are the embed chunker's `chunk_length`, `chunk_weighting` and
-  `normalize_aggregated_embeddings` under `serve.pooler_config`, which `serve_argv` renders inside the
-  `--pooler-config` JSON, and the rerank route's `relevant_spans` capability. Each field names the plugin
-  distribution that honours it. A recipe that declares one of these fields names the plugin in `serve.plugin`. The
-  load refuses by name, with the plugin's `pip install --no-deps <spec>` line, in three cases: the recipe does not
-  declare the plugin, the plugin does not provide the field, or the environment does not install the plugin. The
-  load judges the last case through the `vllm.general_plugins` entry-point group that the packaging snapshot
-  records. Nothing is dropped silently.
-- **`Recipe.relevant_spans` and `RecipeFamily.relevant_spans`** are new fields (default `false`, rerank recipes
-  only): the deployment honours the plugin's span-level relevance wire. The declaration is a capability, so it
-  renders nothing into the `vllm serve` argv. It is a recipe-level field and not a `serve` field on purpose: every
-  `serve` field is a behaviour-fingerprint input, so a home in the serve block would re-key every recipe's recorded
-  corpus. The recipe schema (`rcp-vllm/schema/recipe.schema.json`, `family.schema.json`) carries both additions.
-- **A size may name its own tokenizer** (the per-size tokenizer override): `overrides.client.tokenizer` joins the
-  per-size client fields that a variant may override (`PER_VARIANT_CLIENT_FIELDS` in `rcp_vllm.recipe`). A size
-  that ships its own tokenizer files names them. The family keeps its shared default. The override replaces the
-  family's `client.tokenizer` for that one size. A sibling without an override keeps the family's tokenizer, or
-  the `model@revision` that the loader injects when the family names none. The load validates the override
-  exactly as the family-level field: a non-empty string, refused with the field named. The whitelist refusal
-  names the widened list, and `rcp-vllm/schema/family.schema.json` describes the new member (the resolved
-  recipe's own schema needs nothing: its `client` block is free-form data). A key outside the list is still
-  refused. Nothing about a size's behaviour changes silently.
-- **An embedding config declares the quantized representations a run consumes** (the quantized-embedding
-  surface): `EmbeddingEndpoint.embedding_types` takes `int8`, `uint8` or `binary`. `schemas/run-config.v1.json`
-  and `schemas/index.v1.json` carry the field. The new module `rcp.data.quantize` holds the one implementation of
-  the serving contract. A downstream that reports int8 or binary recall calls it instead of writing a second
-  rule. The module widens the vector to float64 and maps it onto `[-128, 127]`. It then truncates toward zero and
-  clamps. `uint8` adds 128, and `binary` packs eight sign bits per byte, MSB-first. It reads the vector a run
-  compares -- the Matryoshka-truncated, L2-normalised one -- never the full-width pre-selection vector.
-  `QuantizedVector.dtype` says which type reads the returned bytes. The field defaults to `None` and is omitted
-  from every identity. A config that does not choose keeps the identity and the index cache entry it had. An
-  empty list is no declaration either. A declared type is a content field, because it changes the vector a
-  downstream compares. Two declarations therefore never share one index cache entry. The reference vectors in
-  `tests/data/fixtures/quantize/reference-vectors.json` pin the bytes. The module itself is internal: it is not
-  in `PUBLIC_MODULES`. The public surface is the field and the three names it admits.
-- **The `schema list` id description states the id the command emits**: `rcp.cli.schema.SchemaInfo.id` said
-  `rcp-ndcg.<name>.v1`; the exported `rcp.schema-list.v1` now says `rcp.<name>.v1`.
-
-### Changed — the rename
-
-- **The core distribution is `rcp-core` and its package is `rcp_core`**: the `rcp-ndcg-core` distribution and
-  the `rcp_ndcg_core` package are renamed, the `rcp-ndcg` pin moves to `rcp-core==<version>`, and there is no
-  compatibility shim — the old names are gone. The historical entries below keep the old names.
-- **The main distribution is `rcp` and its package is `rcp`**: the `rcp-ndcg` distribution, the `rcp_ndcg`
-  package and the `rcp-ndcg` command are renamed, and `python -m rcp_ndcg.cli` is `python -m rcp.cli`. There is no
-  compatibility shim. The entry-point groups have their own bullet below.
-  The artifact tags move with it (`rcp.<name>.v1`, below); the emulator's extension keys
-  (`x-rcp-ndcg-emulator-*`), the public dataset ids, the bucket prefix and the repository URL keep the spellings
-  they shipped with, and so do the historical entries below.
-- **An artifact's schema id is `rcp.<name>.v1`**: `rcp.schemas.SchemaEntry.schema_id` returns it, a payload carries
-  it in its `schema` field, and the exported schema's header key is `x-rcp-schema` (was `x-rcp-ndcg-schema`).
-  **Every reader accepts both spellings**: each artifact written before the rename carries `rcp-ndcg.<name>.v1` --
-  every existing run manifest, judgement store, calibration directory, index and result record -- and a reader
-  that knew only the new id would reject all of them. New artifacts carry the new id only: the migration is
-  read-compatible and write-forward, so no file is rewritten and the exported schemas admit both spellings.
-- **The serving distribution is `rcp-vllm` and its package is `rcp_vllm`**: the `rcp-ndcg-vllm` distribution,
-  the `rcp_ndcg_vllm` package, the `rcp-ndcg-vllm` console and the `vllm.general_plugins` entry point are renamed,
-  and the recipes declare `serve.plugin: rcp-vllm`. **The behaviour fingerprint does not move**: `serve.plugin`
-  and the plugin's module names are inputs (`rcp-fp/4`), but the fingerprint keys them in the recorded spelling
-  (`rcp_test.fingerprint`). Therefore no recorded key, no committed corpus and no golden moves, and no wave runs
-  again. The CHANGELOG's historical entries and the wave records keep the old names.
-- **The harness is `rcp-test` and its package is `rcp_test`**: the `rcp-ndcg-test` distribution, the
-  `rcp_ndcg_test` package and the `rcp-ndcg-test` checkout directory are renamed; the fake-transport entry
-  point is `rcp-test` under the `rcp.fake_transports` group, `python -m rcp_ndcg_test.<tool>` is
-  `python -m rcp_test.<tool>`, and the harness wheel the build stages follows the new name. There is no
-  compatibility shim.
-  The behaviour fingerprints do not move (the harness is not a fingerprint input), the committed corpora and
-  the pairs corpus keep the spellings they were recorded with, the ledger's historical wave paths keep their
-  placeholders, and so do the historical entries below. `rcp-test/pairs/manifest.json` is the generator's own
-  record, not corpus data. It names the current spellings: `rcp-vllm.pairs-manifest.v1` and
-  `rcp_test.observe.requests`. The files it lists keep their recorded bytes, so no hash, size or row count moves.
-- **The metric id stays `rcp_ndcg`**: the names of the three shipped nDCGs are the metric's, not the package's, so
-  they keep the spellings that they shipped with. These names are `MetricName`, the `--metrics`/`--metric` values
-  and an `EvalReport`'s `metric` field, and they are `rcp_ndcg`, `qrel_ndcg` and `count_ndcg`. The distribution,
-  the package and the command are `rcp`. `rcp` is not a metric name. The names that were already the metric's are
-  unchanged: `delta_rcp_ndcg`, the `rcp_ndcg10` columns and the Hub file `rcp_ndcg_tasks.py`.
-- **The default cache directory is `$XDG_CACHE_HOME/rcp`** (was `$XDG_CACHE_HOME/rcp-ndcg`, else
-  `~/.cache/rcp-ndcg`): the cache root follows the package name. A media or object cache that 0.0.1 filled is
-  abandoned, and the files are fetched again once. `$RCP_NDCG_CACHE_DIR` keeps its name and still overrides the
-  root. Set it, or point it at the old directory, to keep a warm cache.
-- **Every entry-point group that the product reads is `rcp.*`**: the groups are `rcp.runners`, `rcp.readers`,
-  `rcp.writers`, `rcp.results`, `rcp.adapters`, `rcp.events`, `rcp.fake_transports` and `rcp.metrics` (the metric
-  seam). The product no longer finds a third-party plugin that is registered under an old `rcp_ndcg.*` group, so
-  register it under the new group. The test harness's own group is `rcp.emulators`, which `rcp_test` reads and the
-  product never reads.
-- **The behaviour fingerprint is invariant under a rename of the product too**: the docstrings of a plugin module
-  name the product's own modules, so the fingerprint's canonicalisation maps the product's package and
-  distribution spellings onto the recorded ones, as it already mapped the plugin's. The mapped spellings are
-  `rcp_ndcg`, `rcp-ndcg` and the `rcp_ndcg_` prefix for a sibling package. The product rename therefore moves no
-  recorded key. The GPU ledger's fingerprint column is the recorded evidence again, and the four goldens that it
-  had regenerated are restored to their recorded values. `rcp-fp/4` stays.
-
-### Fixed
-
-- **A container pass runs at the judge's `concurrency`** (the media gate): the one-slot gate that bounds a
-  pass's prepared media now asks what the prepared pool holds, not what type a part is. A pass that inlines
-  media -- pages, or the frames the video policy keeps -- still runs one query at a time. A pass of containers
-  (a file, a remote URI, or frames that `wire: video_url` drops) holds only a reference, so it runs at the
-  endpoint's `concurrency`; `RCP_NDCG_VIDEO_CACHE_SIZE` bounds the encoded clips one worker keeps, and
-  `RCP_NDCG_MAX_VIDEO_BYTES` bounds each clip before a send. A `data:` container carries its bytes in the
-  reference and still takes the gate. Scoring, records and the number of judge calls do not move, but a
-  concurrent pass appends to the store as answers arrive, so the judgements it returns can come back in
-  another order.
-- **A resume cannot reuse another candidate system's judgements or report** (the run identity): the pool
-  selection (`candidates.source`, `.system`, `.rankings`) is part of the judging, evaluate and rerank step
-  identities, so flipping `candidates.system` on a `from: rankings` run re-runs those steps instead of reporting
-  the old system's numbers under the new name. Every archived run re-keys those steps once on its next resume.
-- **A pod's SIGTERM keeps a cancellation**: `_was_interrupted` classifies a failed step by the recorded exception
-  class, so a run cancelled from the submitting host is reported cancelled, not failed.
-- **An empty query is sent as given**: `empty_doc` governs documents only; the query side has no empty policy,
-  and the observation-corpus planner plans the empty-query row for every non-rerank recipe.
-- **A rerank request carries a media query's parts**: `rerank()` builds the example from `query.content`, so an
-  image query reaches the reranker and its checkpoint key as the parts `search()` sends.
-- **`Retry-After: 0` is treated as absent**: a 503/429 answering zero no longer sets a replica aside for zero
-  seconds and retries forever; the outage bound fires.
-- **`ndcg`/`dcg`/`ideal_dcg` refuse a negative gain**, while `score_query`'s qrel grades keep their documented
-  finite-only contract; `combine_digests` requires full digests; `count_gain` refuses a non-number with the
-  documented `ValueError`.
-- **The mteb writer and reader round-trip**: a null `gain` cell reads as absent (a partial calibrated pool
-  round-trips), and the writer refuses a theta with no gain instead of emitting a table its own reader rejects.
-- **A PDF's page cache follows its content**: the page directory is keyed on the source's digest, so a PDF
-  replaced in place re-renders instead of reusing the old pages; an existing page directory re-renders once.
-- **A third-party reader's local source is fingerprinted**; `examples()` refuses a qrels row for a document the
-  corpus lacks; the image-directory reader refuses a text-less or non-string query; BEIR qrels line numbers
-  count the header.
-- **The CLI refuses rather than ignores**: `doctor --endpoint` parses the URL up front and reports a usage error
-  (exit 2) instead of "this is a bug"; `--include-reference` with `--report` is refused in both `eval compare`
-  and `results export`; `data convert`'s hint names `--set`.
-- **The serve-command credential check uses the package's one redactor** (`looks_like_secret`), so `--password`,
-  `--basic-auth` and `--dsn` are refused and never recorded; `reference.entry` must be a bare file name;
-  `extra_args` may not repeat a flag the serve argv renders; a recipe with `status: unverified` cannot ship.
-- **Results export**: `judge_family` joins every judgement family, `load_text` reads UTF-8, the parquet sink
-  writes `created_at` in the same ISO form as JSONL, and the `candidates` subject identity is the evaluate
-  step's recorded digest.
-- **Observation tooling**: `GENERATOR_VERSION` 3, `CORPUS_PLAN_VERSION` 5 and `MEDIA_SET_VERSION` 4 (the
-  over-length ladder is one token over, the several-images row honours `max_images`, and the query-side empty
-  rule is document-only); the committed `rcp-test/pairs/` corpus was regenerated.
-- **A fake judge refuses a custom prompt it cannot place** (a typed `ConfigError`) instead of guessing a shape
-  from the query.
-- **Docs**: the duplicate `docs/api/` pages are retired and their narrative moved into
-  `docs/concepts/inference.md` and `docs/reference/results-record.md`; the fixed-point grid claim names the Qwen
-  families it covers.
-- **Schemas**: new `calibration-diagnostics.v1`; `calibration-summary.v1` gains the diagnostics' `schema` field.
-- **A committed corpus never names the private stage** (the repository subset): `subset_for_repository` wrote
-  the full corpus's real `gs://` host into the subset's `index.json`, so two freshly recorded corpora failed
-  `test_no_committed_corpus_names_private_infrastructure`. The host is now replaced by the
-  `gs://YOUR-BUCKET/...` placeholder the procedure promises, and the two committed corpora were corrected.
-- **A per-chunk recipe's refusal is no longer read as a per-chunk failure** (the observation-corpus check): the
-  `scores_finite_and_vector_widths` check treated a reply carrying no vectors as a per-chunk failure, while the
-  rest of the same function tolerates exactly that case (`for vector in vectors or []`; its docstring calls it
-  "another route, a refusal") and `statuses_as_expected` already validates the status. A refusal has no vectors
-  to count against a chunk count, so `pplx-embed-v2-context-9b-preview` failed a corpus it had recorded
-  correctly - 21 of its 421 exchanges are the measured refusal table's over-length 400s. A corpus whose
-  per-chunk replies carry vectors *nowhere* still fails, naming the unexercised head.
-- **The two stale corpora are re-recorded at the current fingerprints** (decision 17): the merge's plugin-module
-  edits moved `jina-embeddings-v5-text-small` and `zembed-1-embedding` off their recorded behaviour
-  fingerprints, so both were re-recorded on the rc3-20261015 wave (`1009a023...` and `db7a5387...` replace
-  `3ad7d8d0...` and `21bb1fd3...`), written into the repository as the redacted subset with their append-only
-  verification records, and `tests/conformance/stale.json` is empty again -- the state the release rule
-  requires. The new corpora carry no private infrastructure (`engine.redacted` is null), which the old ones did.
-- **The release-candidate manifest lists every staged file, nested manifests included** (the rc_build manifest
-  writer): it excluded any file *named* `manifest.json`, which dropped `pairs/manifest.json` - a staged file the
-  node installs and must be able to verify. Only the manifest at the stage root is excluded now, so the record
-  and the tree agree.
-- **`rcp-vllm` declares the licences its wheel actually carries** (release-3, owner decision 2): the
-  manifest said `Apache-2.0` while the wheel bundles ContextualAI's `ctxl-rerank-v2-instruct-multilingual`
-  reference and template (CC-BY-NC-SA-4.0), Jina AI's `jina-reranker-v3` reference (CC-BY-NC-4.0) and
-  Perplexity AI's `pplx-embed-v2-context-9b-preview` chunk rule (MIT) — every one of them named in `NOTICE`.
-  A commercial redistributor was told the opposite of the truth, and a PyPI release cannot be corrected in
-  place. The expression is now `Apache-2.0 AND MIT AND CC-BY-NC-4.0 AND CC-BY-NC-SA-4.0`, `license-files`
-  carries the licence texts under `LICENSES/`, and two tests pin the expression against `NOTICE`'s own
-  entries so the declaration and the notice cannot drift apart.
-- **A wide ability prior is integrated, not truncated** (core-glm53 note 2): `Criteria2PL` integrates on a
-  561-point grid expressed in units of the ability prior's sd, so every integral scales the grid and a
-  `prior_sd` far from 1 is integrated on the same standardised support rather than cut off at an absolute
-  edge. A short-lived validation refused a prior whose mass on a *fixed* grid was small (sd above about
-  3.2); the grid stopped being fixed when the fit moved to standardised units, which made that refusal
-  reject priors that work, so it is gone and the invariance tests cover the property instead.
-- **The wrong-role judge refusal reads grammatically** (pipeline-ds41 D5): `judge_config_data` answered
-  `recipe 'octen-embedding-0.6b' is a embed recipe, not a judge recipe`; the message is now "is a recipe of
-  role 'embed'", which reads for every role. `recipe_role`'s docstring also names the `judge` role it
-  returns (pipeline-ds41 D4).
-- **Importing `rcp.cli.__main__` no longer runs the CLI** (pipeline-glm53 O1): the module called
-  `main()` unguarded, so any import executed click and printed the command help (exit 2). The call is
-  behind `if __name__ == "__main__":`; `python -m rcp.cli` and the console script are unchanged.
-- **The release record's prose is current** (core-glm53 note 1, vllm-ds41 nit, docsrel-glm53 minor (b),
-  recipes-ds41 D6, recipes-ds41 D4/recipes-glm53 4): the base estimator docstring names the
-  `RaschEstimator` raw-`theta` override it documents, the dead `_VERSION_RE` constant is gone, every
-  tracked citation of the deleted GPU-validation spec names the public page that carries its content (the
-  hygiene guard now holds the retired id out of the shipped tree), the octen 0.6b/4b per-size equivalence
-  minima are recorded (0.9995311 and 0.9993266, both clearing the kept family floor 0.993), and the topk
-  notes count the twelfth gate run (`rc0-202610140620`) beside the eleven before it.
-- **A token-budget flag is not a credential** (security-6): `_credential_flag` matched its markers as
-  substrings, so `command: [vllm, serve, m, --max-num-batched-tokens, 8192]` — the flag this package maps
-  `serve.max_num_batched_tokens` to, and a form `docs/concepts/runs.md` shows hand-written — was refused with
-  "passes a credential as '--max-num-batched-tokens'". The markers now match whole words: that flag passes
-  while `--api-key`, `--hf-token`, `--token` and `--secret` are still refused.
-- **A directory where a report belongs is `MISSING_INPUT` again, not `INTERNAL`** (cli-5): `eval compare
-  --report`, `eval explain --report` and `results export --report` read the file through `storage.read_text`,
-  which raises `IsADirectoryError` for a directory. Only `FileNotFoundError` was caught, so `--report /tmp`
-  answered `INTERNAL` exit 1 ("this is a bug: please report it") where the documented answer is
-  `MISSING_INPUT` exit 4 ("no report at /tmp"). Both call sites now catch `IsADirectoryError` and
-  `NotADirectoryError` alongside `FileNotFoundError`.
-- **The behaviour fingerprint resolves plugin modules without importing package `__init__` files** (B2):
-  `importlib.util.find_spec` imported every parent package, and the embeddinggemma-2 fold's `__init__`
-  installs the folded transformers modules at import time -- which needs transformers' gemma4 modules and
-  torchvision. In the documented `gated` install (`rcp[mteb]` plus `rcp-test`, no torchvision)
-  the embeddinggemma-2 golden failed with `ModuleNotFoundError: No module named 'torchvision'`, and where
-  torchvision was present the hash computation mutated the process. The module's source is now resolved by
-  walking the top-level package's search location; the hashes are unchanged.
-- **Harness: a non-finite rerank score fails every stage-2 gate row** (testpkg-1): `max()` ignored a NaN that
-  was not first, the p99 fraction counted one as merely not within, and `_rerank_summary` never read
-  `within`, so a NaN on either side could pass stage 2 with `max_abs_delta 0.0`; the summary now fails every
-  gate row when a delta is non-finite and reports the NaN, and `_rerank_stage2` refuses a non-finite
-  reference score with a typed error naming the row.
-- **Harness: a declared over-cap count mismatch is reported, not gated** (testpkg-2): the per-text
-  vector-count mismatch was appended to the gates before the over-cap exemption, so a recipe declaring
-  `over_cap_cut_differs` failed stage 2 on exactly the text the deviation declares non-gating, and the row
-  was missing from the `over_cap` table; declared, the mismatch is now reported there with both counts,
-  undeclared it gates and is named there too.
-- **Harness: a constant conformance row fails its `spearman_min` gate wherever it sits** (testpkg-4): the
-  worst-row tracking never replaced a finite minimum with a NaN, so a constant second query passed as
-  'worst spearman 1 >= spearman_min'; the NaN row is now selected and the failure names the query.
-- **Harness: the rerank anchor audit checks the promised in-budget cut** (testpkg-6): the audit's referent
-  promised 'no in-budget pair may be cut' but nothing checked it (the `over_length` lookup read a key the
-  probe entry never carried); a changed document of a real pairs row now fails `in_budget_cut` unless the
-  change record's measured uncut request exceeds its budget, and the injected over-length samples are
-  excluded.
-- **Harness: `stage2_scores` serves under the given `served_model_name`** (testpkg-9): the parameter was
-  declared and ignored, so a caller serving a recipe under an alias got 404s pointing away from it; the
-  alias is now the endpoint config's `model` (`recipe_config`/`role_client` carry it), and the recipe id
-  when none is given.
-- **Harness: the stored-reference key covers the serve block and the unmanaged interpreter** (testpkg-3):
-  the reference receives the whole resolved recipe through `--recipe`, and its media arms read
-  `serve.mm_processor_kwargs`/`serve.extra_args`, but the key carried no `serve` field; with no environment
-  lock (the equivalence CLI's case) it also carried no interpreter identity, so an upgraded reference venv
-  reused stale outputs. The key now carries `serve.<field>` and, when `lock_sha256` is `None`, the reference
-  interpreter's real path; `REFERENCE_FINGERPRINT_SCHEMA` is `rcp-ref-fp/3`, so old entries never collide.
-- **Harness: the T4 driver refuses an empty scenario list and fails a failed upload** (testpkg-5): a list
-  holding only comments (or an empty directory) reported PASS with exit 0 over nothing, and the
-  `--upload` record was discarded so a job whose report never reached `OUT_URI` ended green; `main` now
-  refuses an empty list with exit 2, writes the upload record into `status.json` and exits 1 when it
-  failed, as the wave runner does.
-- **Harness: the equivalence report records no hostname and names its pairs file** (testpkg-7):
-  `EQUIVALENCE.md` claimed the base URL was replaced while `equivalence.json` stored it verbatim (the
-  stage-1 captured heads carried it too), and the header's pairs line always printed `?`. The document and
-  the captured heads now carry the recorder's placeholder host (`http://engine`, the path kept; one home in
-  `record.placeholder_url`, which also handles a URL with no path), and `pairs` names the pairs file.
-- **Harness: the fake-engine docs name the emulator route** (testpkg-8): the docs said no model-level fake
-  ships while 12 verified emulators ship; they now say `target='fake'` covers the registered fakes and name
-  the `fake://vllm-0.33.0/<recipe>` engine-target route the committed corpora's emulators reach a run
-  through once registered, and `fake_engine_for`'s hint names it too.
-- **Harness: the submit.sh dry run removes its scratch directory** (testpkg-10): the plan writes the token
-  wrapper (and a grouped wave's fetched recipes) into the mktemp dir, so the `rmdir` always failed and
-  every echo-mode run left a `rcp-submit.*` behind; the cleanup now removes the directory recursively
-  after a check that it is exactly the mktemp path (never a glob, never an operator's directory), and the
-  comment says what it removes.
-- **The reranker case notes name the recipe's declared deviation** (g-cases-9): the qwen3-reranker and
-  qwen3-vl-reranker long_over/mixed-lengths notes claimed 'known_deviations empty' or
-  '[anchor_drop_over_cap]' while every one of those recipes declares `over_cap_cut_differs`, and the
-  vl-reranker notes asserted non-gating the runner does not implement; the notes now name the declared
-  deviation, and a cases test holds every note that mentions `known_deviations` to the recipe's own list.
-- **A single/uniform case batch may not mix media and text documents** (g-cases-10): the loader now refuses
-  `batch: single`/`uniform` when the batch holds both media-bearing and text-only documents (that is the
-  `mixed_modality` cell), and the two shipped 2-document cases that did so are relabelled
-  `mixed_modality`. The stricter half of the finding's suggestion (refuse `single` with more than one
-  query or document) is left out: the repo's own fixture cases use `single` for multi-item text batches,
-  and the finding's red test does not cover it.
-- **The conformance runner reports a recipe's over-cap cells instead of gating them** (g-cases-1): the
-  runner sent every filled case to the abs/ranking comparators with no over-cap exemption, so a correctly
-  served engine failed `long-over-single`/`long-over-uniform` (zembed-1: a served cosine ~0.62 against the
-  reference's own anchor-dropped 0.000349) and an anchor-dropping regression passed. Under the recipe's
-  declared `reference.known_deviations` (`anchor_drop_over_cap`/`over_cap_cut_differs`) the cells the
-  product client changed -- read from its own processing records, stage 2's referent -- are now reported,
-  not compared; a recipe that declares no deviation still gates them exactly. The zembed notes that
-  claimed the reference applied the anchor-preserving cut are corrected too.
-- **The qwen3-reranker card-st-logits cases compare the card's printed ranking** (g-cases-2): the three
-  cases expected the card's raw logit differences under `abs: 1.0`, which the served path cannot produce
-  (the recipes pin `use_activation: true`, so the head returns probabilities), so a perfect engine failed
-  them by 11-14. They are now `kind: ranking` with `rank_exact`, like the family's card-st-ranking case;
-  the card's raw values stay recorded in their notes.
-- **The rerank case tolerances are the recipes' measured stage-2 bounds** (g-cases-3): the generated
-  qwen3-reranker cases gated at abs 0.02 and qwen3-vl-reranker-2b at 0.01 while the recipes' own measured
-  served-vs-reference maxima are 0.0234/0.0391 and 0.0332 (declared as `gates.prob_p99_abs` 0.025/0.04 and
-  0.035), so an engine the equivalence gate verifies could fail a case; every probability-scale rerank case
-  now uses its recipe's bound, and a cases test holds them to it.
-- **A judge recipe refuses a content override** (g-decisions-1): `--set judge.<content>` was applied over
-  the expanded client block while the shipped recipe id stayed recorded, and a hand-written
-  `judge: {recipe: <id>, ...}` mapping skipped the recipe's block entirely. A mapping that names a recipe
-  now expands through the one recipe mechanism, every CONTENT field must equal the recipe's (both values
-  named on a disagreement), and `recipe` records the recipe's identity. The served model name stays the
-  run's (the T4 driver serves every judge under its slot name, and `--judge-model` is documented), and
-  `extra_body`'s `chat_template_kwargs.enable_thinking` switch is the one named exception; the recipe's own
-  `extra_body` must travel with it.
-- **The tag pipeline refuses the lockstep pin** (g-rcjobs-5): `release.yml`'s shared check accepted
-  `rcp-ndcg==<version>` in the vllm manifest while `rc_build.sh` and decision 18 refuse any workspace
-  sibling; the check now refuses the sibling in both pipelines (owner decision 15).
-- **Wave documents record the tested RC, and the tag must be its commit** (g-rcjobs-7): `bootstrap.sh`
-  records `rc: {name, commit, version, manifest_sha256}` in `bootstrap.json` and passes it to the wave, so
-  `wave.json`/`WAVE.md` identify the staged RC (version strings are `0.0.1` for every RC); the shared
-  release check takes the wave documents (`--wave`) and refuses a tag whose commit differs from their
-  `rc.commit` (owner decision 16).
-- **REPRODUCIBILITY's ledger lists the judge-side divergences** (g-judges-6): a new "Judges" entry names
-  the output caps against the paper's run-level `max_response_tokens` 12288 (16384/8192 in the recipes),
-  the checkpoint-generation-defaults sampling decision, the Qwen3.6 Hub-head revision pin and the SGLang
-  to vLLM move, instead of narrowing the ledger's "every cause" claim (owner decision 14(ii)).
-
-- **`rcp-vllm serve` declares a chunk that cannot hang an at-budget pooling prompt** (vllm-1,
-  owner decision 6(b)): a pooling recipe whose client's largest token budget reaches
-  `serve.max_model_len` now renders `--max-num-batched-tokens` at `serve.max_model_len` when nothing sets
-  one, so the engine's own GPU-dependent default (2048 on A100 and GPUs under 70 GiB) can never chunk an
-  exactly-full prompt. On vLLM v0.31.0, the image the first waves served, the scheduler never scheduled a
-  chunked prompt's last token, so the request hung and held the engine slot. The render-time declaration
-  covers the sixteen recipes that reach this state (ctxl-2b, embeddinggemma-2, harrier-oss-v1 x3,
-  jina-embeddings-v5-text x2, octen x3, pplx-embed-v1 x2, qwen3-vl-embedding x2, zembed-1, zerank-2); a
-  recipe whose budget stays below `serve.max_model_len` (qwen3-reranker: 8192 against 10000) and a chunk
-  equal to `serve.max_model_len` are unaffected. An explicit smaller `--set serve.max_num_batched_tokens`
-  is warned about and replaced by the safe value (decision 6(b) chose a warning over a refusal), naming the
-  value asked for and the value rendered. The v0.33.0 pin makes the floor the declared deployment shape
-  rather than a workaround: the engine's own scheduler keeps the whole context of a pooling prefill
-  (vllm-project/vllm#48039), so the `pooling-full-context` patch and every family's opt-in are deleted and
-  no recipe is exempt (see the engine-pin entry under Changed).
-- **The jina-reranker-v3 reference loads the checkpoint's own tokenizer** (vllm-6, owner decision 7(a)):
-  `reference.py` no longer imports `rcp_ndcg.data.tokenizer.load_tokenizer`; it loads the checkpoint's
-  `tokenizer.json` (the file the remote code's `AutoTokenizer.from_pretrained` resolves to; every
-  sidecar value is carried by the file) with `tokenizers` directly and keeps the remote code's per-text
-  truncation. `reference.in`/`reference.lock` drop the `rcp-ndcg==0.0.1` pin (the lock is regenerated by
-  the reference-lock tool and validates offline). Two contract tests hold every `recipes/*/reference.py`
-  to the `AGENTS.md` no-product rule and every `reference.in` to no workspace pin; a CPU-only
-  equivalence test runs the rewritten reference and the product's tokenizer path over 2,089 inputs
-  (boundary texts at both caps, unicode classes, seeded random strings) and shows they agree on ids,
-  truncation and rendered spans.
-- **The embeddinggemma-2 record names the stock engine image the verifying waves ran** (vllm-7, owner
-  decision 8): `engine.image`, `status.image` and the module docstrings now say
-  `vllm/vllm-openai:v0.31.0`, the image the verifying waves ran with the recipe's plugin backport (the
-  nightly digest remains the fold's source provenance only). The engine-image correction moves the
-  recipe's behaviour fingerprint, so the GPU ledger row names the current key and the release's
-  re-recording waves re-run it before the tag.
-- **`rcp-vllm serve --dry-run` prints the engine environment's patch opt-in** (vllm-2): the printed argv
-  alone starts an engine without the recipe's declared patches (`RCP_NDCG_VLLM_PATCHES` is set only by the
-  console), so the dry run now prints the variable beside the identity and the overrides; the how-to says so.
-- **The `serve.plugin` presence check runs in the engine's interpreter** (vllm-3): the console now resolves
-  the interpreter the `vllm` executable's shebang names and probes the distribution there, so a `vllm` on
-  `PATH` from another environment (a pipx/uv-tool install) is refused before it starts when that environment
-  lacks the wheel; an executable with no readable shebang falls back to the console's own environment, the
-  documented one-interpreter install.
-- **`plugin_distribution_name` parses a real pip requirement** (vllm-4): a ranged, URL or non-canonical
-  `serve.plugin` spec (`rcp-ndcg-vllm>=0.0.1`, `rcp_ndcg_vllm==0.0.1`) now names the distribution it installs
-  (PEP 503-normalised), so it is no longer refused as missing, the architecture check applies to the
-  underscore spelling, text with no requirement name is refused naming the accepted forms, and the install
-  hint quotes the spec for the shell.
-- **`serve.extra_args` may not repeat a flag `serve_argv` renders** (vllm-5): a duplicate lands after the
-  rendered value and the engine's last-wins parsing silently overrides a `--set` value, the
-  `serve.max_model_len` budget check or even `--revision`; the schema now refuses one by name, with the field
-  to use instead (`schema/recipe.schema.json` and `schema/family.schema.json` carry the field note).
-- **The quickstart and serve-a-model flow name the real NanoBEIR subset** (docs-1): the three flows used
-  `--subset NanoSciFact`, which is not a subset of `suite:nanobeir` (`NanoSciFactRetrieval` is), and the
-  following `eval score --suite nanobeir` carried no `--subset`, so the other twelve subsets would have
-  scored 0 and the headline mean come out about 1/13 of the subset's value. A docs test now checks every
-  documented `--subset` against `rcp_ndcg.data.SUITES` and requires a following `eval score` to carry it.
-- **Two corpora are declared stale for re-recording after the merged plugin-module edits** (F6): the
-  behaviour fingerprint keys the source of every plugin module a recipe's engine runs, and the merged tree's
-  plugin-module edits (the embeddinggemma-2 config hook's licence header and the pplx/topk config hooks'
-  sub-config casts) moved those hashes for every plugin recipe. The recorded corpora of
-  `jina-embeddings-v5-text-small` and `zembed-1-embedding` no longer carry their recipes' current
-  fingerprints, so `tests/conformance/stale.json` declares both with their recorded fingerprints and the
-  three moved inputs (`plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2.config`,
-  `plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config`,
-  `plugin_sha256.rcp_ndcg_vllm.models.topk.config`): the replays skip them, and each declaration must fail
-  the staleness gate naming exactly those inputs. This is the pre-release state: the GPU re-recording wave
-  empties the list before the tag (`RCP_NDCG_RELEASE=1` enforces it).
-- **Reported Bradley-Terry standard errors use the joint fit's information referent** (core-1, owner decision 3):
-  a fitted document's SE was `1 / sqrt(own Fisher information + l2)` while the joint fit minimises
-  `sum(w*BCE)/W + 0.5*l2*||theta||^2` -- a per-document ridge of `l2*W` in sum units -- so the fitted SE did not
-  match the conditional insertion's fixed `l2*W` ridge. `BradleyTerryEstimator`, the inserted document's SE and
-  information and the insertion's `se_target` predicate now all use `info + l2*W`, `W` the fit's total comparison
-  weight. Reported standard errors move: an inserted document's information is larger by `l2*W` (smaller SE, an
-  easier `se_target` at the same evidence), and a document with no comparison now reports the ridge's
-  `1 / sqrt(l2 * W)`, not `1 / sqrt(l2)`, so `calibration fit`/`calibration insert` artifacts carry different
-  `theta_se` columns.
-- **The rubric-only fit integrates in the ability prior's units** (core-2, owner decision 4): `Criteria2PL.fit`
-  and `eap` integrated `theta ~ N(0, ability_sd)` on the fixed absolute grid `[-18, 10]`, so a non-default
-  `Priors.ability_sd` truncated the prior and moved the fitted gains (about 0.02 at `ability_sd=4`) although the
-  MML model is invariant under `theta -> theta/s, gamma -> gamma*s, beta -> beta/s`. The fit now optimises in
-  standardised units and every integral scales the grid by `prior_sd`, so the reported items, abilities and gains
-  are invariant under `Priors.ability_sd`. Fits with the default `ability_sd=1` are unchanged; fits with
-  `ability_sd != 1` move.
-- **Public surface**: the `calibration-coverage.v1` and `calibration-summary.v1` schemas'
-  `no_tournament_evidence_documents` description now states the joint standard-error referent
-  (`1 / sqrt(bt_l2 * W)`); both exported schemas are regenerated. No field, type or schema version changes.
-- **The answer is the text after the last `</think>`** (`PARSE_VERSION` 4). An engine that drops the opening
-  `<think>` leaves the judge's reasoning inline before its answer. The decoder used to strip that reasoning only up
-  to the first `{`, so braces in the reasoning (set notation, code, LaTeX) made it decode a draft object from the
-  reasoning, or fail. It now takes the answer as the text after the last `</think>`, whether that tag closes a
-  `<think>` block or lost its opening tag: a draft between two reasoning blocks, or an object that only precedes a
-  stray `</think>` or a later reasoning block, is refused, since it cannot be told apart from a draft (this
-  reverses the 0.0.1 rule that kept an object before a stray tag). The cut is at that tag wherever it stands, so the
-  text after it is never rewritten. An object that opens inside a `<think>` that never closes is a draft too (the
-  judge was cut at the token limit while thinking): it stays refused, `truncated` at the token limit. Both stages
-  share the decoder, so the rubric reads its answers the same way. The shipped serve commands split the reasoning
-  with `--reasoning-parser` and are not affected; `rcp judge reparse` of answers stored with inline
-  reasoning, such as the paper's, is. For Stage A it now reads exactly the paper's v2 rule (the text after the
-  last `</think>`, decoded by this decoder). For Stage B the decoder reads the same object as that rule, but the
-  paper's rubric prompt also asked a sixth criterion (C6) that the paper never fitted: arXiv v2 dropped C6 and then
-  required C1..C5 of every document, while the rubric parser refuses a criterion the prompt did not ask (`schema`),
-  so a reparse of the paper's Stage B answers refuses those windows. On the paper's stored Qwen3.5-397B tournament
-  answers the 0.0.1 decoder failed on 14% of the NanoBEIR windows (11% of NanoMSMARCO, NanoHotpotQA and
-  NanoDBPedia) and 87% of the BRIGHT AoPS windows, and read a draft instead of the final answer in 20 to 59 windows
-  per NanoBEIR dataset and 43 AoPS windows; the fixed decoder reads exactly the judge's final answers (checked on
-  45,576 windows). On the paper's stored NanoBEIR and TREC-DL answers of both stages (577,449 windows) it decodes
-  the same object as the paper's v2 rule in every window.
-- **A number beyond Python's limits is a refusal, not a crash**: an integer literal beyond Python's digit limit
-  (4,300 digits; a score or a document id written as a number) raised `ValueError` and nesting beyond the recursion
-  limit (a degenerate `[[[[...` answer) raised `RecursionError` out of the decoder, and a document id written as a
-  string of that many digits (`"doc_1111..."`, as a ranking entry, a score key or a rubric document key) raised
-  `ValueError` out of the id reader. The judging loop and `judge reparse` catch neither, so one such answer aborted
-  the pass, and a resume asked the judge again. The first two are now `invalid_json`, the id string `schema`
-  (`truncated` at the token limit, either way); a repeated key stays `schema`. No answer that parsed before reads
-  differently, so the parse version does not move for it.
-- **The code-fence strip runs in linear time**: its pattern backtracked on a fence followed by a long whitespace run
-  (7 s at 3,000 whitespace characters, 132 s at 8,000), stalling a judging pass or a reparse. The strip now
-  locates the same fence directly and returns the same content for every answer (checked against the pattern on
-  every stored paper-era window and on random fences).
-- **A tournament unit that no valid window compared gets no ability** (`rcp_ndcg.calibration`): the
-  Bradley-Terry refit returned its prior, the query's mean ability, for a document shown only in windows whose
-  answer did not parse. 0.0.1 kept that number (listing the document under `no_tournament_evidence_documents`
-  with the `NO_VALID_TOURNAMENT_EVIDENCE` warning), and the calibration turned it into a mid-scale gain as if it
-  had been judged; a chunk shown only in such windows could likewise win its document's max-pool. Such a unit is
-  now left out of the refit's abilities: the document is still listed and warned about (and refused by
-  `strict`), but gets no ability and no `thetas` row, and one with rubric verdicts is reported among
-  `uncalibrated_documents` with the `UNCALIBRATED_DOCUMENTS` warning, like any document the tournament did not
-  judge; a chunked document pools its compared chunks only. The coverage schemas' descriptions of the two lists
-  say so. Fits in which every document has a valid window are unchanged.
-- **A judgement store read by an older parser points at `judge reparse`**: resuming a pass after a parser upgrade
-  is refused (the parse version is part of the family), and the refusal offered `--force`, which supersedes the
-  stored answers and asks the judge for every window again. When the parse version is the only difference, the
-  hint now says to re-read the answers into a new store with `rcp judge reparse` and resume there.
-- **A judgement store keeps the schema tag that it was created with**: `claim()` writes `identity.json` back under
-  the tag that the file carries. A pass that resumes into a store written before the rename therefore keeps
-  `rcp-ndcg.judgement-store.v1`, and the pre-rename code still opens it. A new store writes
-  `rcp.judgement-store.v1`. The judgement records that a resume appends do carry the new tag, so finish an old
-  store with a new install, or start a new store.
-- **A metric named twice is one metric**: `evaluate(metrics=["qrel_ndcg", "qrel_ndcg"])` scored the query twice,
-  so `num_queries` doubled and the bootstrap interval resampled it twice. The requested metrics are now
-  de-duplicated in order, the same way that the command line's `--metric` joins `--metrics`.
-
-### Changed
-
-- **The embeddinggemma-2 fold is deleted, and the SDPA patch stays**: the `embeddinggemma2-transformers-fold`
-  patch, the five folded transformers 5.19.0 modules it registered, the vLLM `8cbd5d03` model and the folded
-  config hook are gone; the recipe is a patch-only carrier (`plugin_architectures: []`,
-  `patches: [torch-sdpa-attention]`) and the pinned 0.33 image serves the checkpoint with its own classes and
-  registry entry. The parity decision is measured, not assumed: the cross-image cosine 0.999972 is inside the
-  recipe's own measured bf16 floor 0.999882, and the fold is inert on the 0.33 image, so the deletion moves
-  nothing the engine returns. The `torch-sdpa-attention` patch stays (outside the null-controlled probe gate
-  its backend differs from the engine's native path), with `attention.py` and the `--attention-backend
-  TORCH_SDPA` + `--enforce-eager` pins; the patch now keys that backend module as well, so a change to it
-  moves the recipe's fingerprint instead of leaving it still. Deleting the fold's registrations, and adding
-  the backend module to the patch's keyed set, move the plugin recipes' fingerprints (the shared
-  `rcp_ndcg_vllm.patches` module is one of the hashed inputs), so the 13 plugin goldens were regenerated;
-  the committed corpora keep their pre-deletion keys until their re-record.
-- **The engine pin moves to vLLM v0.33.0, and the waves re-verified 42 of the 44 variants on it**: every one of
-  the 24 families pins `vllm/vllm-openai:v0.33.0` with `min_version: "0.33.0"`, the version guard accepts the
-  0.33 line, the pooler config the serve argv renders gains `enable_flash_late_interaction` (the engine's own
-  default, inert for every recipe: the late-interaction scores are computed client-side), and every recipe's
-  `sources` citations the pin rewrote were checked against the tag (a sweep for the cited identifiers, not a
-  re-read: two defects were found and fixed by the release's citation check — `gemma-4-12b`'s `gemma4_mm.py`
-  line range carried the old ranges appended after the re-read ones, and a 0.31-era checkout sha `d0d6e5f3a` was
-  labelled `v0.33.0` in `zerank` — the other two families cite it as the checkout it is). The engine image is part of the
-  behaviour fingerprint, so every recipe's key moved: the pin sets every variant to `status: unverified`, a
-  recipe returns to `verified` only from a wave that re-recorded its corpus on the 0.33 image, and the 44 recipe goldens (and their redactions file)
-  were regenerated with no client budget, template or role changed. The waves have since verified 42 of the 44
-  variants on their own 0.33 runs, the two `topk-embed-v1` variants are `failed` under the owner's disposition,
-  and no variant reads `unverified` — the ledger and every `status` block are generated from the waves'
-  evidence by `python -m rcp_ndcg_test.jobs.ledger --evidence <mirror> [--write]`, never by hand, and a row whose
-  key does not match the tree is refused by name. The `pooling-full-context` patch is
-  deleted with its opt-ins, because the engine's own scheduler keeps the whole context of a pooling prefill
-  (vllm-project/vllm#48039, vLLM v0.32.0), so the derived `--max-num-batched-tokens` now covers sixteen
-  recipes instead of nine. The verified fake engines gate on the engine version: a corpus recorded on another
-  engine version is refused by name, never replayed, and the public `fake://` engine host moves to
-  `fake://vllm-0.33.0/<recipe>` (the waves re-recorded the corpora under `corpora/vllm-0.33.0/`, the harness
-  resolves each recipe's corpus under the engine line its recipe pins, and the superseded
-  `corpora/vllm-0.31.0/` recording stays committed beside it as evidence: a 0.31 corpus under the 0.33 host is
-  the refusal). The two `topk-embed-v1` variants are the only
-  `failed` recipes, and the owner's explicit disposition for 0.1.0 names exactly those two: their end-to-end
-  validation does not meet the stage-2 per-token cosine floor on the available engine configurations (bf16 and
-  fp16 both fail, and fp32 cannot be served because the engine's GatedDeltaNet kernels refuse it), the gate
-  failure is recorded in the ledger, their state returns to `failed` only from a wave that re-runs that gate,
-  and they ship only under that disposition — never silently.
-- **A corpus records the engine it was recorded on**: the exchange record's schema is now 2 (a registered
-  1→2 migration; a record without the stamp reads as "stamp unavailable", never invented), every exchange
-  carries the engine version the running engine reported, and `verify_corpus` refuses a corpus whose records
-  name another engine. A manifest re-keyed over a 0.31 recording is refused by name instead of reading
-  `unchanged`; the committed `vllm-0.31.0` recordings still read (their records carry no stamp), and an
-  unstamped corpus under a 0.33 manifest is refused.
-- **`ctxl-rerank-v2-instruct-multilingual-6b` serves `float32`** (the 1b/2b's own dtype): on the v0.33 engine
-  the 6b's bf16 numerics put one document's relative delta at 0.0653 against the family's 0.05 gate (served
-  0.2338 vs reference 0.1581, ranks identical, tau 1.0), inside the family's recorded bf16 spread (0.16
-  absolute) on a small logit; the reference stays the paper's `transformers==4.57.6` pin, and the family's
-  own remedy for this class is fp32, not a re-pin.
-- **A media row's own floor, and the empty query declared in stage 2** (`gates.media_vec_min_cosine`): a recipe
-  whose media rows legitimately sit below its text rows (the declared image approximation) declares the media
-  rows' own bound, reported as separate gate rows per k and refused beside `media_approximation`;
-  `qwen3-vl-embedding-2b` declares 0.9975 from its measured media minimum (0.9980392 minus the observed band),
-  its text floor unchanged at 0.9985. An empty query's scores are declared, not gated, in stage 2 as well as
-  stage 1 — the reference substitutes the card's `NULL` render, so the comparison is not a divergence. The
-  `qwen3-embedding` family's `vec_min_cosine` moves to 0.9984 (its k=32 minimum 0.9988384 minus the largest
-  observed per-vector movement 3.97e-4), the 4b keeping its published 0.999 and the 8b 0.9987.
-- **The `jina-embeddings-v5-text` nano's floor moves to 0.9964**, derived from its own corpus: the at_budget row
-  (8187 of 8192 tokens) is its minimum at every k (0.9978096 at k=128) and the cosine falls with length, so the
-  0.998 bound was era A's own minimum with 2e-5 of room — era A never gated that row (the client cut it then, so
-  it rode the declared over_cap table). The bound is the measured minimum minus the largest observed
-  era-to-era movement (1.397e-3), the derivation in the recipe's notes.
-- **`qwen3-vl-embedding-8b` declares its media floor** (`gates.media_vec_min_cosine: 0.9966`): its rc5 minimum
-  is a media row (a 4x-downscaled page), 0.9975178 minus the largest era-to-era movement 8.507e-4; its text
-  floor stays 0.9983 (text minimum 0.9990639).
-- **The pplx references' two declared limits are recorded, not gated**: a zero-id side (`content:empty@<side>`)
-  is declined and recorded as `declared_unencodable` (the comparison and the served call are skipped — the
-  model cannot mask a zero-length sequence, at either transformers generation), and a mixed text+image document
-  is refused by the reference's own declared policy and recorded as `declared_reference_refusal` in stage 2 and
-  the media stage, keyed to the row's kind. Several images, interleaved text, a media query, or an undeclared
-  crash or refusal still fail loudly.
-- **The equivalence report records every declared row instead of failing it** (the harness): an empty content
-  (`content:empty@<side>`, the anchor's `declared_empty`), a whitespace-only row under the client's declared
-  `normalize: [strip]` or `empty_doc: omit_zero_blank` (`declared_stripped`/`declared_blank`), the reference's
-  card `NULL` substitution (`declared_substituted`) and its declared media refusals
-  (`declared_reference_refusal`) are each recorded against the row's own planner kind. An unlabelled row still
-  fails, and every record names the row and the side.
-- **A recorded client refusal is a pruned row, not a stage failure** (the harness): the stage-1 `passed` no
-  longer includes `not refusals`, matching the code's own contract that a row the client refuses is recorded
-  with its position so the generator prunes it. The pplx-embed-v1 empty row exposed it.
-- **`pplx-embed-v2-late-9b`'s per-token floor moves to 0.9410**, derived from its own corpus: its rc9 minimum
-  (0.9704628, the `tall_receipt` render's document 0 — the same document that held era A's minimum) minus the
-  largest era-to-era per-vector movement (2.94e-2); 98.18% of the 24,202 referents move under 1e-3, the argmin
-  migrates, and the media tail improves (p0.1 0.98803 -> 0.99042), so the gap is the floor's missing margin, not
-  a divergence. The 0.6b keeps 0.99.
-- **The paper reproduction checks arXiv v2 on release 2 of the datasets**: `experiments/fetch_data.py` pins each
-  dataset's release 2 (the corrected Stage A parse and refit; see
-  [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse)) and keys its data
-  directory by revision (`<data-dir>/<repo>/<revision>/`), so data fetched earlier for arXiv v1 is never read for
-  the v2 checks, and
-  `experiments/paper_values.json` holds the values arXiv v2 prints: 622 of its 1,168 values change (326 RCP-nDCG@10
-  and 194 qrel-nDCG@10 leaderboard cells, 7 TREC-DL pair values, 38 human-study and 57 external-judge values).
-  qrel-nDCG changes too, because arXiv v2 credits tied scores with their group's mean gain on every suite, as the
-  presets do. `experiments/external_judges.py` applies arXiv v2's exclusion rule (a judged case enters only if, under
-  the v2 fit, it keeps the property it was selected for): it leaves out the cases that release 2 flags in
-  `excluded_under_fit` (32 of 1,147 tournament-order cases, 35 of 2,969 Study 1 cases), and keeps every case of a
-  table without that column (release 1). The NanoBEIR known deviation is gone, because release 2's gains are the fit
-  behind the paper's tables. The BRIGHT TheoremQA Theorems qrel deviation stays (now 14 cells and 11 means); every
-  human-study and external-judge value reproduces exactly. The test fixtures that pin released or paper values
-  (`tests/core/fixtures/paper_label_rows.json`, `paper_protocol_queries.json`) carry release 2's gains and arXiv
-  v2's per-query values, and the protocol anchors score with the presets (5 of the 7 queries move under group-mean
-  ties). The vLLM harness keeps reading release 1 (`PINNED_DATASET_COMMITS`, its e2e scenarios and quality test):
-  those commits are part of its request generator's identity (`GENERATOR_VERSION` 1, the committed `pairs/`), and
-  the queries and documents it samples are identical in release 2.
-- **Every scoring preset credits ties with their group's mean gain** (`rcp_core.PROTOCOLS`): `nanobeir`
-  and `bright` broke tied scores by document id, descending, and `trecdl` by judge-pool order, as arXiv v1's tables
-  did. A document id is an arbitrary order and a judged pool is often sorted by relevance, so a tie straddling the
-  cutoff took credit the system did not earn. All presets now use `group_mean` (each tied document is credited
-  its tie group's mean gain: the expected nDCG over the orders of the tie), mteb's `ndcg_float_at_k` rule and the
-  paper's from arXiv v2 on. RCP-, qrel- and Count-nDCG move only for queries whose scores tie across the cutoff;
-  untied scores are unchanged. `rcp eval score --suite ...` and `evaluate` follow the presets, and
-  `ndcg`'s default was already `group_mean`. To score as arXiv v1 did, copy a preset with its old rule
-  (`PROTOCOLS["nanobeir"].model_copy(update={"ties": "doc_id_desc"})`; `"input_order"` with the pool for TREC-DL).
-  mteb's integer `ndcg_at_k` (pytrec_eval) keeps breaking ties by document id, so it equals `evaluate`'s
-  qrel-nDCG under that copy, not under the preset.
-
-### Docs
-
-- **The documentation is rewritten in Simplified Technical English, and a gate keeps it so**: every hand-written
-  page under `docs/` now follows ASD-STE100 -- 20 words per sentence at most, the active voice, one idea per
-  sentence, and a technical term defined where it first appears. The rule and its exceptions are the new
-  [writing style](docs/reference/writing-style.md) page, and `tests/docs/test_style.py` checks every page
-  against them. The check counts an inline code span as one word, skips the code blocks, the tables, the
-  headings and the generated API pages, and records a pinned sentence in an allowlist with its reason, so an
-  exception is the record and never a silent filter. A page that goes over the limit fails `pytest tests/docs`
-  naming the sentence.
-
-## 0.0.1 — 2026-10-14
+## 0.0.1 — 2026-11-11
 
 ### Overview
 
@@ -2054,6 +1423,147 @@ owner pushes, with the move to a Hugging Face organisation).
   exported schemas are regenerated, descriptions only, no shape changes.
 - The contract snapshots, the exported schemas and the generated API pages record every name above; regenerate them with `uv run pytest tests/contract --update-snapshots` and `rcp-ndcg docs api --out docs/reference/api` (review the diff, then add the CHANGELOG entry).
 
+- **A run publishes what it does as data** (the run-event stream): `rcp.support.events` defines `RunEvent`
+  (`run_id`, `step`, `phase`, `at`, `usage`, `detail`), the four phases `step_started`, `step_finished`,
+  `step_failed` and `usage`, and `Emitter`, the emitter `Pipeline.run` builds. A subscriber is a callable
+  installed in the optional `rcp.events` entry-point group. It is called synchronously, in run order. A
+  subscriber that raises is logged once and never fails the run, and a run with no subscriber emits nothing
+  and records the same manifest. A step `run cancel` stopped reports `cancelled` in `detail.status`.
+- **The run manifest holds every dataset and suite a run read, and the producer's own visibility statement** (the
+  run manifest's added `v1` fields): `RunManifest` gains four optional fields, and `schemas/run-manifest.v1.json`
+  carries them. `path` is the run directory the manifest was last written in, which `RunManifest.save` records;
+  the `steps` artifact paths are relative to it, so a manifest read away from its run directory resolves them.
+  `datasets` is one `DatasetEntry` per source the run read: the `dataset` provenance (`name`, `revisions`,
+  `subset`, `split`, `task`) plus `args`, the reader arguments that selected the slice, and `internal`, the
+  producer's statement that the source is not for publication. `internal` defaults to `false` and is never an
+  inference: the product reads the field and does not decide it, so a source the producer did not mark is not
+  internal. `suites` is one `SuiteEntry` per suite read, with the `entries` the run evaluated. `rows` is the
+  downstream row schema the run's rows were written as (`{schema}`, a free string the package never
+  interprets). `dataset` stays the run's primary dataset. Each field is optional with a default, so a manifest
+  written by the first `v1` validates unchanged, and the reader still refuses a field it does not know.
+  `rcp run` writes `path` and the primary `dataset`; a downstream producer writes `datasets`, `suites` and
+  `rows`. The new [run manifest](docs/reference/run-manifest.md) page states every field. The embedded `Usage`
+  record is closed in every exported schema that carries it (`additionalProperties: false`, the model's
+  `extra="forbid"`), as the shipped reader already was.
+- **The serving recipes are a declared extra, and the three kept modules say why they stay** (the four hygiene
+  items of the downstream-surface work): `rcp` declares `vllm = ["rcp-vllm"]`, so `pip install "rcp[vllm]"`
+  installs the sibling a `recipe:` config needs, a `recipe:` config without it is refused naming that install
+  line, and `rcp_vllm` joins the error map (so `rcp doctor` reports the extra and a stray import gets the install
+  command); `rcp.data.preprocess` is kept as the one import path for the text machinery, and its docstring and
+  `docs/concepts/preprocessing.md` now say so; `rcp.eval.mteb` is kept in the product behind the `[mteb]` extra,
+  with a test that imports it and runs its mteb-only branch under that extra; and `rcp.judging.tokens` is kept
+  beside `TextBudget` because an estimate runs where no tokenizer can count, a split
+  `docs/concepts/text-budgets.md` states.
+- **A metric is an entry point, and the shipped three are its first members** (the metric seam): a package
+  registers a metric class under the seventh entry-point group, `rcp.metrics`. The class follows `rcp.eval.Metric`:
+  it has a `name`, a `k_required` and the `score` of one query. `rcp.eval.metric_class`, `registered_metrics`,
+  `METRICS` and `METRICS_GROUP` are the one lookup, and one duplicate-name policy applies to a plugin that
+  publishes a shipped name. `rcp eval score --metric NAME` is repeatable and scores a registered metric beside
+  `--metrics`. `rcp eval compare --metric` now names any metric that the report holds, not only the three shipped
+  metrics. The `metric` fields of `schemas/{eval-report,eval-score,comparison}.v1.json` are strings, because the
+  `enum` is gone. An old report still reads, and a plugin's name is admitted. The CLI and MCP `metric` inputs
+  follow. `tests/contract/snapshots/` and the generated API pages are regenerated.
+- **A suite is data, and a downstream suite is named by its own bytes**: `load_dataset("suite:<name>")` reads the
+  four shipped suites from `rcp/data/suites/<name>.yaml` through one suite reader, and the result is byte-identical
+  to the literal `SUITES`. A suite directory or its `suite.yaml` loads by path (`suite:<path>`), and the new
+  `schemas/suite.v1.json` is the format. A subset read at a revision other than the suite's is refused, and the
+  refusal names both. The identity of a downstream suite is its repository at the resolved commit. When that
+  `suite.yaml` declares no full commit, the identity also includes the bytes of the file, so an edited suite is
+  another dataset. The four shipped suites are package data, and they keep their identity.
+- **A recipe declares the fields only the plugin provides, and the loader refuses what the target cannot honour**
+  (the plugin-field surface): `rcp_vllm.recipe.PLUGIN_FIELDS` is the one declaration of the serving fields that the
+  stock engine lacks. These fields are the embed chunker's `chunk_length`, `chunk_weighting` and
+  `normalize_aggregated_embeddings` under `serve.pooler_config`, which `serve_argv` renders inside the
+  `--pooler-config` JSON, and the rerank route's `relevant_spans` capability. Each field names the plugin
+  distribution that honours it. A recipe that declares one of these fields names the plugin in `serve.plugin`. The
+  load refuses by name, with the plugin's `pip install --no-deps <spec>` line, in three cases: the recipe does not
+  declare the plugin, the plugin does not provide the field, or the environment does not install the plugin. The
+  load judges the last case through the `vllm.general_plugins` entry-point group that the packaging snapshot
+  records. Nothing is dropped silently.
+- **`Recipe.relevant_spans` and `RecipeFamily.relevant_spans`** are new fields (default `false`, rerank recipes
+  only): the deployment honours the plugin's span-level relevance wire. The declaration is a capability, so it
+  renders nothing into the `vllm serve` argv. It is a recipe-level field and not a `serve` field on purpose: every
+  `serve` field is a behaviour-fingerprint input, so a home in the serve block would re-key every recipe's recorded
+  corpus. The recipe schema (`rcp-vllm/schema/recipe.schema.json`, `family.schema.json`) carries both additions.
+- **A size may name its own tokenizer** (the per-size tokenizer override): `overrides.client.tokenizer` joins the
+  per-size client fields that a variant may override (`PER_VARIANT_CLIENT_FIELDS` in `rcp_vllm.recipe`). A size
+  that ships its own tokenizer files names them. The family keeps its shared default. The override replaces the
+  family's `client.tokenizer` for that one size. A sibling without an override keeps the family's tokenizer, or
+  the `model@revision` that the loader injects when the family names none. The load validates the override
+  exactly as the family-level field: a non-empty string, refused with the field named. The whitelist refusal
+  names the widened list, and `rcp-vllm/schema/family.schema.json` describes the new member (the resolved
+  recipe's own schema needs nothing: its `client` block is free-form data). A key outside the list is still
+  refused. Nothing about a size's behaviour changes silently.
+- **An embedding config declares the quantized representations a run consumes** (the quantized-embedding
+  surface): `EmbeddingEndpoint.embedding_types` takes `int8`, `uint8` or `binary`. `schemas/run-config.v1.json`
+  and `schemas/index.v1.json` carry the field. The new module `rcp.data.quantize` holds the one implementation of
+  the serving contract. A downstream that reports int8 or binary recall calls it instead of writing a second
+  rule. The module widens the vector to float64 and maps it onto `[-128, 127]`. It then truncates toward zero and
+  clamps. `uint8` adds 128, and `binary` packs eight sign bits per byte, MSB-first. It reads the vector a run
+  compares -- the Matryoshka-truncated, L2-normalised one -- never the full-width pre-selection vector.
+  `QuantizedVector.dtype` says which type reads the returned bytes. The field defaults to `None` and is omitted
+  from every identity. A config that does not choose keeps the identity and the index cache entry it had. An
+  empty list is no declaration either. A declared type is a content field, because it changes the vector a
+  downstream compares. Two declarations therefore never share one index cache entry. The reference vectors in
+  `tests/data/fixtures/quantize/reference-vectors.json` pin the bytes. The module itself is internal: it is not
+  in `PUBLIC_MODULES`. The public surface is the field and the three names it admits.
+- **The `schema list` id description states the id the command emits**: `rcp.cli.schema.SchemaInfo.id` said
+  `rcp-ndcg.<name>.v1`; the exported `rcp.schema-list.v1` now says `rcp.<name>.v1`.
+
+### Changed — the rename
+
+- **The core distribution is `rcp-core` and its package is `rcp_core`**: the `rcp-ndcg-core` distribution and
+  the `rcp_ndcg_core` package are renamed, the `rcp-ndcg` pin moves to `rcp-core==<version>`, and there is no
+  compatibility shim — the old names are gone. The historical entries below keep the old names.
+- **The main distribution is `rcp` and its package is `rcp`**: the `rcp-ndcg` distribution, the `rcp_ndcg`
+  package and the `rcp-ndcg` command are renamed, and `python -m rcp_ndcg.cli` is `python -m rcp.cli`. There is no
+  compatibility shim. The entry-point groups have their own bullet below.
+  The artifact tags move with it (`rcp.<name>.v1`, below); the emulator's extension keys
+  (`x-rcp-ndcg-emulator-*`), the public dataset ids, the bucket prefix and the repository URL keep the spellings
+  they shipped with, and so do the historical entries below.
+- **An artifact's schema id is `rcp.<name>.v1`**: `rcp.schemas.SchemaEntry.schema_id` returns it, a payload carries
+  it in its `schema` field, and the exported schema's header key is `x-rcp-schema` (was `x-rcp-ndcg-schema`).
+  **Every reader accepts both spellings**: each artifact written before the rename carries `rcp-ndcg.<name>.v1` --
+  every existing run manifest, judgement store, calibration directory, index and result record -- and a reader
+  that knew only the new id would reject all of them. New artifacts carry the new id only: the migration is
+  read-compatible and write-forward, so no file is rewritten and the exported schemas admit both spellings.
+- **The serving distribution is `rcp-vllm` and its package is `rcp_vllm`**: the `rcp-ndcg-vllm` distribution,
+  the `rcp_ndcg_vllm` package, the `rcp-ndcg-vllm` console and the `vllm.general_plugins` entry point are renamed,
+  and the recipes declare `serve.plugin: rcp-vllm`. **The behaviour fingerprint does not move**: `serve.plugin`
+  and the plugin's module names are inputs (`rcp-fp/4`), but the fingerprint keys them in the recorded spelling
+  (`rcp_test.fingerprint`). Therefore no recorded key, no committed corpus and no golden moves, and no wave runs
+  again. The CHANGELOG's historical entries and the wave records keep the old names.
+- **The harness is `rcp-test` and its package is `rcp_test`**: the `rcp-ndcg-test` distribution, the
+  `rcp_ndcg_test` package and the `rcp-ndcg-test` checkout directory are renamed; the fake-transport entry
+  point is `rcp-test` under the `rcp.fake_transports` group, `python -m rcp_ndcg_test.<tool>` is
+  `python -m rcp_test.<tool>`, and the harness wheel the build stages follows the new name. There is no
+  compatibility shim.
+  The behaviour fingerprints do not move (the harness is not a fingerprint input), the committed corpora and
+  the pairs corpus keep the spellings they were recorded with, the ledger's historical wave paths keep their
+  placeholders, and so do the historical entries below. `rcp-test/pairs/manifest.json` is the generator's own
+  record, not corpus data. It names the current spellings: `rcp-vllm.pairs-manifest.v1` and
+  `rcp_test.observe.requests`. The files it lists keep their recorded bytes, so no hash, size or row count moves.
+- **The metric id stays `rcp_ndcg`**: the names of the three shipped nDCGs are the metric's, not the package's, so
+  they keep the spellings that they shipped with. These names are `MetricName`, the `--metrics`/`--metric` values
+  and an `EvalReport`'s `metric` field, and they are `rcp_ndcg`, `qrel_ndcg` and `count_ndcg`. The distribution,
+  the package and the command are `rcp`. `rcp` is not a metric name. The names that were already the metric's are
+  unchanged: `delta_rcp_ndcg`, the `rcp_ndcg10` columns and the Hub file `rcp_ndcg_tasks.py`.
+- **The default cache directory is `$XDG_CACHE_HOME/rcp`** (was `$XDG_CACHE_HOME/rcp-ndcg`, else
+  `~/.cache/rcp-ndcg`): the cache root follows the package name. A media or object cache that 0.0.1 filled is
+  abandoned, and the files are fetched again once. `$RCP_NDCG_CACHE_DIR` keeps its name and still overrides the
+  root. Set it, or point it at the old directory, to keep a warm cache.
+- **Every entry-point group that the product reads is `rcp.*`**: the groups are `rcp.runners`, `rcp.readers`,
+  `rcp.writers`, `rcp.results`, `rcp.adapters`, `rcp.events`, `rcp.fake_transports` and `rcp.metrics` (the metric
+  seam). The product no longer finds a third-party plugin that is registered under an old `rcp_ndcg.*` group, so
+  register it under the new group. The test harness's own group is `rcp.emulators`, which `rcp_test` reads and the
+  product never reads.
+- **The behaviour fingerprint is invariant under a rename of the product too**: the docstrings of a plugin module
+  name the product's own modules, so the fingerprint's canonicalisation maps the product's package and
+  distribution spellings onto the recorded ones, as it already mapped the plugin's. The mapped spellings are
+  `rcp_ndcg`, `rcp-ndcg` and the `rcp_ndcg_` prefix for a sibling package. The product rename therefore moves no
+  recorded key. The GPU ledger's fingerprint column is the recorded evidence again, and the four goldens that it
+  had regenerated are restored to their recorded values. `rcp-fp/4` stays.
+
 ### Changed
 
 - **Every Kubernetes pod's `/dev/shm` is bounded**: the Job's pod and every engine StatefulSet pod render the
@@ -2428,6 +1938,125 @@ Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-yo
   failed to build `Query(text=..., id=...)` and dumped every record with a `schema` alias under its field
   name (`schema_name`), violating the committed JSON Schemas. All four manifests now declare the floor the
   code needs.
+
+- **The embeddinggemma-2 fold is deleted, and the SDPA patch stays**: the `embeddinggemma2-transformers-fold`
+  patch, the five folded transformers 5.19.0 modules it registered, the vLLM `8cbd5d03` model and the folded
+  config hook are gone; the recipe is a patch-only carrier (`plugin_architectures: []`,
+  `patches: [torch-sdpa-attention]`) and the pinned 0.33 image serves the checkpoint with its own classes and
+  registry entry. The parity decision is measured, not assumed: the cross-image cosine 0.999972 is inside the
+  recipe's own measured bf16 floor 0.999882, and the fold is inert on the 0.33 image, so the deletion moves
+  nothing the engine returns. The `torch-sdpa-attention` patch stays (outside the null-controlled probe gate
+  its backend differs from the engine's native path), with `attention.py` and the `--attention-backend
+  TORCH_SDPA` + `--enforce-eager` pins; the patch now keys that backend module as well, so a change to it
+  moves the recipe's fingerprint instead of leaving it still. Deleting the fold's registrations, and adding
+  the backend module to the patch's keyed set, move the plugin recipes' fingerprints (the shared
+  `rcp_ndcg_vllm.patches` module is one of the hashed inputs), so the 13 plugin goldens were regenerated;
+  the committed corpora keep their pre-deletion keys until their re-record.
+- **The engine pin moves to vLLM v0.33.0, and the waves re-verified 42 of the 44 variants on it**: every one of
+  the 24 families pins `vllm/vllm-openai:v0.33.0` with `min_version: "0.33.0"`, the version guard accepts the
+  0.33 line, the pooler config the serve argv renders gains `enable_flash_late_interaction` (the engine's own
+  default, inert for every recipe: the late-interaction scores are computed client-side), and every recipe's
+  `sources` citations the pin rewrote were checked against the tag (a sweep for the cited identifiers, not a
+  re-read: two defects were found and fixed by the release's citation check — `gemma-4-12b`'s `gemma4_mm.py`
+  line range carried the old ranges appended after the re-read ones, and a 0.31-era checkout sha `d0d6e5f3a` was
+  labelled `v0.33.0` in `zerank` — the other two families cite it as the checkout it is). The engine image is part of the
+  behaviour fingerprint, so every recipe's key moved: the pin sets every variant to `status: unverified`, a
+  recipe returns to `verified` only from a wave that re-recorded its corpus on the 0.33 image, and the 44 recipe goldens (and their redactions file)
+  were regenerated with no client budget, template or role changed. The waves have since verified 42 of the 44
+  variants on their own 0.33 runs, the two `topk-embed-v1` variants are `failed` under the owner's disposition,
+  and no variant reads `unverified` — the ledger and every `status` block are generated from the waves'
+  evidence by `python -m rcp_ndcg_test.jobs.ledger --evidence <mirror> [--write]`, never by hand, and a row whose
+  key does not match the tree is refused by name. The `pooling-full-context` patch is
+  deleted with its opt-ins, because the engine's own scheduler keeps the whole context of a pooling prefill
+  (vllm-project/vllm#48039, vLLM v0.32.0), so the derived `--max-num-batched-tokens` now covers sixteen
+  recipes instead of nine. The verified fake engines gate on the engine version: a corpus recorded on another
+  engine version is refused by name, never replayed, and the public `fake://` engine host moves to
+  `fake://vllm-0.33.0/<recipe>` (the waves re-recorded the corpora under `corpora/vllm-0.33.0/`, the harness
+  resolves each recipe's corpus under the engine line its recipe pins, and the superseded
+  `corpora/vllm-0.31.0/` recording stays committed beside it as evidence: a 0.31 corpus under the 0.33 host is
+  the refusal). The two `topk-embed-v1` variants are the only
+  `failed` recipes, and the owner's explicit disposition for 0.0.1 names exactly those two: their end-to-end
+  validation does not meet the stage-2 per-token cosine floor on the available engine configurations (bf16 and
+  fp16 both fail, and fp32 cannot be served because the engine's GatedDeltaNet kernels refuse it), the gate
+  failure is recorded in the ledger, their state returns to `failed` only from a wave that re-runs that gate,
+  and they ship only under that disposition — never silently.
+- **A corpus records the engine it was recorded on**: the exchange record's schema is now 2 (a registered
+  1→2 migration; a record without the stamp reads as "stamp unavailable", never invented), every exchange
+  carries the engine version the running engine reported, and `verify_corpus` refuses a corpus whose records
+  name another engine. A manifest re-keyed over a 0.31 recording is refused by name instead of reading
+  `unchanged`; the committed `vllm-0.31.0` recordings still read (their records carry no stamp), and an
+  unstamped corpus under a 0.33 manifest is refused.
+- **`ctxl-rerank-v2-instruct-multilingual-6b` serves `float32`** (the 1b/2b's own dtype): on the v0.33 engine
+  the 6b's bf16 numerics put one document's relative delta at 0.0653 against the family's 0.05 gate (served
+  0.2338 vs reference 0.1581, ranks identical, tau 1.0), inside the family's recorded bf16 spread (0.16
+  absolute) on a small logit; the reference stays the paper's `transformers==4.57.6` pin, and the family's
+  own remedy for this class is fp32, not a re-pin.
+- **A media row's own floor, and the empty query declared in stage 2** (`gates.media_vec_min_cosine`): a recipe
+  whose media rows legitimately sit below its text rows (the declared image approximation) declares the media
+  rows' own bound, reported as separate gate rows per k and refused beside `media_approximation`;
+  `qwen3-vl-embedding-2b` declares 0.9975 from its measured media minimum (0.9980392 minus the observed band),
+  its text floor unchanged at 0.9985. An empty query's scores are declared, not gated, in stage 2 as well as
+  stage 1 — the reference substitutes the card's `NULL` render, so the comparison is not a divergence. The
+  `qwen3-embedding` family's `vec_min_cosine` moves to 0.9984 (its k=32 minimum 0.9988384 minus the largest
+  observed per-vector movement 3.97e-4), the 4b keeping its published 0.999 and the 8b 0.9987.
+- **The `jina-embeddings-v5-text` nano's floor moves to 0.9964**, derived from its own corpus: the at_budget row
+  (8187 of 8192 tokens) is its minimum at every k (0.9978096 at k=128) and the cosine falls with length, so the
+  0.998 bound was era A's own minimum with 2e-5 of room — era A never gated that row (the client cut it then, so
+  it rode the declared over_cap table). The bound is the measured minimum minus the largest observed
+  era-to-era movement (1.397e-3), the derivation in the recipe's notes.
+- **`qwen3-vl-embedding-8b` declares its media floor** (`gates.media_vec_min_cosine: 0.9966`): its rc5 minimum
+  is a media row (a 4x-downscaled page), 0.9975178 minus the largest era-to-era movement 8.507e-4; its text
+  floor stays 0.9983 (text minimum 0.9990639).
+- **The pplx references' two declared limits are recorded, not gated**: a zero-id side (`content:empty@<side>`)
+  is declined and recorded as `declared_unencodable` (the comparison and the served call are skipped — the
+  model cannot mask a zero-length sequence, at either transformers generation), and a mixed text+image document
+  is refused by the reference's own declared policy and recorded as `declared_reference_refusal` in stage 2 and
+  the media stage, keyed to the row's kind. Several images, interleaved text, a media query, or an undeclared
+  crash or refusal still fail loudly.
+- **The equivalence report records every declared row instead of failing it** (the harness): an empty content
+  (`content:empty@<side>`, the anchor's `declared_empty`), a whitespace-only row under the client's declared
+  `normalize: [strip]` or `empty_doc: omit_zero_blank` (`declared_stripped`/`declared_blank`), the reference's
+  card `NULL` substitution (`declared_substituted`) and its declared media refusals
+  (`declared_reference_refusal`) are each recorded against the row's own planner kind. An unlabelled row still
+  fails, and every record names the row and the side.
+- **A recorded client refusal is a pruned row, not a stage failure** (the harness): the stage-1 `passed` no
+  longer includes `not refusals`, matching the code's own contract that a row the client refuses is recorded
+  with its position so the generator prunes it. The pplx-embed-v1 empty row exposed it.
+- **`pplx-embed-v2-late-9b`'s per-token floor moves to 0.9410**, derived from its own corpus: its rc9 minimum
+  (0.9704628, the `tall_receipt` render's document 0 — the same document that held era A's minimum) minus the
+  largest era-to-era per-vector movement (2.94e-2); 98.18% of the 24,202 referents move under 1e-3, the argmin
+  migrates, and the media tail improves (p0.1 0.98803 -> 0.99042), so the gap is the floor's missing margin, not
+  a divergence. The 0.6b keeps 0.99.
+- **The paper reproduction checks arXiv v2 on release 2 of the datasets**: `experiments/fetch_data.py` pins each
+  dataset's release 2 (the corrected Stage A parse and refit; see
+  [REPRODUCIBILITY.md](REPRODUCIBILITY.md#tournament-answers-the-papers-code-could-not-parse)) and keys its data
+  directory by revision (`<data-dir>/<repo>/<revision>/`), so data fetched earlier for arXiv v1 is never read for
+  the v2 checks, and
+  `experiments/paper_values.json` holds the values arXiv v2 prints: 622 of its 1,168 values change (326 RCP-nDCG@10
+  and 194 qrel-nDCG@10 leaderboard cells, 7 TREC-DL pair values, 38 human-study and 57 external-judge values).
+  qrel-nDCG changes too, because arXiv v2 credits tied scores with their group's mean gain on every suite, as the
+  presets do. `experiments/external_judges.py` applies arXiv v2's exclusion rule (a judged case enters only if, under
+  the v2 fit, it keeps the property it was selected for): it leaves out the cases that release 2 flags in
+  `excluded_under_fit` (32 of 1,147 tournament-order cases, 35 of 2,969 Study 1 cases), and keeps every case of a
+  table without that column (release 1). The NanoBEIR known deviation is gone, because release 2's gains are the fit
+  behind the paper's tables. The BRIGHT TheoremQA Theorems qrel deviation stays (now 14 cells and 11 means); every
+  human-study and external-judge value reproduces exactly. The test fixtures that pin released or paper values
+  (`tests/core/fixtures/paper_label_rows.json`, `paper_protocol_queries.json`) carry release 2's gains and arXiv
+  v2's per-query values, and the protocol anchors score with the presets (5 of the 7 queries move under group-mean
+  ties). The vLLM harness keeps reading release 1 (`PINNED_DATASET_COMMITS`, its e2e scenarios and quality test):
+  those commits are part of its request generator's identity (`GENERATOR_VERSION` 1, the committed `pairs/`), and
+  the queries and documents it samples are identical in release 2.
+- **Every scoring preset credits ties with their group's mean gain** (`rcp_core.PROTOCOLS`): `nanobeir`
+  and `bright` broke tied scores by document id, descending, and `trecdl` by judge-pool order, as arXiv v1's tables
+  did. A document id is an arbitrary order and a judged pool is often sorted by relevance, so a tie straddling the
+  cutoff took credit the system did not earn. All presets now use `group_mean` (each tied document is credited
+  its tie group's mean gain: the expected nDCG over the orders of the tie), mteb's `ndcg_float_at_k` rule and the
+  paper's from arXiv v2 on. RCP-, qrel- and Count-nDCG move only for queries whose scores tie across the cutoff;
+  untied scores are unchanged. `rcp eval score --suite ...` and `evaluate` follow the presets, and
+  `ndcg`'s default was already `group_mean`. To score as arXiv v1 did, copy a preset with its old rule
+  (`PROTOCOLS["nanobeir"].model_copy(update={"ties": "doc_id_desc"})`; `"input_order"` with the pool for TREC-DL).
+  mteb's integer `ndcg_at_k` (pytrec_eval) keeps breaking ties by document id, so it equals `evaluate`'s
+  qrel-nDCG under that copy, not under the preset.
 
 ### Fixed
 
@@ -5372,13 +5001,364 @@ text it sends to the declared budget.
   the paper never ran. The declared flag stays (it is inert; changing it would move the behaviour
   fingerprint for no engine-side difference), and no serve argv moves.
 
+- **A container pass runs at the judge's `concurrency`** (the media gate): the one-slot gate that bounds a
+  pass's prepared media now asks what the prepared pool holds, not what type a part is. A pass that inlines
+  media -- pages, or the frames the video policy keeps -- still runs one query at a time. A pass of containers
+  (a file, a remote URI, or frames that `wire: video_url` drops) holds only a reference, so it runs at the
+  endpoint's `concurrency`; `RCP_NDCG_VIDEO_CACHE_SIZE` bounds the encoded clips one worker keeps, and
+  `RCP_NDCG_MAX_VIDEO_BYTES` bounds each clip before a send. A `data:` container carries its bytes in the
+  reference and still takes the gate. Scoring, records and the number of judge calls do not move, but a
+  concurrent pass appends to the store as answers arrive, so the judgements it returns can come back in
+  another order.
+- **A resume cannot reuse another candidate system's judgements or report** (the run identity): the pool
+  selection (`candidates.source`, `.system`, `.rankings`) is part of the judging, evaluate and rerank step
+  identities, so flipping `candidates.system` on a `from: rankings` run re-runs those steps instead of reporting
+  the old system's numbers under the new name. Every archived run re-keys those steps once on its next resume.
+- **A pod's SIGTERM keeps a cancellation**: `_was_interrupted` classifies a failed step by the recorded exception
+  class, so a run cancelled from the submitting host is reported cancelled, not failed.
+- **An empty query is sent as given**: `empty_doc` governs documents only; the query side has no empty policy,
+  and the observation-corpus planner plans the empty-query row for every non-rerank recipe.
+- **A rerank request carries a media query's parts**: `rerank()` builds the example from `query.content`, so an
+  image query reaches the reranker and its checkpoint key as the parts `search()` sends.
+- **`Retry-After: 0` is treated as absent**: a 503/429 answering zero no longer sets a replica aside for zero
+  seconds and retries forever; the outage bound fires.
+- **`ndcg`/`dcg`/`ideal_dcg` refuse a negative gain**, while `score_query`'s qrel grades keep their documented
+  finite-only contract; `combine_digests` requires full digests; `count_gain` refuses a non-number with the
+  documented `ValueError`.
+- **The mteb writer and reader round-trip**: a null `gain` cell reads as absent (a partial calibrated pool
+  round-trips), and the writer refuses a theta with no gain instead of emitting a table its own reader rejects.
+- **A PDF's page cache follows its content**: the page directory is keyed on the source's digest, so a PDF
+  replaced in place re-renders instead of reusing the old pages; an existing page directory re-renders once.
+- **A third-party reader's local source is fingerprinted**; `examples()` refuses a qrels row for a document the
+  corpus lacks; the image-directory reader refuses a text-less or non-string query; BEIR qrels line numbers
+  count the header.
+- **The CLI refuses rather than ignores**: `doctor --endpoint` parses the URL up front and reports a usage error
+  (exit 2) instead of "this is a bug"; `--include-reference` with `--report` is refused in both `eval compare`
+  and `results export`; `data convert`'s hint names `--set`.
+- **The serve-command credential check uses the package's one redactor** (`looks_like_secret`), so `--password`,
+  `--basic-auth` and `--dsn` are refused and never recorded; `reference.entry` must be a bare file name;
+  `extra_args` may not repeat a flag the serve argv renders; a recipe with `status: unverified` cannot ship.
+- **Results export**: `judge_family` joins every judgement family, `load_text` reads UTF-8, the parquet sink
+  writes `created_at` in the same ISO form as JSONL, and the `candidates` subject identity is the evaluate
+  step's recorded digest.
+- **Observation tooling**: `GENERATOR_VERSION` 3, `CORPUS_PLAN_VERSION` 5 and `MEDIA_SET_VERSION` 4 (the
+  over-length ladder is one token over, the several-images row honours `max_images`, and the query-side empty
+  rule is document-only); the committed `rcp-test/pairs/` corpus was regenerated.
+- **A fake judge refuses a custom prompt it cannot place** (a typed `ConfigError`) instead of guessing a shape
+  from the query.
+- **Docs**: the duplicate `docs/api/` pages are retired and their narrative moved into
+  `docs/concepts/inference.md` and `docs/reference/results-record.md`; the fixed-point grid claim names the Qwen
+  families it covers.
+- **Schemas**: new `calibration-diagnostics.v1`; `calibration-summary.v1` gains the diagnostics' `schema` field.
+- **A committed corpus never names the private stage** (the repository subset): `subset_for_repository` wrote
+  the full corpus's real `gs://` host into the subset's `index.json`, so two freshly recorded corpora failed
+  `test_no_committed_corpus_names_private_infrastructure`. The host is now replaced by the
+  `gs://YOUR-BUCKET/...` placeholder the procedure promises, and the two committed corpora were corrected.
+- **A per-chunk recipe's refusal is no longer read as a per-chunk failure** (the observation-corpus check): the
+  `scores_finite_and_vector_widths` check treated a reply carrying no vectors as a per-chunk failure, while the
+  rest of the same function tolerates exactly that case (`for vector in vectors or []`; its docstring calls it
+  "another route, a refusal") and `statuses_as_expected` already validates the status. A refusal has no vectors
+  to count against a chunk count, so `pplx-embed-v2-context-9b-preview` failed a corpus it had recorded
+  correctly - 21 of its 421 exchanges are the measured refusal table's over-length 400s. A corpus whose
+  per-chunk replies carry vectors *nowhere* still fails, naming the unexercised head.
+- **The two stale corpora are re-recorded at the current fingerprints** (decision 17): the merge's plugin-module
+  edits moved `jina-embeddings-v5-text-small` and `zembed-1-embedding` off their recorded behaviour
+  fingerprints, so both were re-recorded on the rc3-20261015 wave (`1009a023...` and `db7a5387...` replace
+  `3ad7d8d0...` and `21bb1fd3...`), written into the repository as the redacted subset with their append-only
+  verification records, and `tests/conformance/stale.json` is empty again -- the state the release rule
+  requires. The new corpora carry no private infrastructure (`engine.redacted` is null), which the old ones did.
+- **The release-candidate manifest lists every staged file, nested manifests included** (the rc_build manifest
+  writer): it excluded any file *named* `manifest.json`, which dropped `pairs/manifest.json` - a staged file the
+  node installs and must be able to verify. Only the manifest at the stage root is excluded now, so the record
+  and the tree agree.
+- **`rcp-vllm` declares the licences its wheel actually carries** (release-3, owner decision 2): the
+  manifest said `Apache-2.0` while the wheel bundles ContextualAI's `ctxl-rerank-v2-instruct-multilingual`
+  reference and template (CC-BY-NC-SA-4.0), Jina AI's `jina-reranker-v3` reference (CC-BY-NC-4.0) and
+  Perplexity AI's `pplx-embed-v2-context-9b-preview` chunk rule (MIT) — every one of them named in `NOTICE`.
+  A commercial redistributor was told the opposite of the truth, and a PyPI release cannot be corrected in
+  place. The expression is now `Apache-2.0 AND MIT AND CC-BY-NC-4.0 AND CC-BY-NC-SA-4.0`, `license-files`
+  carries the licence texts under `LICENSES/`, and two tests pin the expression against `NOTICE`'s own
+  entries so the declaration and the notice cannot drift apart.
+- **A wide ability prior is integrated, not truncated** (core-glm53 note 2): `Criteria2PL` integrates on a
+  561-point grid expressed in units of the ability prior's sd, so every integral scales the grid and a
+  `prior_sd` far from 1 is integrated on the same standardised support rather than cut off at an absolute
+  edge. A short-lived validation refused a prior whose mass on a *fixed* grid was small (sd above about
+  3.2); the grid stopped being fixed when the fit moved to standardised units, which made that refusal
+  reject priors that work, so it is gone and the invariance tests cover the property instead.
+- **The wrong-role judge refusal reads grammatically** (pipeline-ds41 D5): `judge_config_data` answered
+  `recipe 'octen-embedding-0.6b' is a embed recipe, not a judge recipe`; the message is now "is a recipe of
+  role 'embed'", which reads for every role. `recipe_role`'s docstring also names the `judge` role it
+  returns (pipeline-ds41 D4).
+- **Importing `rcp.cli.__main__` no longer runs the CLI** (pipeline-glm53 O1): the module called
+  `main()` unguarded, so any import executed click and printed the command help (exit 2). The call is
+  behind `if __name__ == "__main__":`; `python -m rcp.cli` and the console script are unchanged.
+- **The release record's prose is current** (core-glm53 note 1, vllm-ds41 nit, docsrel-glm53 minor (b),
+  recipes-ds41 D6, recipes-ds41 D4/recipes-glm53 4): the base estimator docstring names the
+  `RaschEstimator` raw-`theta` override it documents, the dead `_VERSION_RE` constant is gone, every
+  tracked citation of the deleted GPU-validation spec names the public page that carries its content (the
+  hygiene guard now holds the retired id out of the shipped tree), the octen 0.6b/4b per-size equivalence
+  minima are recorded (0.9995311 and 0.9993266, both clearing the kept family floor 0.993), and the topk
+  notes count the twelfth gate run (`rc0-202610140620`) beside the eleven before it.
+- **A token-budget flag is not a credential** (security-6): `_credential_flag` matched its markers as
+  substrings, so `command: [vllm, serve, m, --max-num-batched-tokens, 8192]` — the flag this package maps
+  `serve.max_num_batched_tokens` to, and a form `docs/concepts/runs.md` shows hand-written — was refused with
+  "passes a credential as '--max-num-batched-tokens'". The markers now match whole words: that flag passes
+  while `--api-key`, `--hf-token`, `--token` and `--secret` are still refused.
+- **A directory where a report belongs is `MISSING_INPUT` again, not `INTERNAL`** (cli-5): `eval compare
+  --report`, `eval explain --report` and `results export --report` read the file through `storage.read_text`,
+  which raises `IsADirectoryError` for a directory. Only `FileNotFoundError` was caught, so `--report /tmp`
+  answered `INTERNAL` exit 1 ("this is a bug: please report it") where the documented answer is
+  `MISSING_INPUT` exit 4 ("no report at /tmp"). Both call sites now catch `IsADirectoryError` and
+  `NotADirectoryError` alongside `FileNotFoundError`.
+- **The behaviour fingerprint resolves plugin modules without importing package `__init__` files** (B2):
+  `importlib.util.find_spec` imported every parent package, and the embeddinggemma-2 fold's `__init__`
+  installs the folded transformers modules at import time -- which needs transformers' gemma4 modules and
+  torchvision. In the documented `gated` install (`rcp[mteb]` plus `rcp-test`, no torchvision)
+  the embeddinggemma-2 golden failed with `ModuleNotFoundError: No module named 'torchvision'`, and where
+  torchvision was present the hash computation mutated the process. The module's source is now resolved by
+  walking the top-level package's search location; the hashes are unchanged.
+- **Harness: a non-finite rerank score fails every stage-2 gate row** (testpkg-1): `max()` ignored a NaN that
+  was not first, the p99 fraction counted one as merely not within, and `_rerank_summary` never read
+  `within`, so a NaN on either side could pass stage 2 with `max_abs_delta 0.0`; the summary now fails every
+  gate row when a delta is non-finite and reports the NaN, and `_rerank_stage2` refuses a non-finite
+  reference score with a typed error naming the row.
+- **Harness: a declared over-cap count mismatch is reported, not gated** (testpkg-2): the per-text
+  vector-count mismatch was appended to the gates before the over-cap exemption, so a recipe declaring
+  `over_cap_cut_differs` failed stage 2 on exactly the text the deviation declares non-gating, and the row
+  was missing from the `over_cap` table; declared, the mismatch is now reported there with both counts,
+  undeclared it gates and is named there too.
+- **Harness: a constant conformance row fails its `spearman_min` gate wherever it sits** (testpkg-4): the
+  worst-row tracking never replaced a finite minimum with a NaN, so a constant second query passed as
+  'worst spearman 1 >= spearman_min'; the NaN row is now selected and the failure names the query.
+- **Harness: the rerank anchor audit checks the promised in-budget cut** (testpkg-6): the audit's referent
+  promised 'no in-budget pair may be cut' but nothing checked it (the `over_length` lookup read a key the
+  probe entry never carried); a changed document of a real pairs row now fails `in_budget_cut` unless the
+  change record's measured uncut request exceeds its budget, and the injected over-length samples are
+  excluded.
+- **Harness: `stage2_scores` serves under the given `served_model_name`** (testpkg-9): the parameter was
+  declared and ignored, so a caller serving a recipe under an alias got 404s pointing away from it; the
+  alias is now the endpoint config's `model` (`recipe_config`/`role_client` carry it), and the recipe id
+  when none is given.
+- **Harness: the stored-reference key covers the serve block and the unmanaged interpreter** (testpkg-3):
+  the reference receives the whole resolved recipe through `--recipe`, and its media arms read
+  `serve.mm_processor_kwargs`/`serve.extra_args`, but the key carried no `serve` field; with no environment
+  lock (the equivalence CLI's case) it also carried no interpreter identity, so an upgraded reference venv
+  reused stale outputs. The key now carries `serve.<field>` and, when `lock_sha256` is `None`, the reference
+  interpreter's real path; `REFERENCE_FINGERPRINT_SCHEMA` is `rcp-ref-fp/3`, so old entries never collide.
+- **Harness: the T4 driver refuses an empty scenario list and fails a failed upload** (testpkg-5): a list
+  holding only comments (or an empty directory) reported PASS with exit 0 over nothing, and the
+  `--upload` record was discarded so a job whose report never reached `OUT_URI` ended green; `main` now
+  refuses an empty list with exit 2, writes the upload record into `status.json` and exits 1 when it
+  failed, as the wave runner does.
+- **Harness: the equivalence report records no hostname and names its pairs file** (testpkg-7):
+  `EQUIVALENCE.md` claimed the base URL was replaced while `equivalence.json` stored it verbatim (the
+  stage-1 captured heads carried it too), and the header's pairs line always printed `?`. The document and
+  the captured heads now carry the recorder's placeholder host (`http://engine`, the path kept; one home in
+  `record.placeholder_url`, which also handles a URL with no path), and `pairs` names the pairs file.
+- **Harness: the fake-engine docs name the emulator route** (testpkg-8): the docs said no model-level fake
+  ships while 12 verified emulators ship; they now say `target='fake'` covers the registered fakes and name
+  the `fake://vllm-0.33.0/<recipe>` engine-target route the committed corpora's emulators reach a run
+  through once registered, and `fake_engine_for`'s hint names it too.
+- **Harness: the submit.sh dry run removes its scratch directory** (testpkg-10): the plan writes the token
+  wrapper (and a grouped wave's fetched recipes) into the mktemp dir, so the `rmdir` always failed and
+  every echo-mode run left a `rcp-submit.*` behind; the cleanup now removes the directory recursively
+  after a check that it is exactly the mktemp path (never a glob, never an operator's directory), and the
+  comment says what it removes.
+- **The reranker case notes name the recipe's declared deviation** (g-cases-9): the qwen3-reranker and
+  qwen3-vl-reranker long_over/mixed-lengths notes claimed 'known_deviations empty' or
+  '[anchor_drop_over_cap]' while every one of those recipes declares `over_cap_cut_differs`, and the
+  vl-reranker notes asserted non-gating the runner does not implement; the notes now name the declared
+  deviation, and a cases test holds every note that mentions `known_deviations` to the recipe's own list.
+- **A single/uniform case batch may not mix media and text documents** (g-cases-10): the loader now refuses
+  `batch: single`/`uniform` when the batch holds both media-bearing and text-only documents (that is the
+  `mixed_modality` cell), and the two shipped 2-document cases that did so are relabelled
+  `mixed_modality`. The stricter half of the finding's suggestion (refuse `single` with more than one
+  query or document) is left out: the repo's own fixture cases use `single` for multi-item text batches,
+  and the finding's red test does not cover it.
+- **The conformance runner reports a recipe's over-cap cells instead of gating them** (g-cases-1): the
+  runner sent every filled case to the abs/ranking comparators with no over-cap exemption, so a correctly
+  served engine failed `long-over-single`/`long-over-uniform` (zembed-1: a served cosine ~0.62 against the
+  reference's own anchor-dropped 0.000349) and an anchor-dropping regression passed. Under the recipe's
+  declared `reference.known_deviations` (`anchor_drop_over_cap`/`over_cap_cut_differs`) the cells the
+  product client changed -- read from its own processing records, stage 2's referent -- are now reported,
+  not compared; a recipe that declares no deviation still gates them exactly. The zembed notes that
+  claimed the reference applied the anchor-preserving cut are corrected too.
+- **The qwen3-reranker card-st-logits cases compare the card's printed ranking** (g-cases-2): the three
+  cases expected the card's raw logit differences under `abs: 1.0`, which the served path cannot produce
+  (the recipes pin `use_activation: true`, so the head returns probabilities), so a perfect engine failed
+  them by 11-14. They are now `kind: ranking` with `rank_exact`, like the family's card-st-ranking case;
+  the card's raw values stay recorded in their notes.
+- **The rerank case tolerances are the recipes' measured stage-2 bounds** (g-cases-3): the generated
+  qwen3-reranker cases gated at abs 0.02 and qwen3-vl-reranker-2b at 0.01 while the recipes' own measured
+  served-vs-reference maxima are 0.0234/0.0391 and 0.0332 (declared as `gates.prob_p99_abs` 0.025/0.04 and
+  0.035), so an engine the equivalence gate verifies could fail a case; every probability-scale rerank case
+  now uses its recipe's bound, and a cases test holds them to it.
+- **A judge recipe refuses a content override** (g-decisions-1): `--set judge.<content>` was applied over
+  the expanded client block while the shipped recipe id stayed recorded, and a hand-written
+  `judge: {recipe: <id>, ...}` mapping skipped the recipe's block entirely. A mapping that names a recipe
+  now expands through the one recipe mechanism, every CONTENT field must equal the recipe's (both values
+  named on a disagreement), and `recipe` records the recipe's identity. The served model name stays the
+  run's (the T4 driver serves every judge under its slot name, and `--judge-model` is documented), and
+  `extra_body`'s `chat_template_kwargs.enable_thinking` switch is the one named exception; the recipe's own
+  `extra_body` must travel with it.
+- **The tag pipeline refuses the lockstep pin** (g-rcjobs-5): `release.yml`'s shared check accepted
+  `rcp-ndcg==<version>` in the vllm manifest while `rc_build.sh` and decision 18 refuse any workspace
+  sibling; the check now refuses the sibling in both pipelines (owner decision 15).
+- **Wave documents record the tested RC, and the tag must be its commit** (g-rcjobs-7): `bootstrap.sh`
+  records `rc: {name, commit, version, manifest_sha256}` in `bootstrap.json` and passes it to the wave, so
+  `wave.json`/`WAVE.md` identify the staged RC (version strings are `0.0.1` for every RC); the shared
+  release check takes the wave documents (`--wave`) and refuses a tag whose commit differs from their
+  `rc.commit` (owner decision 16).
+- **REPRODUCIBILITY's ledger lists the judge-side divergences** (g-judges-6): a new "Judges" entry names
+  the output caps against the paper's run-level `max_response_tokens` 12288 (16384/8192 in the recipes),
+  the checkpoint-generation-defaults sampling decision, the Qwen3.6 Hub-head revision pin and the SGLang
+  to vLLM move, instead of narrowing the ledger's "every cause" claim (owner decision 14(ii)).
+
+- **`rcp-vllm serve` declares a chunk that cannot hang an at-budget pooling prompt** (vllm-1,
+  owner decision 6(b)): a pooling recipe whose client's largest token budget reaches
+  `serve.max_model_len` now renders `--max-num-batched-tokens` at `serve.max_model_len` when nothing sets
+  one, so the engine's own GPU-dependent default (2048 on A100 and GPUs under 70 GiB) can never chunk an
+  exactly-full prompt. On vLLM v0.31.0, the image the first waves served, the scheduler never scheduled a
+  chunked prompt's last token, so the request hung and held the engine slot. The render-time declaration
+  covers the sixteen recipes that reach this state (ctxl-2b, embeddinggemma-2, harrier-oss-v1 x3,
+  jina-embeddings-v5-text x2, octen x3, pplx-embed-v1 x2, qwen3-vl-embedding x2, zembed-1, zerank-2); a
+  recipe whose budget stays below `serve.max_model_len` (qwen3-reranker: 8192 against 10000) and a chunk
+  equal to `serve.max_model_len` are unaffected. An explicit smaller `--set serve.max_num_batched_tokens`
+  is warned about and replaced by the safe value (decision 6(b) chose a warning over a refusal), naming the
+  value asked for and the value rendered. The v0.33.0 pin makes the floor the declared deployment shape
+  rather than a workaround: the engine's own scheduler keeps the whole context of a pooling prefill
+  (vllm-project/vllm#48039), so the `pooling-full-context` patch and every family's opt-in are deleted and
+  no recipe is exempt (see the engine-pin entry under Changed).
+- **The jina-reranker-v3 reference loads the checkpoint's own tokenizer** (vllm-6, owner decision 7(a)):
+  `reference.py` no longer imports `rcp_ndcg.data.tokenizer.load_tokenizer`; it loads the checkpoint's
+  `tokenizer.json` (the file the remote code's `AutoTokenizer.from_pretrained` resolves to; every
+  sidecar value is carried by the file) with `tokenizers` directly and keeps the remote code's per-text
+  truncation. `reference.in`/`reference.lock` drop the `rcp-ndcg==0.0.1` pin (the lock is regenerated by
+  the reference-lock tool and validates offline). Two contract tests hold every `recipes/*/reference.py`
+  to the `AGENTS.md` no-product rule and every `reference.in` to no workspace pin; a CPU-only
+  equivalence test runs the rewritten reference and the product's tokenizer path over 2,089 inputs
+  (boundary texts at both caps, unicode classes, seeded random strings) and shows they agree on ids,
+  truncation and rendered spans.
+- **The embeddinggemma-2 record names the stock engine image the verifying waves ran** (vllm-7, owner
+  decision 8): `engine.image`, `status.image` and the module docstrings now say
+  `vllm/vllm-openai:v0.31.0`, the image the verifying waves ran with the recipe's plugin backport (the
+  nightly digest remains the fold's source provenance only). The engine-image correction moves the
+  recipe's behaviour fingerprint, so the GPU ledger row names the current key and the release's
+  re-recording waves re-run it before the tag.
+- **`rcp-vllm serve --dry-run` prints the engine environment's patch opt-in** (vllm-2): the printed argv
+  alone starts an engine without the recipe's declared patches (`RCP_NDCG_VLLM_PATCHES` is set only by the
+  console), so the dry run now prints the variable beside the identity and the overrides; the how-to says so.
+- **The `serve.plugin` presence check runs in the engine's interpreter** (vllm-3): the console now resolves
+  the interpreter the `vllm` executable's shebang names and probes the distribution there, so a `vllm` on
+  `PATH` from another environment (a pipx/uv-tool install) is refused before it starts when that environment
+  lacks the wheel; an executable with no readable shebang falls back to the console's own environment, the
+  documented one-interpreter install.
+- **`plugin_distribution_name` parses a real pip requirement** (vllm-4): a ranged, URL or non-canonical
+  `serve.plugin` spec (`rcp-ndcg-vllm>=0.0.1`, `rcp_ndcg_vllm==0.0.1`) now names the distribution it installs
+  (PEP 503-normalised), so it is no longer refused as missing, the architecture check applies to the
+  underscore spelling, text with no requirement name is refused naming the accepted forms, and the install
+  hint quotes the spec for the shell.
+- **`serve.extra_args` may not repeat a flag `serve_argv` renders** (vllm-5): a duplicate lands after the
+  rendered value and the engine's last-wins parsing silently overrides a `--set` value, the
+  `serve.max_model_len` budget check or even `--revision`; the schema now refuses one by name, with the field
+  to use instead (`schema/recipe.schema.json` and `schema/family.schema.json` carry the field note).
+- **The quickstart and serve-a-model flow name the real NanoBEIR subset** (docs-1): the three flows used
+  `--subset NanoSciFact`, which is not a subset of `suite:nanobeir` (`NanoSciFactRetrieval` is), and the
+  following `eval score --suite nanobeir` carried no `--subset`, so the other twelve subsets would have
+  scored 0 and the headline mean come out about 1/13 of the subset's value. A docs test now checks every
+  documented `--subset` against `rcp_ndcg.data.SUITES` and requires a following `eval score` to carry it.
+- **Two corpora are declared stale for re-recording after the merged plugin-module edits** (F6): the
+  behaviour fingerprint keys the source of every plugin module a recipe's engine runs, and the merged tree's
+  plugin-module edits (the embeddinggemma-2 config hook's licence header and the pplx/topk config hooks'
+  sub-config casts) moved those hashes for every plugin recipe. The recorded corpora of
+  `jina-embeddings-v5-text-small` and `zembed-1-embedding` no longer carry their recipes' current
+  fingerprints, so `tests/conformance/stale.json` declares both with their recorded fingerprints and the
+  three moved inputs (`plugin_sha256.rcp_ndcg_vllm.models.embedding_gemma2.config`,
+  `plugin_sha256.rcp_ndcg_vllm.models.pplx.hf_config`,
+  `plugin_sha256.rcp_ndcg_vllm.models.topk.config`): the replays skip them, and each declaration must fail
+  the staleness gate naming exactly those inputs. This is the pre-release state: the GPU re-recording wave
+  empties the list before the tag (`RCP_NDCG_RELEASE=1` enforces it).
+- **Reported Bradley-Terry standard errors use the joint fit's information referent** (core-1, owner decision 3):
+  a fitted document's SE was `1 / sqrt(own Fisher information + l2)` while the joint fit minimises
+  `sum(w*BCE)/W + 0.5*l2*||theta||^2` -- a per-document ridge of `l2*W` in sum units -- so the fitted SE did not
+  match the conditional insertion's fixed `l2*W` ridge. `BradleyTerryEstimator`, the inserted document's SE and
+  information and the insertion's `se_target` predicate now all use `info + l2*W`, `W` the fit's total comparison
+  weight. Reported standard errors move: an inserted document's information is larger by `l2*W` (smaller SE, an
+  easier `se_target` at the same evidence), and a document with no comparison now reports the ridge's
+  `1 / sqrt(l2 * W)`, not `1 / sqrt(l2)`, so `calibration fit`/`calibration insert` artifacts carry different
+  `theta_se` columns.
+- **The rubric-only fit integrates in the ability prior's units** (core-2, owner decision 4): `Criteria2PL.fit`
+  and `eap` integrated `theta ~ N(0, ability_sd)` on the fixed absolute grid `[-18, 10]`, so a non-default
+  `Priors.ability_sd` truncated the prior and moved the fitted gains (about 0.02 at `ability_sd=4`) although the
+  MML model is invariant under `theta -> theta/s, gamma -> gamma*s, beta -> beta/s`. The fit now optimises in
+  standardised units and every integral scales the grid by `prior_sd`, so the reported items, abilities and gains
+  are invariant under `Priors.ability_sd`. Fits with the default `ability_sd=1` are unchanged; fits with
+  `ability_sd != 1` move.
+- **Public surface**: the `calibration-coverage.v1` and `calibration-summary.v1` schemas'
+  `no_tournament_evidence_documents` description now states the joint standard-error referent
+  (`1 / sqrt(bt_l2 * W)`); both exported schemas are regenerated. No field, type or schema version changes.
+- **The answer is the text after the last `</think>`** (`PARSE_VERSION` 4). An engine that drops the opening
+  `<think>` leaves the judge's reasoning inline before its answer. The decoder used to strip that reasoning only up
+  to the first `{`, so braces in the reasoning (set notation, code, LaTeX) made it decode a draft object from the
+  reasoning, or fail. It now takes the answer as the text after the last `</think>`, whether that tag closes a
+  `<think>` block or lost its opening tag: a draft between two reasoning blocks, or an object that only precedes a
+  stray `</think>` or a later reasoning block, is refused, since it cannot be told apart from a draft (this
+  reverses the 0.0.1 rule that kept an object before a stray tag). The cut is at that tag wherever it stands, so the
+  text after it is never rewritten. An object that opens inside a `<think>` that never closes is a draft too (the
+  judge was cut at the token limit while thinking): it stays refused, `truncated` at the token limit. Both stages
+  share the decoder, so the rubric reads its answers the same way. The shipped serve commands split the reasoning
+  with `--reasoning-parser` and are not affected; `rcp judge reparse` of answers stored with inline
+  reasoning, such as the paper's, is. For Stage A it now reads exactly the paper's v2 rule (the text after the
+  last `</think>`, decoded by this decoder). For Stage B the decoder reads the same object as that rule, but the
+  paper's rubric prompt also asked a sixth criterion (C6) that the paper never fitted: arXiv v2 dropped C6 and then
+  required C1..C5 of every document, while the rubric parser refuses a criterion the prompt did not ask (`schema`),
+  so a reparse of the paper's Stage B answers refuses those windows. On the paper's stored Qwen3.5-397B tournament
+  answers the 0.0.1 decoder failed on 14% of the NanoBEIR windows (11% of NanoMSMARCO, NanoHotpotQA and
+  NanoDBPedia) and 87% of the BRIGHT AoPS windows, and read a draft instead of the final answer in 20 to 59 windows
+  per NanoBEIR dataset and 43 AoPS windows; the fixed decoder reads exactly the judge's final answers (checked on
+  45,576 windows). On the paper's stored NanoBEIR and TREC-DL answers of both stages (577,449 windows) it decodes
+  the same object as the paper's v2 rule in every window.
+- **A number beyond Python's limits is a refusal, not a crash**: an integer literal beyond Python's digit limit
+  (4,300 digits; a score or a document id written as a number) raised `ValueError` and nesting beyond the recursion
+  limit (a degenerate `[[[[...` answer) raised `RecursionError` out of the decoder, and a document id written as a
+  string of that many digits (`"doc_1111..."`, as a ranking entry, a score key or a rubric document key) raised
+  `ValueError` out of the id reader. The judging loop and `judge reparse` catch neither, so one such answer aborted
+  the pass, and a resume asked the judge again. The first two are now `invalid_json`, the id string `schema`
+  (`truncated` at the token limit, either way); a repeated key stays `schema`. No answer that parsed before reads
+  differently, so the parse version does not move for it.
+- **The code-fence strip runs in linear time**: its pattern backtracked on a fence followed by a long whitespace run
+  (7 s at 3,000 whitespace characters, 132 s at 8,000), stalling a judging pass or a reparse. The strip now
+  locates the same fence directly and returns the same content for every answer (checked against the pattern on
+  every stored paper-era window and on random fences).
+- **A tournament unit that no valid window compared gets no ability** (`rcp_ndcg.calibration`): the
+  Bradley-Terry refit returned its prior, the query's mean ability, for a document shown only in windows whose
+  answer did not parse. 0.0.1 kept that number (listing the document under `no_tournament_evidence_documents`
+  with the `NO_VALID_TOURNAMENT_EVIDENCE` warning), and the calibration turned it into a mid-scale gain as if it
+  had been judged; a chunk shown only in such windows could likewise win its document's max-pool. Such a unit is
+  now left out of the refit's abilities: the document is still listed and warned about (and refused by
+  `strict`), but gets no ability and no `thetas` row, and one with rubric verdicts is reported among
+  `uncalibrated_documents` with the `UNCALIBRATED_DOCUMENTS` warning, like any document the tournament did not
+  judge; a chunked document pools its compared chunks only. The coverage schemas' descriptions of the two lists
+  say so. Fits in which every document has a valid window are unchanged.
+- **A judgement store read by an older parser points at `judge reparse`**: resuming a pass after a parser upgrade
+  is refused (the parse version is part of the family), and the refusal offered `--force`, which supersedes the
+  stored answers and asks the judge for every window again. When the parse version is the only difference, the
+  hint now says to re-read the answers into a new store with `rcp judge reparse` and resume there.
+- **A judgement store keeps the schema tag that it was created with**: `claim()` writes `identity.json` back under
+  the tag that the file carries. A pass that resumes into a store written before the rename therefore keeps
+  `rcp-ndcg.judgement-store.v1`, and the pre-rename code still opens it. A new store writes
+  `rcp.judgement-store.v1`. The judgement records that a resume appends do carry the new tag, so finish an old
+  store with a new install, or start a new store.
+- **A metric named twice is one metric**: `evaluate(metrics=["qrel_ndcg", "qrel_ndcg"])` scored the query twice,
+  so `num_queries` doubled and the bootstrap interval resampled it twice. The requested metrics are now
+  de-duplicated in order, the same way that the command line's `--metric` joins `--metrics`.
+
 ### Changed from the paper's code: text limits count the judge's tokens
 
 The paper's judging limited document text by characters, converting a window's share of the judge's context at 2.0
 characters per token. This release counts the judge's own tokens and cuts at token boundaries. A document that fits
 under both rules is shown in full either way, so only a long document that is cut can end at a different place.
 Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-your-own-llm-endpoint).
-
 
 ### Removed
 
@@ -5596,3 +5576,14 @@ Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-yo
   so its `AccountKey=` was written to `run.yaml`, the manifest and the mirror. `*CONNECTION_STRING*`, `*CONN_STR*`
   and `*_DSN` now count as secret-looking names, and a value carrying `AccountKey=`, `SharedAccessSignature=`
   or a `sig=` parameter is refused in a config and redacted on the recording path whatever its name.
+
+### Docs
+
+- **The documentation is rewritten in Simplified Technical English, and a gate keeps it so**: every hand-written
+  page under `docs/` now follows ASD-STE100 -- 20 words per sentence at most, the active voice, one idea per
+  sentence, and a technical term defined where it first appears. The rule and its exceptions are the new
+  [writing style](docs/reference/writing-style.md) page, and `tests/docs/test_style.py` checks every page
+  against them. The check counts an inline code span as one word, skips the code blocks, the tables, the
+  headings and the generated API pages, and records a pinned sentence in an allowlist with its reason, so an
+  exception is the record and never a silent filter. A page that goes over the limit fails `pytest tests/docs`
+  naming the sentence.
