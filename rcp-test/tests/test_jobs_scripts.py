@@ -781,7 +781,7 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
     (work / "bin" / "uvx").write_text(
         "#!/usr/bin/env bash\n"
         f'printf \'%s\\n\' "$*" >> "{uvx_log_path}"\n'
-        'case "$*" in *"--with rcp-test==0.0.1"*) ;; *) '
+        'case "$*" in *"--with rcp-test==0.1.0"*) ;; *) '
         'echo "uvx: the harness spec is missing" >&2; exit 1 ;; esac\n'
         'case "$*" in *"/harness"*) ;; *) echo "uvx: the harness find-links is missing" >&2; exit 1 ;; esac\n'
         'if [[ "$*" == *"reference_env check"* ]]; then\n'
@@ -810,7 +810,7 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
     (work / "bin" / "uv").chmod(0o755)
     (stage / "requirements-constraints.txt").write_text("torch==2.13.0\n", encoding="utf-8")
     (stage / "harness").mkdir()
-    (stage / "harness" / "rcp_test-0.0.1-py3-none-any.whl").write_bytes(b"stub harness wheel")
+    (stage / "harness" / "rcp_test-0.1.0-py3-none-any.whl").write_bytes(b"stub harness wheel")
     files = [
         {
             "path": rel,
@@ -818,7 +818,7 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
         }
         for rel in (
             "requirements-constraints.txt",
-            "harness/rcp_test-0.0.1-py3-none-any.whl",
+            "harness/rcp_test-0.1.0-py3-none-any.whl",
             "recipes/demo/reference.lock",
         )
     ]
@@ -826,7 +826,7 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
         json.dumps(
             {
                 "rc_name": "rc0",
-                "version": "0.0.1",
+                "version": "0.1.0",
                 "commit": "abc123",
                 "files": files,
                 "cpu_inert_wheels": [],
@@ -860,7 +860,7 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
     assert report["rc"] == {
         "name": "rc0",
         "commit": "abc123",
-        "version": "0.0.1",
+        "version": "0.1.0",
         "manifest_sha256": hashlib.sha256((stage / "manifest.json").read_bytes()).hexdigest(),
     }
     reference = report["reference"]
@@ -871,19 +871,19 @@ def test_bootstrap_envs_end_to_end_reaches_the_report(tmp_path: Path) -> None:
     # A2: the client closure carries the unpublished harness wheel from its own staged directory, and the
     # probe imports rcp_test in the client environment (the wave runner's first command needs it).
     uvx_log = (work / "uvx.log").read_text(encoding="utf-8")
-    assert "--with rcp-test==0.0.1" in uvx_log, uvx_log
+    assert "--with rcp-test==0.1.0" in uvx_log, uvx_log
     assert f"--find-links {stage}/harness" in uvx_log, uvx_log
     versions = json.loads((state / "client-versions.json").read_text(encoding="utf-8"))
-    assert versions["rcp-test"] == "0.0.1", versions
+    assert versions["rcp-test"] == "0.1.0", versions
     wrapper = (state / "client").read_text(encoding="utf-8")
-    assert "rcp-test==0.0.1" in wrapper and "/harness" in wrapper, wrapper
+    assert "rcp-test==0.1.0" in wrapper and "/harness" in wrapper, wrapper
     # A recipes root without any family lock: the families file is still created (empty) and the
     # bootstrap completes with no reference environment (the round-3 finding's shape).
     lock.unlink()
     (stage / "manifest.json").write_text(
         json.dumps(
             {
-                "version": "0.0.1",
+                "version": "0.1.0",
                 "commit": "scratch",
                 "files": [entry for entry in files if entry["path"] != "recipes/demo/reference.lock"],
                 "cpu_inert_wheels": [],
