@@ -282,6 +282,8 @@ after its file moves or changes.
   selected are retired with an appended ``superseded`` tombstone. They are asked again. The fit therefore never reads
   two generations of one query's schedule. The stage file stays append-only, as the mirror's immutable parts require. A
   window that the endpoint keeps refusing leaves the later phases alone, so a resume that changes nothing is idempotent.
+  Records are appended as answers arrive. A pass at the judge's `concurrency` therefore appends in arrival order. So
+  `read()` returns a stage's judgements in that order, not in the schedule's order.
   The retirement is scoped to the pass's own generation. That is its pool's generation key, a digest of the units that
   the pass judges. It also holds its schedule's window sequences and window sizes. The tournament's mirrors are in the
   sequences, per call. A full pass therefore never retires a subset pass's windows, and a subset pass never retires the
