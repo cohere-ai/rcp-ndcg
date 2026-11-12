@@ -69,7 +69,7 @@ def test_the_serving_recipes_are_a_declared_extra() -> None:
     manifest = tomllib.loads((ROOT / "packages" / "rcp" / "pyproject.toml").read_text(encoding="utf-8"))
     extras = manifest["project"]["optional-dependencies"]
     assert "vllm" in extras, "rcp lazily imports rcp_vllm, so the dependency must be declared as an extra"
-    assert {Requirement(spec).name for spec in extras["vllm"]} == {"rcp-vllm"}
+    assert {Requirement(spec).name for spec in extras["vllm"]} == {"cohere-rcp-vllm"}
     assert EXTRA_FOR_MODULE["rcp_vllm"] == "vllm"
 
 

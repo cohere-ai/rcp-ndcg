@@ -81,7 +81,7 @@ def test_every_runtime_dependency_is_imported_somewhere() -> None:
         "pyyaml": "yaml",
         "pillow": "PIL",
         "python-dotenv": "dotenv",
-        "rcp-core": "rcp_core",
+        "cohere-rcp-core": "rcp_core",
         "pystemmer": "Stemmer",
     }
     lazily_loaded = {"gcsfs"}
@@ -160,7 +160,7 @@ def test_the_constraints_file_is_the_locks_export_for_the_coordinators_extras() 
     for package in lock["package"]:
         locked.setdefault(package["name"].lower(), set()).add(package["version"])
     pins = _check_constraints_module().pins(text)
-    assert "torch" in pins and "rcp" not in pins and "rcp-core" not in pins
+    assert "torch" in pins and "cohere-rcp" not in pins and "cohere-rcp-core" not in pins
     stale = {name: pin for name, pin in pins.items() if pin not in locked.get(name, set())}
     assert not stale, f"regenerate requirements-constraints.txt with the command in its header: {stale}"
     uv = shutil.which("uv")
@@ -172,9 +172,9 @@ def test_the_constraints_file_is_the_locks_export_for_the_coordinators_extras() 
 RELEASE_PUBLISH_JOBS = {
     # job -> (GitHub environment, PyPI project): PyPI identifies a pending trusted publisher by owner, repository,
     # workflow file and environment only, so each package publishes through its own environment.
-    "publish-core": ("pypi-core", "rcp-core"),
-    "publish-rcp": ("pypi", "rcp"),
-    "publish-vllm": ("pypi-vllm", "rcp-vllm"),
+    "publish-cohere-rcp-core": ("pypi-core", "cohere-rcp-core"),
+    "publish-cohere-rcp": ("pypi", "cohere-rcp"),
+    "publish-cohere-rcp-vllm": ("pypi-vllm", "cohere-rcp-vllm"),
 }
 
 
@@ -189,12 +189,21 @@ def _release_workflow() -> tuple[dict, str]:
 CHECK_RELEASE = ROOT / ".github" / "scripts" / "check_release.py"
 
 
+#: The workspace's source directories and the distributions their manifests declare.
+_DISTRIBUTION_NAMES = {
+    "rcp": "cohere-rcp",
+    "rcp-core": "cohere-rcp-core",
+    "rcp-vllm": "cohere-rcp-vllm",
+    "rcp-test": "rcp-test",
+}
+
+
 def _release_tree(
     tmp_path: Path,
     versions: dict[str, str],
     *,
-    core: str = '"rcp-core==0.0.1"',
-    vllm: str | None = '[project]\nname = "rcp-vllm"\nversion = "0.0.1"\ndependencies = ["pydantic>=2.0"]\n',
+    core: str = '"cohere-rcp-core==0.0.1"',
+    vllm: str | None = ('[project]\nname = "cohere-rcp-vllm"\nversion = "0.0.1"\ndependencies = ["pydantic>=2.0"]\n'),
     core_in_extras: bool = False,
     extra_core: str | None = None,
 ) -> Path:
@@ -210,9 +219,9 @@ def _release_tree(
         directory = tree / "packages" / package
         directory.mkdir(parents=True)
         if package == "rcp":
-            body = f'[project]\nname = "rcp"\nversion = "{version}"\n{declaration}\n'
+            body = f'[project]\nname = "{_DISTRIBUTION_NAMES[package]}"\nversion = "{version}"\n{declaration}\n'
         else:
-            body = f'[project]\nname = "{package}"\nversion = "{version}"\n'
+            body = f'[project]\nname = "{_DISTRIBUTION_NAMES[package]}"\nversion = "{version}"\n'
         (directory / "pyproject.toml").write_text(body, encoding="utf-8")
     if vllm is not None:
         (tree / "packages" / "rcp-vllm").mkdir(parents=True, exist_ok=True)
@@ -239,7 +248,7 @@ def _assert_one_environment_per_package(workflow: dict) -> None:
     assert "--all-packages" not in build, "the release builds the three published packages by name"
     # One --package per invocation (uv refuses a repeated --package): the build names the two workspace
     # members it publishes, so the unpublished test package -- also a member -- can never be swept in.
-    for name in ("rcp-core", "rcp", "rcp-vllm"):
+    for name in ("cohere-rcp-core", "cohere-rcp", "cohere-rcp-vllm"):
         assert f"--package {name} --out-dir dist" in build, name
     assert "twine check" in build and "requirements-constraints.txt" in build
     # One artifact per package, each holding only that package's sdist and wheel.
@@ -259,12 +268,17 @@ def _assert_one_environment_per_package(workflow: dict) -> None:
         assert directory == f"dist/{project}", f"{job} works in a directory that holds only {project}'s files"
         published = [s for s in publish["steps"] if str(s.get("uses", "")).startswith("pypa/gh-action-pypi-publish@")]
         assert len(published) == 1 and published[0]["with"]["packages-dir"] == directory
-    assert jobs["publish-core"]["needs"] == "build"
-    assert jobs["publish-rcp"]["needs"] == "publish-core"  # it pins the core exactly: the core goes first
+    assert jobs["publish-cohere-rcp-core"]["needs"] == "build"
+    # it pins the core exactly: the core goes first
+    assert jobs["publish-cohere-rcp"]["needs"] == "publish-cohere-rcp-core"
     # rcp-vllm names no sibling pin (the lean package pins nothing), but every moment of the rollout
     # must install, so it publishes only after both siblings are on PyPI (PyPI files are immutable; a
     # published rcp-vllm whose siblings failed would be uninstallable forever).
-    assert set(jobs["publish-vllm"]["needs"]) == {"build", "publish-core", "publish-rcp"}
+    assert set(jobs["publish-cohere-rcp-vllm"]["needs"]) == {
+        "build",
+        "publish-cohere-rcp-core",
+        "publish-cohere-rcp",
+    }
     assert set(jobs["github-release"]["needs"]) == set(RELEASE_PUBLISH_JOBS)
     tokenised = {name for name, job in jobs.items() if (job.get("permissions") or {}).get("id-token") == "write"}
     assert tokenised == set(RELEASE_PUBLISH_JOBS), "id-token: write belongs to exactly the publish jobs"
@@ -312,7 +326,7 @@ def test_every_workflow_action_is_pinned_to_a_full_commit_sha() -> None:
 
 def test_the_release_workflow_refuses_a_sibling_in_the_vllm_manifest(tmp_path) -> None:
     """decision 15 / g-rcjobs-5(d): the tag pipeline refuses the lockstep pin, matching rc_build and
-    decision 18 -- ``rcp-vllm`` names no workspace sibling at all.
+    decision 18 -- ``cohere-rcp-vllm`` names no workspace sibling at all.
 
     The build job runs ``.github/scripts/check_release.py`` (the one home rc_build.sh shares); the test drives
     the script against manifests in ``tmp_path``: every spelling of a sibling is refused, a manifest the
@@ -326,7 +340,7 @@ def test_the_release_workflow_refuses_a_sibling_in_the_vllm_manifest(tmp_path) -
 
     def check(
         manifest: str | None,
-        core: str = '"rcp-core==0.0.1"',
+        core: str = '"cohere-rcp-core==0.0.1"',
         version: str = "0.0.1",
         core_in_extras: bool = False,
         extra_core: str | None = None,
@@ -343,16 +357,16 @@ def test_the_release_workflow_refuses_a_sibling_in_the_vllm_manifest(tmp_path) -
 
     # Every spelling of the lockstep pin (and every other workspace sibling) is refused, naming decision 18.
     siblings = (
-        "rcp==0.0.1",
-        "rcp[calibrate]==0.0.1",
-        "rcp_core==0.0.1",
-        "rcp == 0.0.1",
-        "rcp (==0.0.1)",
-        "rcp.core==0.0.1",
-        "RCP.CORE==0.0.2",
-        "rcp>=0.0.1",
-        "rcp",
-        "rcp-core==0.0.1",
+        "cohere-rcp==0.0.1",
+        "cohere-rcp[calibrate]==0.0.1",
+        "cohere_rcp_core==0.0.1",
+        "cohere-rcp == 0.0.1",
+        "cohere-rcp (==0.0.1)",
+        "cohere-rcp.core==0.0.1",
+        "COHERE.RCP.CORE==0.0.2",
+        "cohere-rcp>=0.0.1",
+        "cohere-rcp",
+        "cohere-rcp-core==0.0.1",
         "rcp-test==0.0.1",
     )
     for sibling in siblings:
@@ -366,29 +380,29 @@ def test_the_release_workflow_refuses_a_sibling_in_the_vllm_manifest(tmp_path) -
         "a manifest the release builds may not be absent"
     )
     # The root manifest pins the core the same way: exact at the tag's version, however the TOML is spelled.
-    assert check(no_sibling, core='"rcp_core == 0.0.1"').returncode == 0, "spaced and _ spelling normalise"
+    assert check(no_sibling, core='"cohere_rcp_core == 0.0.1"').returncode == 0, "spaced and _ spelling normalise"
     assert (
         check(
             no_sibling,
-            core='"rcp-core==0.0.1"  # a trailing comment in the list does not matter\n',
+            core='"cohere-rcp-core==0.0.1"  # a trailing comment in the list does not matter\n',
         ).returncode
         == 0
     ), "only the dependencies list is read"
     unpinned = check(no_sibling, core='"numpy"')
-    assert unpinned.returncode == 1 and "rcp-core" in unpinned.stderr, "a root manifest must pin the core"
-    extras_only = check(no_sibling, core='"rcp-core==0.0.1"', core_in_extras=True)
-    assert extras_only.returncode == 1 and "rcp-core" in extras_only.stderr, (
+    assert unpinned.returncode == 1 and "cohere-rcp-core" in unpinned.stderr, "a root manifest must pin the core"
+    extras_only = check(no_sibling, core='"cohere-rcp-core==0.0.1"', core_in_extras=True)
+    assert extras_only.returncode == 1 and "cohere-rcp-core" in extras_only.stderr, (
         "the required pin must be a runtime dependency: `pip install rcp` resolves the core unpinned otherwise"
     )
     mixed = check(
         no_sibling,
-        core='"rcp-core==0.0.1"',
-        extra_core='"rcp-core==0.0.2"',
+        core='"cohere-rcp-core==0.0.1"',
+        extra_core='"cohere-rcp-core==0.0.2"',
     )
     assert mixed.returncode == 1 and "==0.0.1" in mixed.stderr, (
         "an exact pin must not hide a stale one in an extra: `pip install rcp[probe]` would not resolve"
     )
-    stale = check(no_sibling, core='"rcp-core==0.0.2"')
+    stale = check(no_sibling, core='"cohere-rcp-core==0.0.2"')
     assert stale.returncode == 1 and "==0.0.1" in stale.stderr, "a wrong core pin must be refused"
 
 
@@ -472,8 +486,8 @@ def test_the_release_check_refuses_a_tag_that_is_not_the_tested_rc_commit(tmp_pa
 
 def test_the_release_workflow_check_fails_when_two_environments_are_swapped() -> None:
     workflow, _ = _release_workflow()
-    workflow["jobs"]["publish-core"]["environment"] = "pypi"
-    workflow["jobs"]["publish-rcp"]["environment"] = "pypi-core"
+    workflow["jobs"]["publish-cohere-rcp-core"]["environment"] = "pypi"
+    workflow["jobs"]["publish-cohere-rcp"]["environment"] = "pypi-core"
     with pytest.raises(AssertionError):
         _assert_one_environment_per_package(workflow)
 
@@ -654,11 +668,11 @@ def test_every_dependency_gate_in_tests_opens_in_ci() -> None:
 
 
 def _index_installed_spec(command: str) -> str | None:
-    """The ``rcp-vllm`` spec one install command would resolve from an index, or ``None``.
+    """The ``cohere-rcp-vllm`` spec one install command would resolve from an index, or ``None``.
 
     A spec is index-resolved exactly when it is the bare package name (optionally with extras) and the
-    command is not editable: ``rcp-vllm``. A path (``./packages/rcp-vllm``) or a built wheel
-    (``dist/rcp_vllm-0.0.1-py3-none-any.whl``) carries a separator or suffix and installs this
+    command is not editable: ``cohere-rcp-vllm``. A path (``./packages/rcp-vllm``) or a built wheel
+    (``dist/cohere_rcp_vllm-0.0.1-py3-none-any.whl``) carries a separator or suffix and installs this
     checkout's bytes; ``-e`` makes even the bare name an editable install of the checkout.
     """
     tokens = command.split()
@@ -666,7 +680,7 @@ def _index_installed_spec(command: str) -> str | None:
         return None
     for token in tokens:
         spec = token.strip("'\"")
-        if spec.startswith(("rcp-vllm", "rcp_vllm")) and "/" not in spec and not spec.endswith(".whl"):
+        if spec.startswith(("cohere-rcp-vllm", "cohere_rcp_vllm")) and "/" not in spec and not spec.endswith(".whl"):
             return spec
     return None
 
@@ -685,12 +699,12 @@ def test_every_ci_install_of_the_serving_recipes_package_is_local() -> None:
     it passed for ``uv pip install rcp-vllm``).
     """
     # The check can fail: a bare name without -e is an index install, whatever the workflow.
-    assert _index_installed_spec("uv pip install rcp-vllm") == "rcp-vllm"
-    assert _index_installed_spec("uv pip install 'rcp-vllm[test]'") == "rcp-vllm[test]"
+    assert _index_installed_spec("uv pip install cohere-rcp-vllm") == "cohere-rcp-vllm"
+    assert _index_installed_spec("uv pip install 'cohere-rcp-vllm[test]'") == "cohere-rcp-vllm[test]"
     # ...and the local forms it must accept really are accepted.
-    assert _index_installed_spec("uv pip install -e rcp-core -e rcp -e 'rcp-vllm[test]'") is None
+    assert _index_installed_spec("uv pip install -e cohere-rcp-core -e cohere-rcp -e 'cohere-rcp-vllm[test]'") is None
     assert _index_installed_spec("uv pip install mcp ./packages/rcp-vllm") is None
-    wheel_install = "uv pip install --python v/bin/python dist/rcp_vllm-0.0.1-py3-none-any.whl"
+    wheel_install = "uv pip install --python v/bin/python dist/cohere_rcp_vllm-0.0.1-py3-none-any.whl"
     assert _index_installed_spec(wheel_install) is None
 
     workflow = __import__("yaml").safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8"))
@@ -702,9 +716,9 @@ def test_every_ci_install_of_the_serving_recipes_package_is_local() -> None:
         for command in re.findall(r"pip install[^\n]*", str(step.get("run", "")).replace("\\\n", " "))
         if "rcp-vllm" in command or "rcp_vllm" in command
     ]
-    assert installs, "no CI job installs rcp-vllm"
+    assert installs, "no CI job installs cohere-rcp-vllm"
     offenders = [(command, spec) for command in installs if (spec := _index_installed_spec(command)) is not None]
-    assert offenders == [], f"CI installs rcp-vllm from an index, not this checkout: {offenders}"
+    assert offenders == [], f"CI installs cohere-rcp-vllm from an index, not this checkout: {offenders}"
 
 
 def test_the_folded_models_test_suites_run_in_ci() -> None:
@@ -778,8 +792,8 @@ def test_the_wheel_smoke_gates_run_the_freeze_check_and_every_dry_run() -> None:
     for name in ("release.yml", "ci.yml"):
         workflow = __import__("yaml").safe_load((ROOT / ".github" / "workflows" / name).read_text(encoding="utf-8"))
         runs = [str(step.get("run", "")) for job in workflow["jobs"].values() for step in job.get("steps", [])]
-        assert any("check_no_deps_install.py" in run and "dist/rcp_vllm-*.whl" in run for run in runs), (
-            f"{name}: no step runs the --no-deps freeze check on the built rcp-vllm wheel"
+        assert any("check_no_deps_install.py" in run and "dist/cohere_rcp_vllm-*.whl" in run for run in runs), (
+            f"{name}: no step runs the --no-deps freeze check on the built cohere-rcp-vllm wheel"
         )
         assert any("iter_recipes()" in run and "--dry-run" in run and "for " in run for run in runs), (
             f"{name}: no step dry-runs every recipe from the built wheel"

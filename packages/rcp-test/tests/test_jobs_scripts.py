@@ -318,24 +318,24 @@ def _install_plugin_wheels(
 
 
 def test_bootstrap_refuses_a_plugin_wheel_that_declares_an_unshipped_dependency(tmp_path: Path) -> None:
-    """g-rcjobs-9: decision 16's declared-dependency check runs on the node: the staged rcp-vllm
+    """g-rcjobs-9: decision 16's declared-dependency check runs on the node: the staged cohere-rcp-vllm
     wheel passes ``check_no_deps_install.assert_pure_python`` before the install, so a wheel declaring
     torch (which ``--no-deps`` would leave missing on the stock image) is refused with its exact name."""
     import io
     import zipfile
 
-    wheel = "wheelhouse/rcp_vllm-0.0.1-py3-none-any.whl"
+    wheel = "wheelhouse/cohere_rcp_vllm-0.0.1-py3-none-any.whl"
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("rcp_vllm/__init__.py", "")
-        archive.writestr("rcp_vllm-0.0.1.dist-info/WHEEL", "Wheel-Version: 1.0\nTag: py3-none-any\n")
+        archive.writestr("cohere_rcp_vllm-0.0.1.dist-info/WHEEL", "Wheel-Version: 1.0\nTag: py3-none-any\n")
         archive.writestr(
-            "rcp_vllm-0.0.1.dist-info/METADATA",
-            "Metadata-Version: 2.1\nName: rcp-vllm\nVersion: 0.0.1\nRequires-Dist: torch>=2.0\n",
+            "cohere_rcp_vllm-0.0.1.dist-info/METADATA",
+            "Metadata-Version: 2.1\nName: cohere-rcp-vllm\nVersion: 0.0.1\nRequires-Dist: torch>=2.0\n",
         )
     completed = _install_plugin_wheels(
         tmp_path,
-        "rcp-vllm\n",
+        "cohere-rcp-vllm\n",
         wheels=(wheel,),
         wheel_bytes={wheel: buffer.getvalue()},
         check_deps_py=CHECK_DEPS_INSTALL,
@@ -343,7 +343,7 @@ def test_bootstrap_refuses_a_plugin_wheel_that_declares_an_unshipped_dependency(
     assert completed.returncode == 0, completed.stderr  # the loop carries on; the job never dies here
     assert "declared-dependency check" in completed.stderr
     assert "torch" in completed.stderr
-    assert (tmp_path / "failed.txt").read_text(encoding="utf-8").strip() == "rcp-vllm"
+    assert (tmp_path / "failed.txt").read_text(encoding="utf-8").strip() == "cohere-rcp-vllm"
     assert not (tmp_path / "engine-python.log").exists(), "the wheel was refused before any install"
 
 
@@ -353,16 +353,16 @@ def test_bootstrap_pins_the_shipped_plugin_install_to_the_staged_wheel(tmp_path:
     the engine could run a plugin build the recording's key does not cover."""
     completed = _install_plugin_wheels(
         tmp_path,
-        "rcp-vllm\n",
+        "cohere-rcp-vllm\n",
         extra=("private/wheelhouse",),
         wheels=(
-            "wheelhouse/rcp_vllm-0.0.1-py3-none-any.whl",
-            "extra/private/wheelhouse/rcp_vllm-0.0.2-py3-none-any.whl",
+            "wheelhouse/cohere_rcp_vllm-0.0.1-py3-none-any.whl",
+            "extra/private/wheelhouse/cohere_rcp_vllm-0.0.2-py3-none-any.whl",
         ),
     )
     assert completed.returncode == 0, completed.stderr
     log = (tmp_path / "engine-python.log").read_text(encoding="utf-8")
-    assert "wheelhouse/rcp_vllm-0.0.1-py3-none-any.whl" in log, log
+    assert "wheelhouse/cohere_rcp_vllm-0.0.1-py3-none-any.whl" in log, log
     assert "0.0.2" not in log, log
 
 
@@ -374,14 +374,14 @@ def test_bootstrap_refuses_a_versioned_shipped_plugin_spec_the_staged_wheel_cann
     recipe fails instead of recording a corpus that claims code the engine did not run."""
     completed = _install_plugin_wheels(
         tmp_path,
-        "rcp-vllm==0.0.2\n",
-        wheels=("wheelhouse/rcp_vllm-0.0.1-py3-none-any.whl",),
+        "cohere-rcp-vllm==0.0.2\n",
+        wheels=("wheelhouse/cohere_rcp_vllm-0.0.1-py3-none-any.whl",),
         installed="0.0.2",
     )
     assert completed.returncode == 0, completed.stderr
     log = (tmp_path / "engine-python.log").read_text(encoding="utf-8")
-    assert "rcp-vllm==0.0.2" in log, log  # installed as named, never silently overridden
-    assert (tmp_path / "failed.txt").read_text(encoding="utf-8").strip() == "rcp-vllm==0.0.2"
+    assert "cohere-rcp-vllm==0.0.2" in log, log  # installed as named, never silently overridden
+    assert (tmp_path / "failed.txt").read_text(encoding="utf-8").strip() == "cohere-rcp-vllm==0.0.2"
     assert "staged" in completed.stderr and "0.0.1" in completed.stderr
 
 
@@ -389,12 +389,12 @@ def test_bootstrap_accepts_a_versioned_spec_the_staged_wheel_satisfies(tmp_path:
     """A versioned spec whose installed version equals the staged wheel's passes the item-9 check."""
     completed = _install_plugin_wheels(
         tmp_path,
-        "rcp-vllm==0.0.1\n",
-        wheels=("wheelhouse/rcp_vllm-0.0.1-py3-none-any.whl",),
+        "cohere-rcp-vllm==0.0.1\n",
+        wheels=("wheelhouse/cohere_rcp_vllm-0.0.1-py3-none-any.whl",),
         installed="0.0.1",
     )
     assert completed.returncode == 0, completed.stderr
-    assert (tmp_path / "allowed.txt").read_text(encoding="utf-8").strip() == "rcp-vllm"
+    assert (tmp_path / "allowed.txt").read_text(encoding="utf-8").strip() == "cohere-rcp-vllm"
     failed = tmp_path / "failed.txt"
     assert not failed.exists() or not failed.read_text(encoding="utf-8").strip()
 
@@ -627,7 +627,7 @@ def test_bootstrap_writes_a_quoted_client_wrapper_and_refuses_a_hostile_version(
     # A hostile version string: quoted, it is inert; unquoted, bash would run the substitution when the
     # wrapper runs.  Single quotes in the test body keep the payload a literal in the sourcing shell.
     body = (
-        "CLIENT_ARGS=(uvx --from 'rcp-vllm[test]==0.0.1$(touch " + str(pwned) + ")' "
+        "CLIENT_ARGS=(uvx --from 'cohere-rcp-vllm[test]==0.0.1$(touch " + str(pwned) + ")' "
         "--with rcp-test==0.0.1 --find-links '" + str(tmp_path / "harness") + "' --no-index)\n"
         f'UV_CACHE_DIR="{tmp_path}/cache"\n'
         f'write_client_wrapper "{state}" "{tmp_path}/uv"\n'
@@ -654,14 +654,14 @@ def test_bootstrap_finds_the_staged_plugin_wheel(bootstrap_functions: str, tmp_p
     behaviour fingerprint's plugin inputs; a stage without the wheel passes no --plugin-wheel."""
     stage = tmp_path / "stage"
     (stage / "wheelhouse").mkdir(parents=True)
-    wheel = stage / "wheelhouse" / "rcp_vllm-0.0.1-py3-none-any.whl"
+    wheel = stage / "wheelhouse" / "cohere_rcp_vllm-0.0.1-py3-none-any.whl"
     wheel.write_bytes(b"stub wheel")
-    completed = _bash_bootstrap_function(f'STAGE_DIR="{stage}"; staged_plugin_wheel rcp-vllm')
+    completed = _bash_bootstrap_function(f'STAGE_DIR="{stage}"; staged_plugin_wheel cohere-rcp-vllm')
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.strip() == str(wheel)
     empty = tmp_path / "empty"
     (empty / "wheelhouse").mkdir(parents=True)
-    completed = _bash_bootstrap_function(f'STAGE_DIR="{empty}"; staged_plugin_wheel rcp-vllm')
+    completed = _bash_bootstrap_function(f'STAGE_DIR="{empty}"; staged_plugin_wheel cohere-rcp-vllm')
     assert completed.returncode != 0 and completed.stdout.strip() == ""
 
 
@@ -1730,16 +1730,16 @@ def test_rc_build_builds_exactly_the_published_distributions(tmp_path: Path) -> 
     assert completed.returncode == 0, completed.stderr
     builds = [shlex.split(line) for line in log.read_text(encoding="utf-8").splitlines()]
     packages = [[words[words.index("--package") + 1] for words in builds if "--package" in words]][0]
-    assert packages == ["rcp-core", "rcp", "rcp-vllm"], builds  # release order, by name
+    assert packages == ["cohere-rcp-core", "cohere-rcp", "cohere-rcp-vllm"], builds  # release order, by name
     assert all("--all-packages" not in words for words in builds)
     # The wheelhouse the build stages: exactly the published wheels, never the unpublished member's.
     wheelhouse = tmp_path / "wheelhouse"
     shutil.copytree(dist, wheelhouse)
     listed = sorted(path.name for path in wheelhouse.iterdir())
     assert listed == [
-        "rcp-0.0.1-py3-none-any.whl",
-        "rcp_core-0.0.1-py3-none-any.whl",
-        "rcp_vllm-0.0.1-py3-none-any.whl",
+        "cohere_rcp-0.0.1-py3-none-any.whl",
+        "cohere_rcp_core-0.0.1-py3-none-any.whl",
+        "cohere_rcp_vllm-0.0.1-py3-none-any.whl",
     ], listed
     assert not any(name.startswith("rcp_test") for name in listed)
     assert "uv build --all-packages" not in RC_BUILD.read_text(encoding="utf-8")  # the trap is gone from the script
@@ -1756,7 +1756,7 @@ def test_rc_build_builds_exactly_the_published_distributions(tmp_path: Path) -> 
     assert completed.returncode == 0, completed.stderr
     builds = [shlex.split(line) for line in log.read_text(encoding="utf-8").splitlines()]
     packages = [[words[words.index("--package") + 1] for words in builds if "--package" in words]][0]
-    assert packages == ["rcp-core", "rcp", "rcp-vllm", "rcp-test"], builds
+    assert packages == ["cohere-rcp-core", "cohere-rcp", "cohere-rcp-vllm", "rcp-test"], builds
     assert sorted(path.name for path in harness.iterdir()) == ["rcp_test-0.0.1-py3-none-any.whl"]
     # The staged tree the real build copies it into: the script names the harness directory beside dist/.
     assert 'stage/"$RC_NAME"/harness' in RC_BUILD.read_text(encoding="utf-8")
@@ -1858,7 +1858,7 @@ def _fake_wheel(checkout: Path, *, with_recipes: bool = True) -> Path:
 
     dist = checkout / "dist"
     dist.mkdir(parents=True, exist_ok=True)
-    wheel = dist / "rcp_vllm-0.0.1-py3-none-any.whl"
+    wheel = dist / "cohere_rcp_vllm-0.0.1-py3-none-any.whl"
     with zipfile.ZipFile(wheel, "w") as archive:
         archive.writestr("rcp_vllm/__init__.py", "")
         if with_recipes:
@@ -1906,7 +1906,7 @@ def test_rc_build_fails_when_the_wheel_carries_no_recipes(tmp_path: Path) -> Non
     empty.mkdir()
     completed = _stage_recipes(tmp_path, empty)
     assert completed.returncode != 0
-    assert "rcp_vllm wheel" in completed.stderr
+    assert "cohere_rcp_vllm wheel" in completed.stderr
 
 
 # --- rc_build.sh: the wave lists and the whole staged tree ------------------------------------
@@ -2011,7 +2011,7 @@ def test_rc_build_downloads_each_family_lock_separately() -> None:
     script = RC_BUILD.read_text(encoding="utf-8")
     assert script.count('pip download --quiet --no-deps -r "$WORK/direct.txt"') == 2  # the exact pins
     assert script.count('pip download --quiet "$pin"') == 2  # each pin's closure, in its own resolution
-    assert script.count("hashed the local rcp pin") == 1  # the staged lock's local pin gets a hash
+    assert script.count("hashed the local cohere-rcp pin") == 1  # the staged lock's local pin gets a hash
     assert 'lock_args+=(-r "$lock")' not in script  # the batch resolution that failed
 
 
@@ -2024,7 +2024,7 @@ def test_rc_build_stages_the_real_checkout(tmp_path: Path) -> None:
     repo = Path(__file__).resolve().parents[3]
     recipes_src = repo / "packages" / "rcp-vllm" / "src" / "rcp_vllm" / "recipes"
     assert recipes_src.is_dir(), f"the recipe package data moved: {recipes_src}"
-    wheel = tmp_path / "dist" / "rcp_vllm-0.0.1-py3-none-any.whl"
+    wheel = tmp_path / "dist" / "cohere_rcp_vllm-0.0.1-py3-none-any.whl"
     wheel.parent.mkdir()
     with zipfile.ZipFile(wheel, "w") as archive:
         for path in sorted(recipes_src.rglob("*")):
@@ -2067,7 +2067,7 @@ def test_rc_build_stages_the_real_checkout(tmp_path: Path) -> None:
 
 
 def _check_pins(
-    tmp_path: Path, *, core_pin: str = '  "rcp-core==0.0.1",\n', vllm_deps: str = '  "pydantic>=2.0",\n'
+    tmp_path: Path, *, core_pin: str = '  "cohere-rcp-core==0.0.1",\n', vllm_deps: str = '  "pydantic>=2.0",\n'
 ) -> subprocess.CompletedProcess[str]:
     """Source rc_build.sh and run ``check_pins`` on a scratch checkout with the given manifests."""
     checkout = tmp_path / "checkout"
@@ -2081,14 +2081,17 @@ def _check_pins(
 
     _write(
         checkout / "packages" / "rcp" / "pyproject.toml",
-        '[project]\nname = "rcp"\nversion = "0.0.1"\ndependencies = [\n' + core_pin + "]\n",
+        '[project]\nname = "cohere-rcp"\nversion = "0.0.1"\ndependencies = [\n' + core_pin + "]\n",
     )
     _write(
         checkout / "packages" / "rcp-vllm" / "pyproject.toml",
-        '[project]\nname = "rcp-vllm"\nversion = "0.0.1"\ndependencies = [\n' + vllm_deps + "]\n",
+        '[project]\nname = "cohere-rcp-vllm"\nversion = "0.0.1"\ndependencies = [\n' + vllm_deps + "]\n",
     )
-    for member in ("rcp-core", "rcp-test"):
-        _write(checkout / "packages" / member / "pyproject.toml", f'[project]\nname = "{member}"\nversion = "0.0.1"\n')
+    for member, name in (("rcp-core", "cohere-rcp-core"), ("rcp-test", "rcp-test")):
+        _write(
+            checkout / "packages" / member / "pyproject.toml",
+            f'[project]\nname = "{name}"\nversion = "0.0.1"\n',
+        )
     _write(checkout / "CITATION.cff", "cff-version: 1.2.0\nversion: 0.0.1\n")
     scripts = checkout / ".github" / "scripts"
     scripts.mkdir(parents=True, exist_ok=True)
@@ -2133,16 +2136,16 @@ def test_rc_build_runs_the_release_checks_and_smokes_from_one_home() -> None:
 
 
 def test_rc_build_pin_check_accepts_the_real_manifests(tmp_path: Path) -> None:
-    """rcp pins rcp-core==VERSION; the lean rcp-vllm names NO sibling (decision 18: no
-    lockstep version pin between the two packages -- the manifest does not depend on rcp)."""
+    """cohere-rcp pins cohere-rcp-core==VERSION; the lean cohere-rcp-vllm names NO sibling (decision 18:
+    no lockstep version pin between the two packages -- the manifest does not depend on cohere-rcp)."""
     completed = _check_pins(tmp_path)
     assert completed.returncode == 0, completed.stderr
 
 
-@pytest.mark.parametrize("sibling", ["rcp==0.0.1", "rcp-core==0.0.1", "rcp-test==0.0.1"])
+@pytest.mark.parametrize("sibling", ["cohere-rcp==0.0.1", "cohere-rcp-core==0.0.1", "rcp-test==0.0.1"])
 def test_rc_build_pin_check_refuses_a_sibling_in_the_vllm_manifest(tmp_path: Path, sibling: str) -> None:
     """The pre-fix check asserted the opposite and aborted every build: ANY workspace sibling named in
-    the vllm manifest is refused (not only rcp), naming decision 18."""
+    the vllm manifest is refused (not only cohere-rcp), naming decision 18."""
     completed = _check_pins(tmp_path, vllm_deps=f'  "{sibling}",\n')
     assert completed.returncode != 0
     assert "no sibling" in completed.stderr
@@ -2150,16 +2153,16 @@ def test_rc_build_pin_check_refuses_a_sibling_in_the_vllm_manifest(tmp_path: Pat
 
 
 def test_rc_build_pin_check_accepts_the_package_naming_itself(tmp_path: Path) -> None:
-    """The manifest's own distribution (rcp-vllm) is not a sibling: an entry naming it is not the
+    """The manifest's own distribution (cohere-rcp-vllm) is not a sibling: an entry naming it is not the
     workspace-sibling refusal (nothing sane names itself, but the check must not confuse the names)."""
-    completed = _check_pins(tmp_path, vllm_deps='  "rcp-vllm==0.0.1",\n')
+    completed = _check_pins(tmp_path, vllm_deps='  "cohere-rcp-vllm==0.0.1",\n')
     assert completed.returncode == 0, completed.stderr
 
 
 def test_rc_build_pin_check_refuses_a_missing_core_pin(tmp_path: Path) -> None:
     completed = _check_pins(tmp_path, core_pin="")
     assert completed.returncode != 0
-    assert "rcp-core==0.0.1" in completed.stderr
+    assert "cohere-rcp-core==0.0.1" in completed.stderr
 
 
 # --- judgecheck.sh: the release checklist's judge item (both thinking modes, the media probe) --------
