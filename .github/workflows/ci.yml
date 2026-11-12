@@ -161,7 +161,7 @@ jobs:
       - run: uv venv "$RUNNER_TEMP/vllm-pkg" --python 3.12
       - run: >-
           uv pip install --python "$RUNNER_TEMP/vllm-pkg/bin/python"
-          -e cohere-rcp-core -e cohere-rcp -e 'cohere-rcp-vllm[test]'
+          -e packages/rcp-core -e packages/rcp -e 'packages/rcp-vllm[test]'
       - run: '"$RUNNER_TEMP/vllm-pkg/bin/python" -m pytest packages/rcp-vllm/tests --ignore=packages/rcp-vllm/tests/models -q'
 
   wheel-smoke:
