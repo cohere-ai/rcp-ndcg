@@ -1,8 +1,9 @@
 """The one entry-point registry: the names in a group, and the refusal of an ambiguous one.
 
 Every plugin seam of the product resolves its names through here -- the dataset readers and writers
-(``rcp.readers``, ``rcp.writers``), the result sinks (``rcp.results``) and the job runners
-(``rcp.runners``) -- so one name has one lookup and one duplicate-name policy.  The caller fetches its
+(``rcp.readers``, ``rcp.writers``), the result sinks (``rcp.results``), the job runners
+(``rcp.runners``), the scoring metrics (``rcp.metrics``) and the run-event subscribers
+(``rcp.events``) -- so one name has one lookup and one duplicate-name policy.  The caller fetches its
 own group (one ``entry_points`` call, its group constant beside the seam it serves) and passes the entries
 in; this module owns what happens to them.
 

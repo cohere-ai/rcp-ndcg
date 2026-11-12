@@ -37,10 +37,11 @@ runs per that package's README.
 - `packages/rcp/src/rcp`: the pipeline and the CLI. Imports point inward only, in this order:
    `rcp_core → support → storage → data → inference → retrieval → judging → calibration → eval → runners → runs → results → schemas | mcp → cli`.
   Eager imports have no cycles; `schemas` and `mcp` import the CLI's command table lazily, to describe and serve it.
-  The product reads six entry-point groups, one per extension seam: `rcp.runners` (job execution),
+  The product reads eight entry-point groups, one per extension seam: `rcp.runners` (job execution),
   `rcp.adapters` (wire adapters, per role), `rcp.readers` and `rcp.writers` (dataset formats),
-  `rcp.results` (result sinks) and `rcp.fake_transports` (the transport providers behind a `fake://`
-  URL). `tests/contract/snapshots/packaging.json` records the list as data and is the authority; the test
+  `rcp.results` (result sinks), `rcp.fake_transports` (the transport providers behind a `fake://`
+  URL), `rcp.metrics` (the scoring metrics) and `rcp.events` (the run-event subscribers).
+  `tests/contract/snapshots/packaging.json` records the list as data and is the authority; the test
   package's own `rcp.emulators` group is read by `rcp_test`, never by the product.
 - `experiments/`: paper reproduction from public data. It imports the package; the package never imports it.
 - `examples/`: runnable examples (`tests/docs` runs them). `skills/rcp/`: the skill for agents that use the
@@ -71,7 +72,7 @@ Before adding a helper, `git grep` for an existing one. A second implementation 
 | Evaluation: scoring rankings, comparisons, explanations, MTEB tasks | `rcp.eval` |
 | Job execution (local, SLURM, Kubernetes, plugins) | `rcp.runners` |
 | Paths, cache and storage URIs | `rcp.support`, `rcp.storage` |
-| Entry-point plugin lookup (the names in a group, the one duplicate-name policy, the load check) | `rcp.support.entrypoints`, used by the readers/writers, results and runners registries |
+| Entry-point plugin lookup (the names in a group, the one duplicate-name policy, the load check) | `rcp.support.entrypoints`, used by the readers/writers, results, runners and metrics registries and by the run-event subscribers |
 | Identity and hashing | `rcp.support.identity` |
 | Errors and exit codes | `rcp.errors` |
 

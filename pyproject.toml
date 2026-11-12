@@ -20,7 +20,9 @@ dev = [
   "rcp-test",
 ]
 
-# The one extension seam: job runners. The public ones are registered here like any plugin would be.
+# The root manifest declares no entry points: a seam's plugins are registered in the manifest of the distribution
+# that provides them -- packages/rcp for the readers, writers, results sinks and runners, packages/rcp-test for the
+# fake transports -- and a third-party package registers its own.
 
 [tool.pytest.ini_options]
 # Collect the root test tree and the two distributions' suites it was split into (experiments/ and
