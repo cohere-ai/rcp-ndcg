@@ -205,8 +205,9 @@ REWRITES: tuple[tuple[str, str, str, tuple[str, ...] | None], ...] = (
     # The main name, whole-token: never a sibling distribution (`-vllm`, `-test`), never an artifact
     # tag or a `$id` (`rcp-ndcg.<name>.v1`), never the extension keys (`x-rcp-ndcg-*`), never the
     # public dataset ids (`rcp-ndcg-nanobeir`, ...) or the bucket (`rcp-ndcg-rfc`), and never the
-    # repository URL (`cohere-ai/rcp-ndcg`), which is the operator's and redirects.
-    ("main-name", r"(?<![\w./-])rcp-ndcg(?![-.\w])", "rcp", None),
+    # repository's own name, which did not move: the owner-qualified URL (`cohere-ai/rcp-ndcg`) and the
+    # PyPI trusted-publisher instructions' `repository rcp-ndcg` (AGENTS.md, the release workflow).
+    ("main-name", r"(?<!repository )(?<!repository `)(?<![\w./-])rcp-ndcg(?![-.\w])", "rcp", None),
     # The main module, in the contexts where the token can only be it. After the rename the bare
     # spelling is the metric's id far more often than the module's (`Literal["rcp_ndcg", ...]`,
     # `METRICS`, `--metrics rcp_ndcg`), so it is left to the owning page; the rules below are the
@@ -454,6 +455,8 @@ def _apply_rewrites(text: str, name: Path) -> tuple[str, list[str]]:
             continue  # its parametrize list spells both identity tags as data: a pre-rename store carries the old one
         if rule.startswith("test-") and name.as_posix() == "tests/docs/test_changelog.py":
             continue  # it pins the shipped 0.0.1 entry's harness homes as names, never live paths
+        if rule == "main-name" and name.as_posix() == "tests/docs/test_changelog.py":
+            continue  # its patterns spell the pre-rename names as data to recognise, never a live spelling
         if rule == "root-src" and name.name == "MANIFEST.in":
             continue  # `recursive-include src/rcp ...` is relative to its own directory
         if rule == "root-src" and name.as_posix() == "tests/docs/test_packaging.py":

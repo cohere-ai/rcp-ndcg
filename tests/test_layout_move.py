@@ -105,6 +105,8 @@ source = { editable = "packages/rcp-ndcg-core" }
 
 AGENTS = """\
 Layout: rcp_ndcg_core -> src/rcp_ndcg (imports point inward), tests under tests/.
+The PyPI publisher names owner `cohere-ai` and repository `rcp-ndcg`; the remote is
+`git@github.com:cohere-ai/rcp-ndcg.git`.
 """
 
 FIXTURE: dict[str, str] = {
@@ -289,6 +291,21 @@ def test_the_move_performs_every_move_and_rewrite(tmp_path: Path) -> None:
     git(worktree, "-c", "user.name=fixture", "-c", "user.email=f@example.invalid", "commit", "-qam", "the move")
     history = git(worktree, "log", "--follow", "--oneline", "--", "packages/rcp/src/rcp/__init__.py")
     assert "fixture" in history
+
+
+def test_the_repository_name_survives_the_rename(tmp_path: Path) -> None:
+    """The rename moved the distributions, not the repository.
+
+    PyPI identifies a trusted publisher by owner, repository, workflow and environment, so the
+    instructions that name the repository field keep the repository's own name (`rcp-ndcg`); only the
+    owner-qualified URL was ever exempt, and a bare `rcp-ndcg` there is not a distribution spelling.
+    """
+    worktree = make_fixture(tmp_path)
+    run_layout(worktree)
+    agents = (worktree / "AGENTS.md").read_text(encoding="utf-8")
+    assert "repository `rcp-ndcg`" in agents
+    assert "cohere-ai/rcp-ndcg.git" in agents
+    assert "repository `rcp`" not in agents
 
 
 def test_the_harness_follows_the_distribution_rename(tmp_path: Path) -> None:
