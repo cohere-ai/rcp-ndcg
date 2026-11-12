@@ -8,7 +8,7 @@ rendered copy. This page documents what the rows and the surface mean.
 [Serve a retrieval model](../how-to/serve-a-model.md) walks through the use of one recipe, and
 [add a serving recipe](../how-to/add-a-model.md) writes one.
 
-## The `rcp-vllm` distribution
+## The `cohere-rcp-vllm` distribution
 
 The recipes are package data, and they are grouped into **families**. `recipes/<family>/family.yaml` holds the shared
 blocks and the `variants` table. The family also has ONE `reference.py`, which the variant parameterises, and one chat
@@ -251,5 +251,5 @@ for a file of the operator's own. A run identity therefore follows the content o
 path. On the command line, `--retriever recipe:<id-or-path>` and `--reranker recipe:<id-or-path>` expand to that
 mapping, with the URL from `--set ...base_url=...` or a `serve:` engine. `recipe:./my-family/` and `recipe:/abs/path`
 load the family directory through the same schema. A multi-variant directory names its variants in the refusal.
-Resolution is lazy through `rcp_vllm`, so `rcp-vllm` must be installed alongside `rcp`; there is no
+Resolution is lazy through `rcp_vllm`, so `cohere-rcp-vllm` must be installed alongside `cohere-rcp`; there is no
 extra alias for it. Without it the refusal is typed, and its hint is the install line.

@@ -202,9 +202,9 @@ commands are:
 # the three published wheels, by name, as release.yml builds them (never --all-packages: the
 # unpublished fourth workspace member rcp-test must not be swept into the release files; the
 # pyproject.toml versions must match)
-uv build --package=rcp-core --out-dir /shared/wheelhouse/<version>
-uv build --package=rcp --out-dir /shared/wheelhouse/<version>
-uv build --package=rcp-vllm --out-dir /shared/wheelhouse/<version>
+uv build --package=cohere-rcp-core --out-dir /shared/wheelhouse/<version>
+uv build --package=cohere-rcp --out-dir /shared/wheelhouse/<version>
+uv build --package=cohere-rcp-vllm --out-dir /shared/wheelhouse/<version>
 # the unpublished harness wheel (the node's client environment imports rcp_test), in its own directory
 uv build --package=rcp-test --out-dir /shared/wheelhouse/<version>/harness
 # the locked dependencies, pinned exactly (the command the committed requirements-constraints.txt records)
@@ -212,7 +212,7 @@ uv export --frozen --no-hashes --no-emit-workspace --no-dev --extra calibrate --
   -o /shared/wheelhouse/<version>/requirements-constraints.txt
 pip download -r /shared/wheelhouse/<version>/requirements-constraints.txt \
   -c /shared/wheelhouse/<version>/requirements-constraints.txt \
-  'rcp-vllm[test]==<version>' 'rcp[hf]==<version>' 'rcp-test==<version>' \
+  'cohere-rcp-vllm[test]==<version>' 'cohere-rcp[hf]==<version>' 'rcp-test==<version>' \
   $(for lock in packages/rcp-vllm/src/rcp_vllm/recipes/*/reference.lock; do
       grep -q '^# own-torch: true' "$lock" || printf -- '-r %s ' "$lock";
     done) \

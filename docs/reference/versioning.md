@@ -64,7 +64,7 @@ A `0.0.x` patch release:
   fit reproduce the paper. Anchor tests pin them. A change to their numbers is deliberate and tested, and it goes into
   the CHANGELOG ([REPRODUCIBILITY.md](https://github.com/cohere-ai/rcp/blob/main/REPRODUCIBILITY.md)).
 
-The four distributions carry the same version. `rcp` pins `rcp-core==<version>`. `rcp-vllm` carries the
+The four distributions carry the same version. `cohere-rcp` pins `cohere-rcp-core==<version>`. `cohere-rcp-vllm` carries the
 same version but pins no sibling, and `rcp-test` is never published.
 
 ### Deprecating a public name

@@ -115,7 +115,7 @@ does to a shipped one. The command refuses a version that this `rcp` does not re
 
 ## 4. The client host: `recipe:` in the retriever config
 
-The client side needs `rcp` with `rcp-vllm` installed alongside it (no extra alias). A role config that names `recipe: <id>` takes its whole client block from the recipe. The block gives the api, tokenizer, budgets, template, media and instruction mode. `base_url` (and the other run-time fields) stays on the config. Any content field set
+The client side needs `cohere-rcp` with `cohere-rcp-vllm` installed alongside it (no extra alias). A role config that names `recipe: <id>` takes its whole client block from the recipe. The block gives the api, tokenizer, budgets, template, media and instruction mode. `base_url` (and the other run-time fields) stays on the config. Any content field set
 explicitly must equal the recipe's. Otherwise the config is refused with an error that names both values.
 
 ```yaml
