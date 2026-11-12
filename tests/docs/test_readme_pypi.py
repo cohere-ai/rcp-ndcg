@@ -3,7 +3,7 @@
 Images (``<img src=`` and the ``<picture>`` ``srcset=``, quoted or unquoted, ``<a href=`` too) and Markdown link
 targets — regular links, ``![alt](...)`` images and ``[text]: target`` reference definitions alike — must be
 absolute:
-``https://raw.githubusercontent.com/...`` for images and ``https://github.com/cohere-ai/rcp-ndcg/blob/main/...``
+``https://raw.githubusercontent.com/...`` for images and ``https://github.com/cohere-ai/rcp/blob/main/...``
 for links to repository files. Paths that resolve in a checkout (``docs/data.md``) render as broken links on PyPI.
 All scans run outside code (fenced blocks and inline code), which PyPI does not render as HTML or links.
 """

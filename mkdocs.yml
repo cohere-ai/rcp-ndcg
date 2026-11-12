@@ -4,8 +4,8 @@
 # end), Reference (an exact name, flag or id), entered through Home, Quickstart and Data.
 site_name: RCP-nDCG
 site_description: RCP-nDCG, nDCG with calibrated relevance gains from an LLM judge.
-repo_url: https://github.com/cohere-ai/rcp-ndcg
-repo_name: cohere-ai/rcp-ndcg
+repo_url: https://github.com/cohere-ai/rcp
+repo_name: cohere-ai/rcp
 edit_uri: edit/main/docs/
 
 theme:

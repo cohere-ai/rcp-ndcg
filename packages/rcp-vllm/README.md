@@ -46,10 +46,10 @@ The last line is a **recipe file of your own**: a family directory loaded throug
 unshipped with `status: unverified` in every record and identified by the content hash of its resolved form
 (`unshipped:sha256:<hex>`), never by a shipped id.
 
-The [recipe guide](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/serve-a-model.md) walks through
+The [recipe guide](https://github.com/cohere-ai/rcp/blob/main/docs/how-to/serve-a-model.md) walks through
 the client side (`recipe: <id>`, or `recipe:./my-family/` for a file of your own) and the deployment overrides,
 and [validate a recipe on
-GPUs](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/validate-a-recipe.md) through the waves every
+GPUs](https://github.com/cohere-ai/rcp/blob/main/docs/how-to/validate-a-recipe.md) through the waves every
 recipe passes before the release.
 
 ## The recipes
@@ -145,7 +145,7 @@ selection -- `mrl_dim` or the engine-side `dimensions` -- is accepted when `k` i
 otherwise. `--retriever recipe:<id>` and
 `--reranker recipe:<id>` are command-line shorthands. Recipes are resolved lazily, so `rcp-vllm` must be
 installed beside `rcp`; without it the refusal is typed and its hint is the install line
-([recipes and serving models](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/recipes.md)).
+([recipes and serving models](https://github.com/cohere-ai/rcp/blob/main/docs/reference/recipes.md)).
 
 ## Model plugins
 
@@ -178,14 +178,14 @@ which is why the rules' home is the engine).
 ## Validation
 
 The equivalence harness, the recorder, the reference cases and the GPU job tooling live in the unpublished
-`rcp-test` package ([its page](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/rcp-test.md));
+`rcp-test` package ([its page](https://github.com/cohere-ai/rcp/blob/main/docs/reference/rcp-test.md));
 authors of new recipes start at [add a serving
-recipe](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/add-a-model.md). The judging pipeline and
+recipe](https://github.com/cohere-ai/rcp/blob/main/docs/how-to/add-a-model.md). The judging pipeline and
 the metric are `rcp` and `rcp-core`.
 
 The T4 end-to-end run scenarios (`scenarios/<id>.yaml`, schema `schema/scenario.schema.json`) and their in-pod
 driver (`python -m rcp_test.e2e`) are described in [release candidates and the GPU
-waves](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/release-candidates.md).
+waves](https://github.com/cohere-ai/rcp/blob/main/docs/how-to/release-candidates.md).
 
 The stage-2 pairs files (`pairs/<id>.jsonl` and their `manifest.json`) come from the deterministic request
 generator `python -m rcp_test.observe.requests`; the wave's observation-corpus step, the T3 quality stage
@@ -194,10 +194,10 @@ format is documented in `schema/observation-corpus.md`; its one reader is `rcp_t
 corpus is keyed by the recipe behaviour fingerprint (`rcp_test.fingerprint`); `python -m rcp_test.changes`
 selects the recipes to re-record and diffs two corpora of one recipe. The verified fake engines that replay the
 corpora are `rcp_test.engines` ([use the verified fake
-engines](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/how-to/use-verified-fake-engines.md)).
+engines](https://github.com/cohere-ai/rcp/blob/main/docs/how-to/use-verified-fake-engines.md)).
 
 ## License
 
 Apache-2.0: `LICENSE` and `NOTICE` ship in every wheel and sdist.
-Security reports: [SECURITY.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/SECURITY.md) (GitHub private
+Security reports: [SECURITY.md](https://github.com/cohere-ai/rcp/blob/main/SECURITY.md) (GitHub private
 vulnerability reporting).

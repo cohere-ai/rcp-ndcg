@@ -4,7 +4,7 @@ title: "RCP-nDCG"
 type: software
 version: 0.0.1
 license: Apache-2.0
-repository-code: "https://github.com/cohere-ai/rcp-ndcg"
+repository-code: "https://github.com/cohere-ai/rcp"
 authors:
   - given-names: Fabian David
     family-names: Schmidt

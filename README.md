@@ -28,7 +28,7 @@ pip install cohere-rcp-vllm             # serving recipes; resolves recipe:<id> 
 
 ## Documentation
 
-The rendered pages are at [the documentation site](https://cohere-ai.github.io/rcp-ndcg/). The site shows
+The rendered pages are at [the documentation site](https://cohere-ai.github.io/rcp/). The site shows
 the concepts, the how-to guides and the command line. It also holds the recipe catalog and the [compatibility and
 versioning policy](docs/reference/versioning.md). The pages are in `docs/`. `mkdocs build --strict` renders them.
 [The quickstart](docs/quickstart.md) is a 30-minute introduction from the install to a scored run.

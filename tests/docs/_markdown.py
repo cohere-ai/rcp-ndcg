@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-REPO_URL = "https://github.com/cohere-ai/rcp-ndcg/blob/main/"
+REPO_URL = "https://github.com/cohere-ai/rcp/blob/main/"
 
 _FENCE = re.compile(r"^(```+|~~~+)\s*([\w-]*)")
 _LINK = re.compile(r"(?<!!)\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")

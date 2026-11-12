@@ -43,8 +43,8 @@ From a checkout of the repository, `uv sync --extra hf --extra calibrate` sets u
 same command, because `cohere-rcp` pins it; with uv the `cohere-rcp` line alone suffices):
 
 ```bash
-pip install "cohere-rcp-core @ git+https://github.com/cohere-ai/rcp-ndcg@v0.0.1#subdirectory=packages/rcp-core" \
-            "cohere-rcp[hf,calibrate] @ git+https://github.com/cohere-ai/rcp-ndcg@v0.0.1#subdirectory=packages/rcp" \
+pip install "cohere-rcp-core @ git+https://github.com/cohere-ai/rcp@v0.0.1#subdirectory=packages/rcp-core" \
+            "cohere-rcp[hf,calibrate] @ git+https://github.com/cohere-ai/rcp@v0.0.1#subdirectory=packages/rcp" \
             --extra-index-url https://download.pytorch.org/whl/cpu
 ```
 

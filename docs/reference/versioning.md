@@ -62,7 +62,7 @@ A `0.0.x` patch release:
 - does not rename or remove a public name, and does not change an exit code. It does not change the meaning of a
   schema field or of a shipped number. The metric, the gains, the scoring protocols, the schedules and the calibration
   fit reproduce the paper. Anchor tests pin them. A change to their numbers is deliberate and tested, and it goes into
-  the CHANGELOG ([REPRODUCIBILITY.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/REPRODUCIBILITY.md)).
+  the CHANGELOG ([REPRODUCIBILITY.md](https://github.com/cohere-ai/rcp/blob/main/REPRODUCIBILITY.md)).
 
 The four distributions carry the same version. `rcp` pins `rcp-core==<version>`. `rcp-vllm` carries the
 same version but pins no sibling, and `rcp-test` is never published.

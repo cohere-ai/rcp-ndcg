@@ -155,7 +155,7 @@ the job starts:
 
 ```bash
 uvx --from 'cohere-rcp[calibrate,hf,s3,azure]==<version>' \
-  --constraints https://github.com/cohere-ai/rcp-ndcg/releases/download/v<version>/requirements-constraints.txt \
+  --constraints https://github.com/cohere-ai/rcp/releases/download/v<version>/requirements-constraints.txt \
   --index https://download.pytorch.org/whl/cpu --index-strategy unsafe-best-match \
   rcp run resume --run <run_dir> --mirror <uri>
 ```
@@ -165,7 +165,7 @@ is therefore the version that the release was tested with. `unsafe-best-match` l
 CPU index next to PyPI for every package. torch then resolves to its CPU build at the locked version. Without
 it, uv stops at the first index that has a package, and it fails. On Kubernetes uv's cache lives on the
 scratch volume. Without PyPI, install from the repository instead. Use
-`--from 'cohere-rcp[calibrate,hf,s3,azure] @ git+https://github.com/cohere-ai/rcp-ndcg@v<version>'` in the
+`--from 'cohere-rcp[calibrate,hf,s3,azure] @ git+https://github.com/cohere-ai/rcp@v<version>'` in the
 larger `ghcr.io/astral-sh/uv:python3.12-trixie` image, which has git.
 
 **Before the release is on PyPI**, the coordinator installs from a **wheelhouse** instead of PyPI. One example

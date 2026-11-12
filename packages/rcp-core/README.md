@@ -1,6 +1,6 @@
 # rcp-core
 
-The dependency-light core of [RCP-nDCG](https://github.com/cohere-ai/rcp-ndcg): nDCG with float gains and explicit
+The dependency-light core of [RCP-nDCG](https://github.com/cohere-ai/rcp): nDCG with float gains and explicit
 tie rules, the RCP gain and the other gains, the paper's scoring protocols, the public records, and the IRT
 estimators. It needs numpy and pydantic only; the `irt` extra adds torch and scipy for fitting.
 
@@ -29,6 +29,6 @@ print(pass_probabilities(1.4, items), count_gain([3, 2, 2, 1, 0], placements=3),
 RCP-, qrel- and Count-nDCG differ only in their gains. `PROTOCOLS` holds the paper's per-suite rules (candidates,
 excluded documents, tie rule, rounding), `score_query` scores one query under one, and `aggregate` averages like
 the paper. The pipeline that produces calibrated abilities (judging, calibration, evaluation, the CLI) is the
-`rcp` package; see its [documentation](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/index.md).
-Security reports: [SECURITY.md](https://github.com/cohere-ai/rcp-ndcg/blob/main/SECURITY.md) (GitHub private
+`rcp` package; see its [documentation](https://github.com/cohere-ai/rcp/blob/main/docs/index.md).
+Security reports: [SECURITY.md](https://github.com/cohere-ai/rcp/blob/main/SECURITY.md) (GitHub private
 vulnerability reporting).

@@ -1,7 +1,7 @@
 # Recipes and serving models
 
 This page gives the exact names of the serving surface. The catalog has 24 shipped families and 44 variants. The table
-in the [`rcp-vllm` README](https://github.com/cohere-ai/rcp-ndcg/blob/main/packages/rcp-vllm/README.md) holds the
+in the [`rcp-vllm` README](https://github.com/cohere-ai/rcp/blob/main/packages/rcp-vllm/README.md) holds the
 canonical variant ids. It gives the model, the role, the input and the Matryoshka head of each variant. It also gives
 the plugin, the reference and the status of every row. That README is the PyPI page of the distribution and the one
 rendered copy. This page documents what the rows and the surface mean.
