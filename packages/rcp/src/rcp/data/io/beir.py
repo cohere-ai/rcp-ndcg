@@ -33,6 +33,7 @@ from rcp.data.io.base import (
     SinkWriter,
     SourceReader,
     grade,
+    record_duplicate_counts,
     required_id,
 )
 from rcp.errors import ConfigError, DataError, MissingInputError
@@ -90,23 +91,6 @@ class BeirReader(SourceReader):
         self._counts = DuplicateCounts(policy=self.duplicates_policy)
         self._counted: set[str] = set()
 
-    def _note(self, what: str, fold: DuplicateFold) -> None:
-        """Record one table's duplicates policy: merged into the reader's totals on its first pass (so a
-        re-read never double-counts), and logged whenever it did anything."""
-        counts = fold.counts()
-        if what not in self._counted:
-            self._counted.add(what)
-            self._counts = DuplicateCounts(
-                policy=self.duplicates_policy,
-                folded=self._counts.folded + counts.folded,
-                resolved=self._counts.resolved + counts.resolved,
-            )
-        if counts.folded or counts.resolved:
-            logger.info(
-                f"{self.uri}: {what} duplicates: {counts.folded} exact folded, "
-                f"{counts.resolved} resolved by the {fold.policy.value} policy"
-            )
-
     def documents(self) -> Iterator[Document]:
         path = self._first_existing(CORPUS_FILENAMES, "corpus")
         fold = DuplicateFold(self.duplicates_policy, source=self.uri, what="corpus row", replaceable=False)
@@ -126,7 +110,7 @@ class BeirReader(SourceReader):
             )
             if fold.add(str(doc_id), (title if isinstance(title, str) else None, str(text))):
                 yield document
-        self._note("corpus", fold)
+        self._counts = record_duplicate_counts(fold, what="corpus", totals=self._counts, counted=self._counted)
 
     def queries(self) -> Iterator[Query]:
         path = self._first_existing(QUERIES_FILENAMES, "queries")
@@ -143,7 +127,7 @@ class BeirReader(SourceReader):
             query = Query(query_id=str(query_id), query=str(text), instruction=instruction)
             if fold.add(str(query_id), (str(text), instruction if isinstance(instruction, str) else None)):
                 yield query
-        self._note("queries", fold)
+        self._counts = record_duplicate_counts(fold, what="queries", totals=self._counts, counted=self._counted)
 
     def qrels(self) -> dict[ID, dict[ID, float]]:
         path = self._qrels_path()
@@ -169,7 +153,7 @@ class BeirReader(SourceReader):
                 label = grade(score, source=f"{path}:{line_number}")
                 if fold.add(f"{query_id}/{doc_id}", (label,)):
                     out.setdefault(str(query_id), {})[str(doc_id)] = label
-        self._note("qrels", fold)
+        self._counts = record_duplicate_counts(fold, what="qrels", totals=self._counts, counted=self._counted)
         return out
 
     def _first_existing(self, names: tuple[str, ...], what: str) -> str:

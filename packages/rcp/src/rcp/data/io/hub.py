@@ -46,7 +46,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, TypeGuard
 
-from rcp_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
+from rcp_core.content import Content, ImagePart, TextPart, VideoPart
 from rcp_core.records import ID, Document, Query
 
 from rcp.data.io.base import (
@@ -58,15 +58,11 @@ from rcp.data.io.base import (
     SourceReader,
     grade,
     lift_task_instruction,
+    record_duplicate_counts,
     required_id,
+    text_of,
 )
-from rcp.data.media import (
-    IMAGE_MIME_BY_SUFFIX,
-    VIDEO_MIME_BY_SUFFIX,
-    image_dimensions,
-    media_extension,
-    store_media,
-)
+from rcp.data.media import media_parts
 from rcp.data.revisions import _hub_cache_dir, _hub_offline, is_commit, resolve_revision
 from rcp.errors import (
     ConfigError,
@@ -89,6 +85,12 @@ one row; the two are different experiments over the same corpus)."""
 
 MEDIA_COLUMNS = ("image", "video")
 """The media columns of a corpus or query row; the names mteb's loader reserves (audio is deferred)."""
+
+_CONVERSATION_HINT = (
+    "the Hub layout's text is a string (mteb's conversation form is not loaded yet: convert the repository, or "
+    "read it through mteb:<Task>)"
+)
+"""What the Hub reader's text refusal says to do: the two remedies this reader's own sources offer."""
 
 _PART_SUFFIXES = ("-corpus", "-queries", "-qrels", "-top_ranked", "-instruction", "-excluded")
 _UNPREFIXED_PARTS = frozenset(
@@ -320,7 +322,7 @@ class HubReader(SourceReader):
             if fold.add(document.id, self._fingerprint(row)):
                 yield document
         if checked:
-            self._note_row_duplicates("corpus", fold)
+            self._counts = record_duplicate_counts(fold, what="corpus", totals=self._counts, counted=self._counted)
 
     def _check_document_parts(self, row: Mapping[str, Any]) -> None:
         """Refuse a corpus that lacks what ``document_parts`` asks for (nothing is silently substituted)."""
@@ -340,7 +342,11 @@ class HubReader(SourceReader):
         doc_id = required_id(row, ("_id", "id"), source=self.source, what="a corpus row")
         title = _text_or_none(row.get("title"))
         media = self._media_of(row)
-        body = "" if self.document_parts == "image" else _text_of(row, "text", what="a corpus row", source=self.source)
+        body = (
+            ""
+            if self.document_parts == "image"
+            else text_of(row, what="corpus row", source=self.source, hint=_CONVERSATION_HINT)
+        )
         if not media:
             return Document(doc_id=doc_id, title=title, text=body)
         parts: list[TextPart | ImagePart | VideoPart] = [TextPart(text=body)] if body else []
@@ -366,10 +372,10 @@ class HubReader(SourceReader):
             query = self._query(query_id, row, instructions(query_id, row))
             if fold.add(query_id, self._fingerprint(row)):
                 yield query
-        self._note_row_duplicates("query", fold)
+        self._counts = record_duplicate_counts(fold, what="query", totals=self._counts, counted=self._counted)
 
     def _query(self, query_id: str, row: Mapping[str, Any], instruction: str | None) -> Query:
-        text = _text_of(row, "text", what="a query row", source=self.source)
+        text = text_of(row, what="query row", source=self.source, hint=_CONVERSATION_HINT)
         media = self._media_of(row, corpus=False)
         if not media:
             return Query(query_id=query_id, query=text, instruction=instruction)
@@ -571,7 +577,7 @@ class HubReader(SourceReader):
                                 "is not finite"
                             )
                         thetas.setdefault(query_id, {})[doc_id] = float(theta)
-            self._note_row_duplicates("qrels", fold)
+            self._counts = record_duplicate_counts(fold, what="qrels", totals=self._counts, counted=self._counted)
             self._labels = _Labels(qrels, gains, thetas)
         return self._labels
 
@@ -585,7 +591,7 @@ class HubReader(SourceReader):
             docs = _list_column(self, row, ("corpus-ids", "corpus_ids"), query_id, "top_ranked")
             if fold.add(query_id, (tuple(str(doc) for doc in docs),)):
                 candidates[query_id] = [str(doc) for doc in docs]
-        self._note_row_duplicates("top_ranked", fold)
+        self._counts = record_duplicate_counts(fold, what="top_ranked", totals=self._counts, counted=self._counted)
         return candidates or None
 
     def excluded(self) -> dict[ID, list[ID]]:
@@ -597,7 +603,7 @@ class HubReader(SourceReader):
             docs = _list_column(self, row, ("excluded-corpus-ids", "excluded_corpus_ids"), query_id, "excluded")
             if fold.add(query_id, (tuple(str(doc) for doc in docs),)):
                 excluded[query_id] = [str(doc) for doc in docs]
-        self._note_row_duplicates("excluded", fold)
+        self._counts = record_duplicate_counts(fold, what="excluded", totals=self._counts, counted=self._counted)
         return excluded
 
     # -- the split of the labels, for the provenance -----------------------
@@ -650,23 +656,6 @@ class HubReader(SourceReader):
         row."""
         return DuplicateFold(self.duplicates_policy, source=self.source, what=what, replaceable=replaceable)
 
-    def _note_row_duplicates(self, what: str, fold: DuplicateFold) -> None:
-        """Record one table's duplicates policy: merged into the reader's totals on its first pass (so a
-        re-read never double-counts), and logged whenever it did anything."""
-        counts = fold.counts()
-        if what not in self._counted:
-            self._counted.add(what)
-            self._counts = DuplicateCounts(
-                policy=self.duplicates_policy,
-                folded=self._counts.folded + counts.folded,
-                resolved=self._counts.resolved + counts.resolved,
-            )
-        if counts.folded or counts.resolved:
-            logger.info(
-                f"{self.source}: {what} duplicates: {counts.folded} exact folded, "
-                f"{counts.resolved} resolved by the {fold.policy.value} policy"
-            )
-
     def _media_of(self, row: Mapping[str, Any], *, corpus: bool = True) -> list[ImagePart | VideoPart]:
         """A row's media columns as content parts (``image``, ``video``; audio is deferred), persisted once.
 
@@ -675,28 +664,7 @@ class HubReader(SourceReader):
         """
         if corpus and self.document_parts == "text":
             return []
-        parts: list[ImagePart | VideoPart] = []
-        for column, part_type in (("image", ImagePart), ("video", VideoPart)):
-            cell = row.get(column)
-            if cell is None:
-                continue
-            for ref in self._persist(cell, column):
-                parts.append(part_type(ref=ref))
-        return parts
-
-    def _persist(self, cell: Any, column: str) -> list[MediaRef]:
-        """One media cell (or list of them) written out once, content-addressed."""
-        cells = cell if isinstance(cell, list) else [cell]
-        refs: list[MediaRef] = []
-        for value in cells:
-            if value is None:
-                continue
-            payload, extension, mime = _encode_media(value, column=column)
-            width, height = getattr(value, "width", None), getattr(value, "height", None)
-            if width is None and height is None and column == "image":
-                width, height = image_dimensions(payload)  # the bytes are in hand: record what they state
-            refs.append(store_media(payload, extension, root=self.media_out_uri, width=width, height=height, mime=mime))
-        return refs
+        return media_parts(row, root=self.media_out_uri)
 
     def _fingerprint(self, row: Mapping[str, Any]) -> tuple[Any, ...]:
         """What makes a row the row it is, for the exact-duplicate fold: the ids out, the content in."""
@@ -767,21 +735,6 @@ def _split_of(config: _Config, split: str) -> str:
     return split
 
 
-def _text_of(row: Mapping[str, Any], column: str, *, what: str, source: str) -> str:
-    """A row's text column: a string; anything else is refused where it is read (nothing is defaulted)."""
-    value = row.get(column)
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value
-    raise DataError(
-        f"{source}: the {what}'s {column!r} is a {type(value).__name__}, not text",
-        hint="the Hub layout's text is a string (mteb's conversation form is not loaded yet: convert the "
-        "repository, or read it through mteb:<Task>)",
-        details={"source": source, "column": column},
-    )
-
-
 def _text_or_none(value: Any) -> str | None:
     """A title-ish column as a string or ``None``: a blank (an empty string, a NaN from a float-typed
     column) counts as no title, so ``str(nan)`` never joins the literal text ``"nan"`` in front of a body."""
@@ -796,82 +749,6 @@ def _is_null(value: Any) -> bool:
     """Whether a qrels extra cell is null: ``None``, or the float NaN a null in a float-typed column reads as
     (pandas) -- the cell is then absent, never a value to validate."""
     return value is None or (isinstance(value, float) and math.isnan(value))
-
-
-def _encode_media(cell: Any, *, column: str) -> tuple[bytes, str, str | None]:
-    """Bytes, extension and MIME type for a Hub media cell, preferring the undecoded original.
-
-    A cell is a ``{"bytes", "path"}`` dict (the ``datasets`` struct), raw ``bytes`` (what a parquet media
-    column may hold: mteb's Any2Any repositories store the binary directly), or a decoded object (what
-    ``datasets`` hands back for an ``Image`` column: a PIL image). Using the bytes as given avoids a
-    decode/re-encode round trip, which would change the hash of a byte-identical page or clip; a raw cell's
-    format comes from its magic numbers. The MIME is the video table's for a container suffix and ``None``
-    for an image one (the extension states it).
-    """
-    if isinstance(cell, dict):
-        payload = cell.get("bytes")
-        if payload:
-            declared = Path(str(cell.get("path") or "")).suffix.lower()
-            if declared in IMAGE_MIME_BY_SUFFIX or declared in VIDEO_MIME_BY_SUFFIX:
-                return _with_mime(payload, declared)
-            # No known suffix: the bytes must state the format (a suffix-less cell used to default to
-            # video/mp4 and store arbitrary bytes under it).
-            return _with_mime(payload, _sniffed_media_extension(payload, column=column))
-        if cell.get("path"):
-            raise DataError(
-                f"the {column} cell names a path ({cell['path']!r}) and carries no bytes; this reader never "
-                "reads a path a data row supplies",
-                hint="a media cell must carry its bytes (a `datasets` {{bytes, path}} struct): the path could "
-                "name any local file or a credentialed remote URI, so it is refused rather than read",
-            )
-        raise DataError(f"the {column} cell has neither bytes nor a path: {sorted(cell)}")
-    if isinstance(cell, bytes | bytearray | memoryview):
-        payload = bytes(cell)
-        extension = media_extension(payload)
-        if extension is None:
-            raise DataError(
-                f"the {column} cell is raw bytes whose format no magic number names ({len(payload)} bytes)",
-                hint="the cell is neither a known image nor a known video container; convert it at the source",
-            )
-        return _with_mime(payload, extension)
-
-    import io
-
-    if hasattr(cell, "save"):
-        buffer = io.BytesIO()
-        cell.save(buffer, format="PNG")
-        return _with_mime(buffer.getvalue(), ".png")
-    # A decoded video (datasets' Video feature hands back a decoder object) has no encoder this package
-    # could use without ffmpeg: refuse it by name, never crash with a bare AttributeError.
-    raise DataError(
-        f"the {column} cell is a decoded {type(cell).__name__}, which this reader cannot encode",
-        hint="read the container bytes instead (a repository whose media column holds the raw file reads "
-        "as a container); a decoded video needs a frame policy, which belongs to the judge's media "
-        "preparation, not to the dataset reader",
-    )
-
-
-def _sniffed_media_extension(payload: bytes, *, column: str) -> str:
-    """The extension a struct media cell's bytes state, refused when their magic numbers name no media type.
-
-    A cell's path suffix is a claim, not a check: when it names no known media type (or names none at all),
-    the bytes themselves must state one, so arbitrary bytes never reach the media cache under a media MIME
-    type.
-    """
-    extension = media_extension(payload)
-    if extension is None:
-        raise DataError(
-            f"the {column} cell's bytes are not a media type any magic number names ({len(payload)} bytes)",
-            hint="the cell is neither a known image nor a known video container; convert it at the source",
-        )
-    return extension
-
-
-def _with_mime(payload: bytes, extension: str) -> tuple[bytes, str, str | None]:
-    """The payload with the MIME type its suffix states: the video table's for a container, ``None`` for an
-    image (``store_media`` derives that one from the extension)."""
-    mime = VIDEO_MIME_BY_SUFFIX.get(extension) if extension not in IMAGE_MIME_BY_SUFFIX else None
-    return payload, extension, mime
 
 
 def _card_configs(repo: str, revision: str | None) -> dict[str, _Config]:

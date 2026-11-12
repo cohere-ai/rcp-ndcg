@@ -26,14 +26,18 @@ from typing import Any, Literal, cast
 from rcp_core.content import Content, ImagePart, TextPart, VideoPart
 from rcp_core.records import ID, Document, Query
 
-from rcp.data.io.base import DataShape, Provenance, SourceReader
-from rcp.data.io.hub import _encode_media
-from rcp.data.media import image_dimensions, store_media
+from rcp.data.io.base import DataShape, Provenance, SourceReader, text_of
+from rcp.data.media import media_parts
 from rcp.data.revisions import is_commit, resolve_revision
-from rcp.errors import ConfigError, DataError
+from rcp.errors import ConfigError
 from rcp.support.logging import get_logger
 
 logger = get_logger(__name__)
+
+_CONVERSATION_HINT = (
+    "mteb's conversation form (a list of turns) is not read yet: convert the task's data, or read the turns yourself"
+)
+"""What this reader's text refusal says to do: the remedy a task's own data offers."""
 
 
 class MtebTaskReader(SourceReader):
@@ -146,8 +150,8 @@ class MtebTaskReader(SourceReader):
     def _document(self, row: Mapping[str, Any]) -> Document:
         doc_id = str(row["id"])
         title = row.get("title")
-        body = _text_of(row, what="a corpus row")
-        media = self._media_of(row)
+        body = text_of(row, what="corpus row", source=self._source, hint=_CONVERSATION_HINT)
+        media = media_parts(row)
         if not media:
             title = title if isinstance(title, str) and title else None
             return Document(doc_id=doc_id, title=title, text=body)
@@ -166,9 +170,9 @@ class MtebTaskReader(SourceReader):
 
     def _query(self, row: Mapping[str, Any]) -> Query:
         query_id = str(row["id"])
-        text = _text_of(row, what="a query row")
+        text = text_of(row, what="query row", source=self._source, hint=_CONVERSATION_HINT)
         instruction = row.get("instruction")
-        media = self._media_of(row)
+        media = media_parts(row)
         if not media:
             return Query(
                 query_id=query_id,
@@ -274,23 +278,10 @@ class MtebTaskReader(SourceReader):
         return cast("dict[Literal['query', 'document'], str]", dict(prompt))
 
     # -- helpers -----------------------------------------------------------
-    def _media_of(self, row: Mapping[str, Any]) -> list[ImagePart | VideoPart]:
-        """A row's media columns as content parts, persisted once, content-addressed."""
-        parts: list[ImagePart | VideoPart] = []
-        for column, part_type in (("image", ImagePart), ("video", VideoPart)):
-            cell = row.get(column)
-            if cell is None:
-                continue
-            cells = cell if isinstance(cell, list) else [cell]
-            for value in cells:
-                if value is None:
-                    continue
-                payload, extension, mime = _encode_media(value, column=column)
-                width, height = getattr(value, "width", None), getattr(value, "height", None)
-                if width is None and height is None and column == "image":
-                    width, height = image_dimensions(payload)
-                parts.append(part_type(ref=store_media(payload, extension, width=width, height=height, mime=mime)))
-        return parts
+    @property
+    def _source(self) -> str:
+        """Where this reader's row errors locate themselves: the task the locator names."""
+        return f"mteb:{self.task_name}"
 
 
 def _subsets_of(metadata: Any) -> list[str]:
@@ -299,20 +290,6 @@ def _subsets_of(metadata: Any) -> list[str]:
     if isinstance(eval_langs, Mapping):
         return sorted(eval_langs)
     return ["default"]
-
-
-def _text_of(row: Mapping[str, Any], *, what: str) -> str:
-    """A row's ``text`` column: a string; mteb's conversation form (a list of turns) is deferred."""
-    value = row.get("text")
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value
-    raise DataError(
-        f"a {what}'s 'text' is a {type(value).__name__}, not text",
-        hint="mteb's conversation-style queries are not read yet (workstream 10 defers them): read the "
-        "turns yourself, or wait for the conversation reader",
-    )
 
 
 def _mteb_version() -> str | None:

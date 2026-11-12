@@ -591,13 +591,13 @@ def test_a_video_cell_in_the_struct_form_keeps_its_container_mime(hub) -> None:
 def test_a_decoded_video_object_is_refused_by_name() -> None:
     """``datasets``' Video feature hands back a decoder object; this reader cannot encode one without ffmpeg,
     and says so instead of crashing with an AttributeError."""
-    from rcp.data.io.hub import _encode_media
+    from rcp.data.media import encode_media
 
     class VideoDecoder:
         """The shape of a decoded video object: no ``save``, no bytes."""
 
     with pytest.raises(DataError, match="decoded VideoDecoder"):
-        _encode_media(VideoDecoder(), column="video")
+        encode_media(VideoDecoder(), column="video")
 
 
 def test_an_unknown_hub_option_is_a_typed_config_error() -> None:
@@ -680,23 +680,23 @@ def test_a_path_only_media_cell_is_refused_never_read(tmp_path: Path) -> None:
     """A third-party row's ``{"bytes": None, "path": ...}`` cell names a path the reader must not dereference:
     it could be any local file (an SSH key, a cloud credential file) or a credentialed remote URI, and its
     bytes would land in the media cache and from there in a judge request or a republished parquet."""
-    from rcp.data.io.hub import _encode_media
+    from rcp.data.media import encode_media
 
     secret = tmp_path / "outside-the-repository"
     secret.write_bytes(b"LOCAL-SECRET-BYTES")
 
     with pytest.raises(DataError, match="carries no bytes"):
-        _encode_media({"bytes": None, "path": str(secret)}, column="video")
+        encode_media({"bytes": None, "path": str(secret)}, column="video")
     assert not (tmp_path / "media-cache").exists(), "the refused cell reaches the media cache nowhere"
 
 
 def test_a_struct_cell_whose_bytes_name_no_media_format_is_refused() -> None:
     """A path suffix is a claim, not a check: a suffix-less cell used to default to video/mp4 and store any
     bytes. The payload's own magic numbers must name a media type, as the raw-bytes branch requires."""
-    from rcp.data.io.hub import _encode_media
+    from rcp.data.media import encode_media
 
     with pytest.raises(DataError, match="magic number names"):
-        _encode_media({"bytes": b"NOT-A-MEDIA-PAYLOAD", "path": ""}, column="video")
+        encode_media({"bytes": b"NOT-A-MEDIA-PAYLOAD", "path": ""}, column="video")
 
 
 def test_a_null_text_cell_reads_as_empty_text(hub) -> None:
