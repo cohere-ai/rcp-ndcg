@@ -37,8 +37,8 @@ irt = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/cohere-ai/rcp-ndcg"
-Repository = "https://github.com/cohere-ai/rcp-ndcg"
+Homepage = "https://github.com/cohere-ai/rcp"
+Repository = "https://github.com/cohere-ai/rcp"
 Paper = "https://arxiv.org/abs/2609.35739"
 
 [tool.setuptools.packages.find]

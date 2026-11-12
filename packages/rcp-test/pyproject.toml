@@ -44,8 +44,8 @@ test = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/cohere-ai/rcp-ndcg"
-Repository = "https://github.com/cohere-ai/rcp-ndcg"
+Homepage = "https://github.com/cohere-ai/rcp"
+Repository = "https://github.com/cohere-ai/rcp"
 
 [tool.setuptools.packages.find]
 where = ["src"]
