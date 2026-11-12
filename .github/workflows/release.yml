@@ -5,7 +5,7 @@
 # Each package publishes through its own GitHub environment, because PyPI identifies a pending trusted publisher by
 # owner, repository, workflow file and environment only (not the project name). One-time setup on pypi.org, done:
 # for each project in the table below, add a trusted publisher (a pending one before the first upload) with owner
-# cohere-ai, repository rcp, workflow release.yml and the environment from the table; the environments exist in
+# cohere-ai, repository rcp-ndcg, workflow release.yml and the environment from the table; the environments exist in
 # the repository's settings (one protection rule each, set by the owner).
 #
 #   | PyPI project  | GitHub environment |
