@@ -111,7 +111,7 @@ class PdfReader(SourceReader):
         try:
             import pypdfium2
         except ImportError as exc:
-            raise ImportError("PDF rendering needs pypdfium2: pip install 'rcp[data]'") from exc
+            raise ImportError("PDF rendering needs pypdfium2: pip install 'cohere-rcp[data]'") from exc
 
         local_pdf = storage.cache(pdf_uri)
         # The source's bytes name the page directory: a PDF written over the old one at the same path is a

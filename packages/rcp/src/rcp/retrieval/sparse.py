@@ -66,7 +66,7 @@ def _bm25s() -> Any:
     except ImportError as exc:
         raise DependencyError(
             "BM25 needs the bm25s package, which is not installed",
-            hint="bm25s is a dependency of rcp: reinstall it (pip install --force-reinstall rcp)",
+            hint="bm25s is a dependency of cohere-rcp: reinstall it (pip install --force-reinstall cohere-rcp)",
         ) from exc
     return bm25s
 
@@ -85,7 +85,7 @@ def stemmer_for(language: str | None) -> Any:
     except ImportError as exc:
         raise DependencyError(
             f"BM25 with stemmer {language!r} needs PyStemmer, which is not installed",
-            hint="PyStemmer is a dependency of rcp: reinstall it (pip install --force-reinstall rcp), or "
+            hint="PyStemmer is a dependency of cohere-rcp: reinstall it (pip install --force-reinstall cohere-rcp), or "
             "set stemmer: null",
         ) from exc
     languages = sorted(Stemmer.algorithms())

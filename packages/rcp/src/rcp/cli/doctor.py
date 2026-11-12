@@ -239,7 +239,7 @@ def doctor(request: DoctorRequest) -> DoctorReport:
             Check(
                 name=f"extra [{extra}]",
                 status="missing" if absent else "ok",
-                detail=f'not installed: {", ".join(absent)} (pip install "rcp[{extra}]")' if absent else "",
+                detail=f'not installed: {", ".join(absent)} (pip install "cohere-rcp[{extra}]")' if absent else "",
             )
         )
     for variable in _CREDENTIALS:

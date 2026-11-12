@@ -1528,6 +1528,14 @@ owner pushes, with the move to a Hugging Face organisation).
   `rcp_test`), the `rcp` and `rcp-vllm` console scripts and the `rcp.*` entry-point groups keep their names, so
   an install is `pip install cohere-rcp` followed by `import rcp`. The artifact tags (`rcp.<name>.v1`), the
   public dataset ids and the `RCP_NDCG_*` environment variables are identities and do not move either.
+- **Every install line the product prints names a published distribution**: the missing-extra hint of a
+  `DependencyError`, `rcp doctor`'s missing-extra detail, the `recipe:` refusal, the BM25 and stemmer hints and
+  the Hub, PDF and MTEB import errors now say `pip install "cohere-rcp[<extra>]"`,
+  `pip install --force-reinstall cohere-rcp` and `pip install "cohere-rcp[vllm]"`; the two IRT hints in
+  `cohere-rcp-core` say `cohere-rcp-core[irt]`, and `cohere-rcp-vllm`'s docstring says `pip install --no-deps
+  cohere-rcp-vllm`. `pip install rcp` is the third-party project, so the old spelling would have sent a reader
+  to the wrong package. `rcp.errors._INSTALL_MARKER` matches `cohere-rcp[` only, so a foreign `ImportError`
+  that quotes the old spelling is no longer read as one of the product's own hints.
 
 ### Changed — the rename
 

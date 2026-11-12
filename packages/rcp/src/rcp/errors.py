@@ -326,7 +326,7 @@ EXTRA_FOR_MODULE: dict[str, str] = {
     "rcp_vllm": "vllm",
 }
 
-_INSTALL_MARKER = "rcp["
+_INSTALL_MARKER = "cohere-rcp["
 
 
 def dependency_error(module: str, *, needed_for: str = "this step") -> DependencyError:
@@ -340,7 +340,7 @@ def dependency_error(module: str, *, needed_for: str = "this step") -> Dependenc
     extra = EXTRA_FOR_MODULE.get(root)
     return DependencyError(
         f"{needed_for} needs {root}, which is not installed",
-        hint=f'pip install "rcp[{extra}]"' if extra else f"pip install {root}",
+        hint=f'pip install "cohere-rcp[{extra}]"' if extra else f"pip install {root}",
         details={"module": root, "extra": extra},
     )
 

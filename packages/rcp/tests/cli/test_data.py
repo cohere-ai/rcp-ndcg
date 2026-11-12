@@ -349,7 +349,7 @@ class TestSuites:
 
         error = json.loads(result.stdout)["error"]
         assert result.exit_code == 10
-        assert error["hint"] == 'pip install "rcp[hf]"'
+        assert error["hint"] == 'pip install "cohere-rcp[hf]"'
 
 
 def test_fetch_tiny_copies_the_packaged_example(runner: CliRunner, tmp_path: Path) -> None:

@@ -275,7 +275,7 @@ def test_a_mirror_on_an_unavailable_filesystem_names_what_is_missing(tmp_path: P
     if importlib.util.find_spec("s3fs") is None:
         with pytest.raises(DependencyError, match="s3fs") as missing:
             Mirror(tmp_path, "s3://bucket/runs")
-        assert missing.value.hint == 'pip install "rcp[s3]"'
+        assert missing.value.hint == 'pip install "cohere-rcp[s3]"'
 
 
 def test_a_custom_filesystem_registered_with_fsspec_is_a_mirror(tmp_path: Path) -> None:

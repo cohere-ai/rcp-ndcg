@@ -72,8 +72,8 @@ __all__ = [
     "shorthand_config",
 ]
 
-_INSTALL_LINE = 'pip install "rcp[vllm]"'
-"""The install line of the declared extra (``rcp``'s ``vllm`` extra), the soft dependency on the sibling."""
+_INSTALL_LINE = 'pip install "cohere-rcp[vllm]"'
+"""The install line of the declared extra (``cohere-rcp``'s ``vllm`` extra), the soft dependency on the sibling."""
 
 _IDENTITY_POINTER = re.compile(r"^unshipped:sha256:[0-9a-f]{64}$")
 """An unshipped recipe's identity exactly as :attr:`~rcp_vllm.recipe.Recipe.identity` writes it.
@@ -102,7 +102,7 @@ def _vllm_recipe_module():
         raise ConfigError(
             f"recipe: ... needs the serving recipes of cohere-rcp-vllm ({error})",
             hint=(
-                f"install it alongside rcp: {_INSTALL_LINE} (or, in an engine image that carries its own vLLM, "
+                f"install it alongside cohere-rcp: {_INSTALL_LINE} (or, in an engine image that carries its own vLLM, "
                 "pip install cohere-rcp-vllm; it depends on pydantic and PyYAML only)"
             ),
         ) from error

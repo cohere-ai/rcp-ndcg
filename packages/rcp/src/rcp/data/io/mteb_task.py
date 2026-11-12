@@ -15,7 +15,7 @@ the canonical records, so a custom-loaded task reads through the same contract a
   cut to those with qrels), so there is nothing left for the duplicates policy to do here.
 
 The mteb import happens inside the methods that need it, so listing this reader costs nothing without the
-extra (``pip install 'rcp[mteb]'``).
+extra (``pip install 'cohere-rcp[mteb]'``).
 """
 
 from __future__ import annotations

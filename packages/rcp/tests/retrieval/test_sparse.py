@@ -34,7 +34,7 @@ def test_a_requested_stemmer_without_pystemmer_is_a_missing_dependency(monkeypat
 
     with pytest.raises(DependencyError, match="PyStemmer") as caught:
         sparse.stemmer_for("english")
-    assert "pip install --force-reinstall rcp" in (caught.value.hint or "")
+    assert "pip install --force-reinstall cohere-rcp" in (caught.value.hint or "")
 
 
 def test_an_unknown_stemmer_language_is_a_config_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -185,4 +185,4 @@ def test_a_missing_bm25s_package_names_the_reinstall(monkeypatch: pytest.MonkeyP
     with pytest.raises(DependencyError, match="bm25s package, which is not installed") as caught:
         sparse._bm25s()
 
-    assert "pip install --force-reinstall rcp" in (caught.value.hint or "")
+    assert "pip install --force-reinstall cohere-rcp" in (caught.value.hint or "")

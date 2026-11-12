@@ -453,7 +453,7 @@ class TestBackendErrors:
 
         with pytest.raises(DependencyError, match=r"s3") as missing:
             storage.filesystem("s3://bucket/key")
-        assert missing.value.hint == 'pip install "rcp[s3]"'
+        assert missing.value.hint == 'pip install "cohere-rcp[s3]"'
 
     def test_a_missing_backend_is_a_dependency_error_not_a_bug(self, monkeypatch: pytest.MonkeyPatch) -> None:
         pytest.importorskip("fsspec")
@@ -463,7 +463,7 @@ class TestBackendErrors:
         with pytest.raises(Exception) as raised:
             storage.exists("s3://b/k")
         error = classify(raised.value)
-        assert error.exit_code == 10 and error.hint == 'pip install "rcp[s3]"'
+        assert error.exit_code == 10 and error.hint == 'pip install "cohere-rcp[s3]"'
 
 
 class TestPublishConcurrency:

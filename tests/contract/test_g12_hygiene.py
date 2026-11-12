@@ -82,4 +82,4 @@ def test_the_refusal_names_the_declared_extra_and_its_install_line(monkeypatch: 
     with pytest.raises(ConfigError, match="needs the serving recipes") as excinfo:
         recipes.available_recipe_ids()
     hint = excinfo.value.hint or ""
-    assert 'pip install "rcp[vllm]"' in hint, hint
+    assert 'pip install "cohere-rcp[vllm]"' in hint, hint

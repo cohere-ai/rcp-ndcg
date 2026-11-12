@@ -685,7 +685,7 @@ def _task_card(card: Mapping[str, Any] | Any, configs: list[dict[str, Any]]) -> 
     except ImportError as exc:  # pragma: no cover - the card is an [mteb]-extra feature
         raise ConfigError(
             "writing the dataset card needs the mteb package",
-            hint="install the [mteb] extra -- pip install 'rcp[mteb]' -- or write the export without a card",
+            hint="install the [mteb] extra -- pip install 'cohere-rcp[mteb]' -- or write the export without a card",
         ) from exc
     if isinstance(card, Mapping):
         if "dataset" not in card:

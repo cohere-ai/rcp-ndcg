@@ -887,7 +887,7 @@ def _hub_file(repo: str, path: str, revision: str | None) -> Path | None:
         from huggingface_hub import hf_hub_download
         from huggingface_hub.errors import EntryNotFoundError, LocalEntryNotFoundError
     except ImportError as exc:
-        raise ImportError("downloading the released data needs huggingface_hub: pip install 'rcp[hf]'") from exc
+        raise ImportError("downloading the released data needs huggingface_hub: pip install 'cohere-rcp[hf]'") from exc
     try:
         return Path(hf_hub_download(repo, path, repo_type="dataset", revision=revision))
     except LocalEntryNotFoundError:
@@ -901,7 +901,7 @@ def _local_entry_not_found() -> type[Exception]:
     try:
         from huggingface_hub.errors import LocalEntryNotFoundError
     except ImportError as exc:
-        raise ImportError("downloading the released data needs huggingface_hub: pip install 'rcp[hf]'") from exc
+        raise ImportError("downloading the released data needs huggingface_hub: pip install 'cohere-rcp[hf]'") from exc
     return LocalEntryNotFoundError
 
 

@@ -48,7 +48,7 @@ def _yaml_error() -> yaml.YAMLError:
     [
         (FileNotFoundError(2, "No such file", "runs/x"), ExitCode.MISSING_INPUT),
         (ModuleNotFoundError("No module named 'torch'", name="torch"), ExitCode.DEPENDENCY),
-        (ImportError("reading the released data needs pyarrow: pip install 'rcp[data]'"), ExitCode.DEPENDENCY),
+        (ImportError("reading the released data needs pyarrow: pip install 'cohere-rcp[data]'"), ExitCode.DEPENDENCY),
         (_validation_error(), ExitCode.CONFIG),
         (_yaml_error(), ExitCode.CONFIG),
         (json.JSONDecodeError("Expecting value", "x", 0), ExitCode.DATA),
@@ -75,7 +75,7 @@ def test_classify_maps_foreign_exceptions(exc: BaseException, code: ExitCode) ->
 def test_a_missing_extra_names_the_install_command() -> None:
     error = classify(ModuleNotFoundError("No module named 'torch'", name="torch"))
 
-    assert error.hint == 'pip install "rcp[calibrate]"'
+    assert error.hint == 'pip install "cohere-rcp[calibrate]"'
     assert error.details == {"module": "torch", "extra": "calibrate"}
 
 
