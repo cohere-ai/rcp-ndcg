@@ -7,10 +7,10 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 # An inter-member requirement resolves to the checkout, never to an index.
-rcp = { workspace = true }
-rcp-core = { workspace = true }
+cohere-rcp = { workspace = true }
+cohere-rcp-core = { workspace = true }
+cohere-rcp-vllm = { workspace = true }
 rcp-test = { workspace = true }
-rcp-vllm = { workspace = true }
 
 [tool.ruff.lint.isort]
 known-first-party = ["rcp"]

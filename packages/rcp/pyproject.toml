@@ -3,7 +3,7 @@ requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rcp"
+name = "cohere-rcp"
 version = "0.0.1"
 description = "Calibrated relevance for retrieval evaluation: RCP-nDCG, listwise tournament + rubric, 2PL IRT, MTEB-compatible evaluator."
 readme = "README.md"
@@ -25,7 +25,7 @@ dependencies = [
   # so a client-only install stays small.  ``rcp run`` names the extra in its
   # error when the fit is reached without it.
   # The core is released in lockstep with this package: the same version, pinned.
-  "rcp-core==0.0.1",
+  "cohere-rcp-core==0.0.1",
   "numpy>=1.26",
   "pandas>=2.2",
   # Parquet artifacts (calibration queries/thetas tables).
@@ -100,7 +100,7 @@ data = [
 # config read `rcp_vllm.recipe` (``rcp.inference.recipes`` imports it lazily). Optional by design: a served-only
 # install reaches every model over HTTP and needs none of it, and an engine image installs the sibling on its
 # own. Absent, the lazy import is refused with this extra's install line, never a bare `ImportError`.
-vllm = ["rcp-vllm"]
+vllm = ["cohere-rcp-vllm"]
 
 # Development & CI.  Includes ``[calibrate]``: the IRT fits are exercised by the
 # test suite, and a dev environment that skips them would let a calibration
@@ -108,7 +108,7 @@ vllm = ["rcp-vllm"]
 # Tests for the heavier extras (``[mteb]``, ``[data]``) skip themselves when
 # those are absent.
 dev = [
-  "rcp[calibrate,hf]",
+  "cohere-rcp[calibrate,hf]",
   "pytest>=8.0",
   "pytest-asyncio>=0.24",
   "pytest-xdist>=3.5",
@@ -174,7 +174,7 @@ Paper = "https://arxiv.org/abs/2609.35739"
 where = ["src"]
 
 # Package data: the prompts (rcp/judging/prompts/*.txt) and the shipped judge vendor profiles
-# (rcp/judging/judges/*.yaml; the self-hosted judges are recipes in rcp-vllm),
+# (rcp/judging/judges/*.yaml; the self-hosted judges are recipes in cohere-rcp-vllm),
 # loaded through importlib.resources. The JSON Schemas under schemas/ are generated from the models that ship
 # (`rcp schema export` writes them byte for byte), so the wheel carries them as models.
 
@@ -184,10 +184,10 @@ where = ["src"]
 
 # The repository is a uv workspace with four members: this manifest (the
 # pipeline: storage, data, retrieval, judging, calibration, evaluation, runs and
-# the CLI), ``rcp-core`` (the metric, the gains, the protocols,
+# the CLI), ``cohere-rcp-core`` (the metric, the gains, the protocols,
 # the schemas and the IRT estimators; numpy + pydantic, its [irt] extra: torch,
 # scipy; released in lockstep with this package) and the unpublished
-# ``rcp-test``, plus ``rcp-vllm`` (the serving half).
-# ``rcp-vllm`` depends on pydantic and PyYAML alone, so the same wheel
+# ``rcp-test``, plus ``cohere-rcp-vllm`` (the serving half).
+# ``cohere-rcp-vllm`` depends on pydantic and PyYAML alone, so the same wheel
 # installs into an engine image that carries its own vLLM and torch; its
 # workspace lock entry is inert there.  See packages/rcp-vllm/README.md.
