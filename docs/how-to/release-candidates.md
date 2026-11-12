@@ -29,7 +29,7 @@ The build runs in a detached worktree of the given commit, so a dirty checkout i
 | `harness/` | the unpublished `rcp-test` wheel (the harness), built by name into its own directory; the node's client environment installs it from here |
 | `wheelhouse/` | the release wheels plus every locked dependency for the node's platform |
 | `requirements-constraints.txt` | the lock's export — the install's constraints file |
-| `recipes/` | the recipe families (family.yaml + its variants table, the family's reference.py, its template, its `reference.in`/`reference.lock`), from the rcp-vllm wheel's package data |
+| `recipes/` | the recipe families (family.yaml + its variants table, the family's reference.py, its template, its `reference.in`/`reference.lock`), from the cohere-rcp-vllm wheel's package data |
 | `wave-lists/<wave>.txt` | one recipe id per line, per wave (the T4 scenario wave's: one scenario id per line), from `packages/rcp-test/wave-lists/`; `submit.sh` derives one `<wave>.<image-slug>.txt` per engine image at submit time |
 | `scenarios/<id>.yaml` | the T4 run scenarios, for a `--script e2e` wave (stage them beside `recipes/`) |
 | `pairs/` | the stage-2 pairs files, from `packages/rcp-test/pairs/` |

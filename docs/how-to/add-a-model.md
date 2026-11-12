@@ -251,7 +251,7 @@ three such cases. The pinned vLLM's registry may not carry the model class. A ch
 otherwise execute a config class from the Hub. The stock class may be unable to produce a pooler or a weight
 mapping. The wheel registers every plugin through one `vllm.general_plugins` entry point (`rcp-vllm` →
 `rcp_vllm.models:register`). A plugin therefore reaches an engine in two steps: install the wheel, and name
-the plugin in the recipe. The recipe names it with `serve.plugin: rcp-vllm`, and `serve.plugin_architectures`
+the plugin in the recipe. The recipe names it with `serve.plugin: cohere-rcp-vllm`, and `serve.plugin_architectures`
 names the architectures that the recipe's engine registers. A patch-only carrier leaves the list empty, and
 its `serve.patches` names key it instead. Everything below is what
 `tests/contract/test_model_plugin_shape.py` checks for every subpackage of `packages/rcp-vllm/src/rcp_vllm/models/`.
@@ -301,7 +301,7 @@ import the helper, and never the other way round.
 4. **The registry rows.** `rcp_vllm.models` declares the architecture's row. `ARCHITECTURE_MODULES[ARCH]` is
    the tuple of engine-side modules that implement the architecture. It must name the module that the qualname
    resolves. Two readers depend on it. The recipe loader refuses `serve.plugin_architectures` that
-   names an architecture the mapping does not carry for the shipped plugin (`serve.plugin: rcp-vllm`). It
+   names an architecture the mapping does not carry for the shipped plugin (`serve.plugin: cohere-rcp-vllm`). It
    refuses by name. The behaviour fingerprint hashes exactly a row's modules (`plugin_sha256.<module>`). A row
    that omitted the model module would therefore hide a change to the model class. Every recipe's fingerprint
    would stay where it was. A row module that imports vLLM or torch at module scope also joins
@@ -309,7 +309,7 @@ import the helper, and never the other way round.
    entry point. `register()` in `rcp_vllm/models/__init__.py` imports and calls `register_<family>()`. It does
    so after the version guard and the opted-in patches. Every engine process therefore runs it, whatever architecture its
    recipe serves. `packages/rcp-vllm/tests/test_plugin_modules.py` pins both lists.
-5. **The recipe names the plugin.** The recipe sets `serve.plugin: rcp-vllm` with `serve.plugin_architectures:
+5. **The recipe names the plugin.** The recipe sets `serve.plugin: cohere-rcp-vllm` with `serve.plugin_architectures:
    [<Architecture>]`, which is empty for a patch-only carrier. The rest of the family is a recipe as usual. It
    holds the template block, the explicit budget, the reference and the variant goldens. It also holds the
    stage-1 and stage-2 tests.

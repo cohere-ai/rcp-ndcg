@@ -1,4 +1,4 @@
-# Third-party licence texts shipped with the `rcp-vllm` wheel
+# Third-party licence texts shipped with the `cohere-rcp-vllm` wheel
 
 `NOTICE` (this distribution's and the repository's) names every third-party work the wheel ships or
 ports, with its upstream URL and pinned revision. This directory carries the full text of each licence

@@ -131,7 +131,7 @@ Stock vLLM serves the common architectures. This command serves a checkpoint wit
 vllm serve <hf-repo> --runner pooling
 ```
 
-The topk, pplx and embeddinggemma checkpoints need the plugin. The `rcp-vllm` wheel registers it through
+The topk, pplx and embeddinggemma checkpoints need the plugin. The `cohere-rcp-vllm` wheel registers it through
 `vllm.general_plugins`.
 
 ### The fallback
