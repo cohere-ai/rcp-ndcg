@@ -227,7 +227,7 @@
    "patches": [
     "torch-sdpa-attention"
    ],
-   "plugin": "rcp-vllm",
+   "plugin": "cohere-rcp-vllm",
    "plugin_architectures": [],
    "pooler_config": {},
    "runner": "pooling",

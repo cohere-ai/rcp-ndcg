@@ -36,7 +36,7 @@ serve:
                    # engine; bfloat16 rather than float16 keeps fp32's exponent range for the
                    # cast. A declared served-vs-reference deviation, quantified by stage 2's
                    # tolerance gate and the wave's retrieval numbers
-  plugin: rcp-vllm  # the models fold into this wheel; --no-deps install
+  plugin: cohere-rcp-vllm # the models fold into this wheel; --no-deps install
   plugin_architectures: [PplxContextualModel]  # the architecture this recipe's engine registers; the behaviour fingerprint keys its modules
   extra_args: []
   # No engine patch. The pooling hang at exactly max_model_len (the prompt the pre-0.32 scheduler never

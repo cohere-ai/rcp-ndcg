@@ -186,7 +186,7 @@ def _expected_contract(variant_id: str) -> dict[str, Any]:
             "trust_remote_code": False,
             "max_model_len": 32768,
             "dtype": "bfloat16",
-            "plugin": "rcp-vllm",
+            "plugin": "cohere-rcp-vllm",
             "plugin_architectures": [],
             "io_processor_plugin": None,
             "mm_processor_kwargs": {},

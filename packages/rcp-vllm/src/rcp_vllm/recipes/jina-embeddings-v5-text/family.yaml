@@ -44,11 +44,11 @@ serve:
   # config.json max_position_embeddings; must stay >= client.max_tokens (they are equal).
   max_model_len: 32768
   dtype: bfloat16
-  plugin: rcp-vllm  # the plugin wheel: the node installs it for the family and its
-                        # vllm.general_plugins entry point registers the package's own model classes and
-                        # applies the patches a variant opts into. Neither variant declares a patch now:
-                        # the -small's pooling-full-context opt-in was deleted with the patch (vLLM
-                        # v0.32.0 carries vllm-project/vllm#48039) and the -nano never had one.
+  plugin: cohere-rcp-vllm # the plugin wheel: the node installs it for the family and its
+                          # vllm.general_plugins entry point registers the package's own model classes and
+                          # applies the patches a variant opts into. Neither variant declares a patch now:
+                          # the -small's pooling-full-context opt-in was deleted with the patch (vLLM
+                          # v0.32.0 carries vllm-project/vllm#48039) and the -nano never had one.
   extra_args: []
 client:
 #   recipe: "vllm v0.33.0: --runner pooling --trust-remote-code --hf-overrides {jina_task: retrieval, is_matryoshka: true, matryoshka_dimensions [32,64,128,256,512,768,1024]}; pooler defaults (mask-based last token + PoolerNormalize); raw text on /v1/embeddings"

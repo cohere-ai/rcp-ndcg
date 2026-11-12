@@ -31,7 +31,7 @@ serve:
   trust_remote_code: false      # the checkpoint has no auto_map; the native class needs none
   max_model_len: 8192           # the card's 8K context; the engine config caps an unset max_model_len at 8192 too (config.py:293-340)
   dtype: bfloat16               # the card: bfloat16 or float32, NEVER float16 (README.md:189-193)
-  plugin: rcp-vllm      # the patch carrier: the torch-sdpa-attention patch below registers the
+  plugin: cohere-rcp-vllm    # the patch carrier: the torch-sdpa-attention patch below registers the
                              # encoder-only SDPA backend the --attention-backend pin selects (D4: the
                              # patched backend differs from the engine's native path outside the probe's
                              # null-controlled gate). The fold this carrier used to ship is deleted.

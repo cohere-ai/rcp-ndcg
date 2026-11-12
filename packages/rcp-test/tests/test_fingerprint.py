@@ -332,7 +332,7 @@ def _plugin_recipe(tmp_path: Path, name: str, architecture: str, *, patches: tup
     """A fixture recipe declaring the shipped plugin, one architecture and (optionally) patches."""
 
     def rewrite(data: dict) -> dict:
-        data["serve"]["plugin"] = "rcp-vllm"
+        data["serve"]["plugin"] = "cohere-rcp-vllm"
         data["serve"]["plugin_architectures"] = [architecture]
         if patches:
             data["serve"]["patches"] = list(patches)
@@ -397,6 +397,7 @@ def test_a_plugin_rename_cannot_move_a_fingerprint(tmp_path: Path, monkeypatch: 
     )
     assert fingerprint._canonical_plugin_module("rcp_vllm.models") == "rcp_ndcg_vllm.models"
     assert fingerprint._canonical_plugin_text("rcp-vllm") == fingerprint._canonical_plugin_text("rcp-ndcg-vllm")
+    assert fingerprint._canonical_plugin_text("cohere-rcp-vllm") == fingerprint._canonical_plugin_text("rcp-ndcg-vllm")
     monkeypatch.setattr(fingerprint, "_module_source", lambda module: old)
     before = fingerprint.fingerprint_inputs(recipe, tokenizer_sha256_value="0" * 64)
     monkeypatch.setattr(fingerprint, "_module_source", lambda module: new)
@@ -441,6 +442,8 @@ def test_a_product_rename_cannot_move_a_plugin_fingerprint() -> None:
         (b"measures that delta, and rcp transfers float16", b"measures that delta, and rcp-ndcg transfers float16"),
         # not the product's names: the fingerprint's own tag, the plugin's distribution and its package
         (b"``rcp-fp/4``, ``rcp-vllm``, ``rcp_vllm``", b"``rcp-fp/4``, ``rcp-ndcg-vllm``, ``rcp_ndcg_vllm``"),
+        # the prefixed spelling maps whole, before the bare one it contains
+        (b"``cohere-rcp-vllm``", b"``rcp-ndcg-vllm``"),
     ]
     for current, recorded in pairs:
         assert _canonical_plugin_source(current) == recorded

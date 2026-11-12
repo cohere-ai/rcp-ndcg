@@ -76,7 +76,7 @@ serve:
                    # range for the cast. A declared served-vs-reference
                    # deviation, quantified by stage 2's tolerance gate and the
                    # wave's retrieval numbers
-  plugin: rcp-vllm  # the model plugins fold into this wheel (pure Python,
+  plugin: cohere-rcp-vllm     # the model plugins fold into this wheel (pure Python,
                               # installed with --no-deps before the engine
                               # starts); it now registers BOTH pplx
                               # architectures -- the contextual chunk model and

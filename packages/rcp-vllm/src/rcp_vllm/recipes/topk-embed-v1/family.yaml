@@ -57,7 +57,7 @@ serve:
                                  # divergence is not a head-matmul rounding (see notes, 'What the
                                  # wave measured') and no serve dtype meets the per-token gate; the
                                  # value stays the checkpoint's own
-  plugin: rcp-vllm          # the model plugins fold into this wheel: one
+  plugin: cohere-rcp-vllm   # the model plugins fold into this wheel: one
                                  # vllm.general_plugins entry point, installed with --no-deps; registers
                                  # TopkEmbedModel, a ColQwen3_5Model subclass mapping head. ->
                                  # custom_text_proj. and marking the bias-less head's zero bias loaded;

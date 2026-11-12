@@ -196,7 +196,7 @@ EXPECTED_SERVE = {
     "trust_remote_code": False,
     "max_model_len": CONTEXT_LIMIT,
     "dtype": "bfloat16",
-    "plugin": "rcp-vllm",
+    "plugin": "cohere-rcp-vllm",
     "plugin_architectures": ["PplxV1Config"],
     "io_processor_plugin": None,
     "mm_processor_kwargs": {},

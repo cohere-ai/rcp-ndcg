@@ -213,7 +213,7 @@
    "max_model_len": 8192,
    "mm_processor_kwargs": {},
    "patches": [],
-   "plugin": "rcp-vllm",
+   "plugin": "cohere-rcp-vllm",
    "plugin_architectures": [],
    "pooler_config": {},
    "runner": "pooling",

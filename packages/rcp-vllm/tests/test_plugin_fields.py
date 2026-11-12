@@ -111,7 +111,7 @@ def _flag_value(argv: list[str], flag: str) -> str:
     return argv[argv.index(flag) + 1]
 
 
-def _knobs_recipe(root: Path, *, plugin: str = "rcp-vllm") -> Path:
+def _knobs_recipe(root: Path, *, plugin: str = "cohere-rcp-vllm") -> Path:
     """A recipe that declares the three chunk knobs, beside the plugin spec it names (if any)."""
     pooler = json.dumps(KNOBS)
     serve = f"  pooler_config: {pooler}\n" if not plugin else f"  plugin: {plugin}\n  pooler_config: {pooler}\n"
@@ -146,7 +146,7 @@ def test_against_an_engine_without_the_plugin_the_loader_refuses_and_names_the_i
     The message names the plugin and its exact install line (the recipe's own spec, shell-quoted), so an
     operator can paste it; a recipe whose declared field the target cannot honour never loads.
     """
-    directory = _knobs_recipe(tmp_path, plugin="rcp-vllm>=0.0.1")
+    directory = _knobs_recipe(tmp_path, plugin="cohere-rcp-vllm>=0.0.1")
     monkeypatch.setattr(recipe_module, "_installed_plugins", lambda: frozenset())
 
     with pytest.raises(RecipeError) as excinfo:
@@ -154,8 +154,8 @@ def test_against_an_engine_without_the_plugin_the_loader_refuses_and_names_the_i
 
     message = str(excinfo.value)
     assert "chunk_length" in message and "chunk_weighting" in message
-    assert "plugin rcp-vllm" in message and "does not carry" in message
-    assert "pip install --no-deps 'rcp-vllm>=0.0.1'" in message
+    assert "plugin cohere-rcp-vllm" in message and "does not carry" in message
+    assert "pip install --no-deps 'cohere-rcp-vllm>=0.0.1'" in message
     assert "vllm.general_plugins" in message
 
 
@@ -168,10 +168,10 @@ def test_with_the_plugin_installed_the_recipe_loads_and_its_argv_is_unchanged(
     of the recipe alone, so the recorded argv of a wave is the argv of the tree.
     """
     directory = _knobs_recipe(tmp_path)
-    assert "rcp-vllm" in recipe_module._installed_plugins(), "this environment carries the plugin's entry point"
+    assert "cohere-rcp-vllm" in recipe_module._installed_plugins(), "this environment carries the plugin's entry point"
 
     installed = load_recipe(directory)
-    monkeypatch.setattr(recipe_module, "_installed_plugins", lambda: frozenset({"rcp-vllm"}))
+    monkeypatch.setattr(recipe_module, "_installed_plugins", lambda: frozenset({"cohere-rcp-vllm"}))
     stubbed = load_recipe(directory)
 
     assert serve_argv(stubbed, port=8000, served_model_name=stubbed.id) == serve_argv(
@@ -206,8 +206,8 @@ def test_a_recipe_that_declares_a_knob_without_the_plugin_is_refused(tmp_path: P
 
     message = str(excinfo.value)
     assert "not a field the pinned engine" in message
-    assert "Declare serve.plugin: rcp-vllm" in message
-    assert "pip install --no-deps rcp-vllm" in message
+    assert "Declare serve.plugin: cohere-rcp-vllm" in message
+    assert "pip install --no-deps cohere-rcp-vllm" in message
 
 
 def test_a_plugin_that_does_not_provide_the_field_is_refused(tmp_path: Path) -> None:
@@ -220,13 +220,13 @@ def test_a_plugin_that_does_not_provide_the_field_is_refused(tmp_path: Path) -> 
         load_recipe(directory)
 
     message = str(excinfo.value)
-    assert "provided by the plugin rcp-vllm" in message and "some-other-plugin" in message
+    assert "provided by the plugin cohere-rcp-vllm" in message and "some-other-plugin" in message
 
 
 def test_a_pooler_key_no_plugin_provides_is_still_refused(tmp_path: Path) -> None:
     """The table is closed: a key that is neither the pinned engine's nor a declared plugin field is refused
     by name, and the refusal lists both sets, so a typo cannot ride in on the plugin's allowance."""
-    directory = _write_family(tmp_path, serve_extra="  plugin: rcp-vllm\n  pooler_config: {chunk_len: 8}\n")
+    directory = _write_family(tmp_path, serve_extra="  plugin: cohere-rcp-vllm\n  pooler_config: {chunk_len: 8}\n")
     with pytest.raises(RecipeError) as excinfo:
         load_recipe(directory)
 
@@ -250,7 +250,7 @@ def test_the_exported_schema_declares_the_knobs_and_the_loader_still_refuses_a_t
         assert set(declared["properties"]) == set(KNOBS), name
         assert declared["additionalProperties"] is True, f"{name}: a stock PoolerConfig field still passes"
 
-    directory = _write_family(tmp_path, serve_extra="  plugin: rcp-vllm\n  pooler_config: {chunk_len: 8}\n")
+    directory = _write_family(tmp_path, serve_extra="  plugin: cohere-rcp-vllm\n  pooler_config: {chunk_len: 8}\n")
     with pytest.raises(RecipeError) as excinfo:
         load_recipe(directory)
 
@@ -264,7 +264,8 @@ def test_extra_args_may_not_repeat_the_pooler_config_flag(tmp_path: Path) -> Non
     directory = _write_family(
         tmp_path,
         serve_extra=(
-            f'  plugin: rcp-vllm\n  pooler_config: {json.dumps(KNOBS)}\n  extra_args: ["--pooler-config", "{{}}"]\n'
+            f"  plugin: cohere-rcp-vllm\n  pooler_config: {json.dumps(KNOBS)}\n"
+            f'  extra_args: ["--pooler-config", "{{}}"]\n'
         ),
     )
     with pytest.raises(RecipeError) as excinfo:
@@ -283,7 +284,9 @@ def test_relevant_spans_renders_nothing(tmp_path: Path) -> None:
     """The rerank route's spans wire is a request field the plugin provides, so the recipe declares that the
     deployment honours it and renders no flag: the argv is the same with the declaration and without it."""
     plain = load_recipe(
-        _write_family(tmp_path / "plain", role="rerank", family="my-reranker", serve_extra="  plugin: rcp-vllm\n")
+        _write_family(
+            tmp_path / "plain", role="rerank", family="my-reranker", serve_extra="  plugin: cohere-rcp-vllm\n"
+        )
     )
     declaring = load_recipe(
         _write_family(
@@ -291,7 +294,7 @@ def test_relevant_spans_renders_nothing(tmp_path: Path) -> None:
             role="rerank",
             family="my-reranker",
             recipe_extra="relevant_spans: true\n",
-            serve_extra="  plugin: rcp-vllm\n",
+            serve_extra="  plugin: cohere-rcp-vllm\n",
         )
     )
 
@@ -312,7 +315,7 @@ def test_no_flag_is_rendered_for_relevant_spans_against_the_pinned_flag_set(tmp_
 
     recipe = load_recipe(
         _write_family(
-            tmp_path, role="rerank", recipe_extra="relevant_spans: true\n", serve_extra="  plugin: rcp-vllm\n"
+            tmp_path, role="rerank", recipe_extra="relevant_spans: true\n", serve_extra="  plugin: cohere-rcp-vllm\n"
         )
     )
     argv = serve_argv(recipe, port=8000, served_model_name=recipe.id)
@@ -331,7 +334,7 @@ def test_relevant_spans_reaches_every_variant_of_the_family(tmp_path: Path) -> N
         role="rerank",
         family="my-two-sizes",
         recipe_extra="relevant_spans: true\n",
-        serve_extra="  plugin: rcp-vllm\n",
+        serve_extra="  plugin: cohere-rcp-vllm\n",
         variants=("my-two-sizes-small", "my-two-sizes-large"),
     )
     for variant in ("my-two-sizes-small", "my-two-sizes-large"):
@@ -341,7 +344,9 @@ def test_relevant_spans_reaches_every_variant_of_the_family(tmp_path: Path) -> N
 def test_relevant_spans_needs_a_rerank_recipe(tmp_path: Path) -> None:
     """The spans wire answers a rerank request: an embed recipe declaring it would describe a route it does not
     serve, so the load refuses it by role."""
-    directory = _write_family(tmp_path, recipe_extra="relevant_spans: true\n", serve_extra="  plugin: rcp-vllm\n")
+    directory = _write_family(
+        tmp_path, recipe_extra="relevant_spans: true\n", serve_extra="  plugin: cohere-rcp-vllm\n"
+    )
     with pytest.raises(RecipeError) as excinfo:
         load_recipe(directory)
 
@@ -355,7 +360,7 @@ def test_relevant_spans_without_the_plugin_is_refused_with_the_install_line(
     """The capability is the plugin's: without it the loader refuses with the same install line the knobs get,
     because a served engine without the plugin would never honour the field it declares."""
     directory = _write_family(
-        tmp_path, role="rerank", recipe_extra="relevant_spans: true\n", serve_extra="  plugin: rcp-vllm\n"
+        tmp_path, role="rerank", recipe_extra="relevant_spans: true\n", serve_extra="  plugin: cohere-rcp-vllm\n"
     )
     monkeypatch.setattr(recipe_module, "_installed_plugins", lambda: frozenset())
 
@@ -363,8 +368,8 @@ def test_relevant_spans_without_the_plugin_is_refused_with_the_install_line(
         load_recipe(directory)
 
     message = str(excinfo.value)
-    assert "relevant_spans" in message and "plugin rcp-vllm" in message
-    assert "pip install --no-deps rcp-vllm" in message
+    assert "relevant_spans" in message and "plugin cohere-rcp-vllm" in message
+    assert "pip install --no-deps cohere-rcp-vllm" in message
 
 
 # ----------------------------------------------------------------------------------------------------------
@@ -376,10 +381,10 @@ def test_the_declaration_names_the_plugin_that_honours_each_field() -> None:
     """One table, one plugin per field: the chunk knobs are ``serve.pooler_config`` keys and the spans wire is a
     recipe-level capability, and every row names the distribution that provides it."""
     assert PLUGIN_FIELDS == {
-        "serve.pooler_config.chunk_length": "rcp-vllm",
-        "serve.pooler_config.chunk_weighting": "rcp-vllm",
-        "serve.pooler_config.normalize_aggregated_embeddings": "rcp-vllm",
-        "relevant_spans": "rcp-vllm",
+        "serve.pooler_config.chunk_length": "cohere-rcp-vllm",
+        "serve.pooler_config.chunk_weighting": "cohere-rcp-vllm",
+        "serve.pooler_config.normalize_aggregated_embeddings": "cohere-rcp-vllm",
+        "relevant_spans": "cohere-rcp-vllm",
     }
 
 

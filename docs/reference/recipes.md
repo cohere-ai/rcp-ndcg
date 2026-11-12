@@ -173,7 +173,7 @@ serve:
   runner: pooling
   dtype: bfloat16
   max_model_len: 8192
-  plugin: rcp-vllm
+  plugin: cohere-rcp-vllm
   pooler_config: {chunk_length: 512, chunk_weighting: linear, normalize_aggregated_embeddings: true}
 ```
 

@@ -330,7 +330,7 @@
     }
    },
    "patches": [],
-   "plugin": "rcp-vllm",
+   "plugin": "cohere-rcp-vllm",
    "plugin_architectures": [
     "Qwen3_5Model"
    ],

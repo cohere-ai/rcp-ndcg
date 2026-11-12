@@ -62,7 +62,7 @@ SERVE = {
     "trust_remote_code": False,
     "max_model_len": 8192,
     "dtype": "bfloat16",
-    "plugin": "rcp-vllm",
+    "plugin": "cohere-rcp-vllm",
     # the plugin is a patch-only carrier now: the fold's registrations (the config hook and the folded
     # model) went with the fold, so the patch name is what keys the engine code the recipe runs.
     "plugin_architectures": [],
@@ -288,7 +288,7 @@ def test_the_fold_is_deleted_and_the_recipe_is_a_patch_only_carrier() -> None:
     from rcp_vllm.patches import PATCH_MODULES, PATCH_NAMES
 
     recipe = load_recipe(RECIPE_DIR)
-    assert recipe.serve.plugin == "rcp-vllm"
+    assert recipe.serve.plugin == "cohere-rcp-vllm"
     assert recipe.serve.plugin_architectures == ()
     assert recipe.serve.patches == ("torch-sdpa-attention",)
     assert PATCH_NAMES == ("torch-sdpa-attention",)
