@@ -340,6 +340,25 @@ def _require_matching_query_ids(qrels: _PerQuery, results: _PerQuery, *, metric:
         )
 
 
+def _qrels_queries(qrels: _PerQuery, results: _PerQuery, k: int, *, metric: str) -> list[str]:
+    """The shared refusals, the key-set check, then the ``all-qrels`` queries; refuse an empty qrels.
+
+    The ``all-qrels`` denominator divides by the number of qrels queries, so the run must name exactly those
+    queries: a query on one side only would let the value leave ``[0, 1]``. An empty qrels leaves no denominator
+    at all, and 0.0 would report that as a measurement.
+    """
+    _validate_k(k)
+    _validate_qrels(qrels)
+    _validate_run(results)
+    _require_matching_query_ids(qrels, results, metric=metric)
+    if not qrels:
+        raise ValueError(
+            f"{metric} divides by the number of qrels queries, and the qrels name none: there is no denominator, "
+            f"and 0.0 would report an undefined mean as a measurement"
+        )
+    return list(qrels)
+
+
 def _ndcg_float_query(grades: Mapping[str, float], scores: Mapping[str, float], k: int) -> float:
     """One query's continuous-qrel nDCG@k: :func:`ndcg` with the ``"group_mean"`` credit and the identity gain.
 
@@ -517,17 +536,82 @@ def precision(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float:
     return total / len(evaluated)
 
 
+def success(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float:
+    """success@k averaged over the evaluated queries: the share of queries with a hit anywhere in their top k.
+
+    Equal scores are ordered by document id, descending, and a query scores 1.0 when any document in its top k has
+    a qrel grade above 0. The per-query value is binary, so no partial credit can hide a wrong tie order: the rule
+    matters only when a tie straddles the cutoff.
+
+    Args:
+        qrels: ``{query_id: {doc_id: grade}}``; every grade is finite and at least 0, and only the sign is read.
+        results: ``{query_id: {doc_id: score}}``, higher is better, every score finite.
+        k: Cutoff, at least 1.
+
+    Returns:
+        The mean of the per-query 0.0 or 1.0 over the ``evaluated`` queries, in ``[0, 1]``. A query with no
+        relevant document scores 0.0 and stays in the mean.
+
+    Raises:
+        ValueError: ``k`` is not positive, a grade is not finite or is negative, a score is not finite, or no
+            query is evaluated (an empty qrels, or a run that shares no query id with it).
+    """
+    evaluated = _scored_queries(qrels, results, k, metric="success")
+    total = 0.0
+    for query_id in evaluated:
+        grades = qrels[query_id]
+        ranking = rank_by_score(results[query_id], ties="doc_id_desc")[:k]
+        total += 1.0 if any(grades.get(doc_id, 0.0) > 0 for doc_id in ranking) else 0.0
+    return total / len(evaluated)
+
+
+def mrr(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float:
+    """MRR@k over the ``all-qrels`` denominator: the mean of ``1 / rank`` of the first relevant document.
+
+    Equal scores keep the run's insertion order, and a document is relevant when its qrel grade is above 0. This is
+    the first metric whose value the tie rule moves: a tie at the top moves the first hit from rank 1 to rank 2.
+
+    The mean divides by the number of qrels queries, so a qrels query with no run contributes 0.0 -- and a run
+    query the qrels do not name is refused rather than counted, which is how the value stayed in ``[0, 1]``.
+
+    Args:
+        qrels: ``{query_id: {doc_id: grade}}``; every grade is finite and at least 0, and only the sign is read.
+        results: ``{query_id: {doc_id: score}}``, higher is better, every score finite, and its query ids exactly
+            the qrels'.
+        k: Cutoff, at least 1. A hit is found or it is not, so a ``k`` deeper than the run changes nothing.
+
+    Returns:
+        The mean over the qrels' queries of ``1 / rank`` of the first relevant document inside the top k, or 0.0
+        when there is none, in ``[0, 1]``.
+
+    Raises:
+        ValueError: ``k`` is not positive, a grade is not finite or is negative, a score is not finite, the qrels
+            are empty, or the run's query ids differ from the qrels' (both sides are named).
+    """
+    queries = _qrels_queries(qrels, results, k, metric="mrr")
+    total = 0.0
+    for query_id in queries:
+        grades = qrels[query_id]
+        for rank, doc_id in enumerate(rank_by_score(results[query_id], ties="input_order")[:k], start=1):
+            if grades.get(doc_id, 0.0) > 0:
+                total += 1.0 / rank
+                break
+    return total / len(queries)
+
+
 __all__ = [
     "TieRule",
     "dcg",
     "discount",
     "ideal_dcg",
     "map",
+    "mrr",
     "ndcg",
     "ndcg_float",
     "per_query_ndcg",
     "precision",
     "rank_by_score",
     "recall",
+    "success",
     "tie_groups",
 ]
