@@ -770,7 +770,8 @@ def _score_metric(
     """One metric's value for one query: the pool check, then the metric's own arithmetic.
 
     Raises:
-        DataError: The protocol needs the query's judged pool and the dataset has none, or the plugin returns
+        DataError: The protocol needs the query's judged pool and the dataset has none, the metric refuses its
+            input (a ``ValueError``: a negative qrel grade, a non-finite score, a cutoff of 0), or it returns
             something that is not a finite float or ``None`` (the seam's contract, named rather than crashed on).
     """
     candidates = (part.candidates or {}).get(query_id)
@@ -780,15 +781,23 @@ def _score_metric(
             hint="load the dataset with its pools (HF top_ranked), or score it with protocol='plain'",
             cli_hint="load the dataset with its pools (HF top_ranked), or score it with --protocol plain",
         )
-    value = metric.score(
-        query_id,
-        scores,
-        labels,
-        protocol=rules,
-        k=k,
-        candidates=candidates,
-        excluded=part.excluded.get(query_id, ()),
-    )
+    try:
+        value = metric.score(
+            query_id,
+            scores,
+            labels,
+            protocol=rules,
+            k=k,
+            candidates=candidates,
+            excluded=part.excluded.get(query_id, ()),
+        )
+    except ValueError as exc:
+        # A metric validates its own input (``rcp_core.metric``'s corpus functions do) and a bare ``ValueError``
+        # is an internal error at the CLI: the caller's input is what was refused, so it is a ``DataError``.
+        raise DataError(
+            f"the metric {metric.name!r} refused query {query_id!r}: {exc}",
+            hint="fix the qrels, the scores or the cutoff the metric refused",
+        ) from exc
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, numbers.Real):

@@ -21,7 +21,7 @@ import pytest
 from rcp_core import metric as core_metric
 
 from rcp.data import Dataset, Rankings
-from rcp.errors import ConfigError, DataError
+from rcp.errors import ConfigError, DataError, ExitCode
 from rcp.eval import METRICS, Metric, evaluate, metric_class, registered_metrics, sensitivity
 from tests._helpers._metrics import MeanAveragePrecision, install_metrics, metric_entry
 
@@ -320,6 +320,19 @@ def test_a_plugin_that_returns_a_non_number_is_a_data_error(monkeypatch: pytest.
 
     with pytest.raises(DataError, match="not_a_number.*float"):
         evaluate(rankings, dataset=dataset, metrics=["not_a_number"], k=[1], bootstrap=0)
+
+
+def test_a_metric_that_refuses_the_input_is_a_data_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A corpus metric refuses a negative qrel grade with a ``ValueError``: the seam translates it, so the
+    caller gets the contract's ``DataError`` (exit 12) naming the metric and the query, not an internal error."""
+    install_metrics(monkeypatch)
+    dataset = Dataset(name="toy", qrels={"q1": {"a": -1.0, "b": 1.0}})
+    rankings = Rankings.from_scores({"q1": {"a": 2.0, "b": 1.0}}, system="s")
+
+    with pytest.raises(DataError, match="'mrr'.*'q1'.*the qrel grade must be at least 0") as caught:
+        evaluate(rankings, dataset=dataset, metrics=["mrr"], protocol="plain", k=[1], bootstrap=0)
+
+    assert caught.value.exit_code == ExitCode.DATA, "a refused input is DATA/12, not INTERNAL/1"
 
 
 def test_a_plugin_value_that_is_undefined_does_not_warn_about_qrels(monkeypatch: pytest.MonkeyPatch) -> None:

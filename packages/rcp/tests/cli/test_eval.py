@@ -218,6 +218,26 @@ def test_rankings_of_another_corpus_exit_12_not_a_table_of_zeros(dataset: str, t
     assert "no ranked document is in the pools or labels" in document["error"]["message"]
 
 
+def test_a_metric_that_refuses_a_negative_qrel_exits_12(tmp_path: Path) -> None:
+    """A corpus metric refuses a negative grade with a ``ValueError``; the CLI reports the contract's DATA/12,
+    naming the metric and the query, where the bare ``ValueError`` would be INTERNAL/1."""
+    path = tmp_path / "rows.jsonl"
+    row = {"query_id": "q1", "query": "q", "doc_ids": ["a", "b"], "docs": ["A", "B"], "qrels": {"a": -1.0}}
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    rankings = tmp_path / "run.jsonl"
+    Rankings.from_scores({"q1": {"a": 2.0, "b": 1.0}}, system="mine").save(rankings)
+
+    document = _invoke(
+        "score", "--rankings", str(rankings), "--dataset", f"jsonl:{path}", "--metrics", "qrel_ndcg",
+        "--metric", "map", "--k", "1",
+    )  # fmt: skip
+
+    assert document["exit_code"] == 12 and document["ok"] is False
+    assert document["error"]["code"] == "DATA"
+    assert "'map'" in document["error"]["message"] and "'q1'" in document["error"]["message"]
+    assert "the qrel grade must be at least 0" in document["error"]["message"], "the metric's own reason"
+
+
 def test_explain_refuses_a_report_whose_rankings_stopped_matching(scored: dict) -> None:
     """The checks live in evaluate(), so `eval explain --report` gets them: a rankings file rewritten after
     scoring is refused, not a table of zeros."""
