@@ -3,9 +3,11 @@
 The 0.0.1 entry is the release record. A reader deciding how over-cap rows were gated, or how empty
 documents score, takes the recipe facts from its bullets, so every ``status``/``known_deviations``/
 ``empty_doc`` claim a bullet makes about a shipped recipe is resolved against the recipe here. The same
-entry names the harness modules; they moved to the unpublished ``rcp-ndcg-test`` at the layout move (the
-package is ``rcp_test`` since), so the entry must name their shipped homes (``rcp_ndcg_test.*``,
-``rcp-ndcg-test/schema/``) while the modules themselves live on.
+entry names the harness modules; they moved to the unpublished ``rcp-test`` at the layout move, so the
+entry must name their shipped homes (``rcp_test.*``, ``packages/rcp-test/schema/``) while the modules
+themselves live on. Above its ``### Changed — the rename`` section the entry describes the tree that
+ships, so it names the shipped spellings there; below that section the entries keep the names of the day
+they were written, and that history is not checked.
 """
 
 from __future__ import annotations
@@ -112,28 +114,47 @@ MOVED_HARNESS = (
 )
 PRE_MOVE_PREFIXES = ("rcp_vllm.", "rcp.testing.")
 
+RENAME_HEADING = "### Changed — the rename"
+
+# Spellings that shipped with an artifact or a dataset and did not move with the rename: the run layout's
+# own tag (not a schema id), the published dataset ids, and the emulator's extension keys.
+RECORDED = ("rcp-ndcg.run-layout.v1", "rcp-ndcg-vidore-v3", "x-rcp-ndcg-emulator-")
+_MOVED_FROM = re.compile(r"moved from `[^`]*`")
+_OLD_SPELLING = re.compile(r"rcp-ndcg(?:-core|-vllm|-test)?(?![\w.-])|rcp_ndcg_(?:core|vllm|test)\b|rcp_ndcg\.")
+
+
+def _current_notes() -> str:
+    """The release notes above the rename section, flattened: the part that describes the tree that ships."""
+    head, separator, _ = CHANGELOG.read_text(encoding="utf-8").partition(f"\n{RENAME_HEADING}\n")
+    assert separator, f"CHANGELOG.md has no {RENAME_HEADING!r} section"
+    return " ".join(head.split())
+
+
+def test_the_release_notes_above_the_rename_use_the_shipped_names() -> None:
+    """0.0.1 is the release record: above the rename section it names `rcp`, not the pre-rename spellings."""
+    current = _MOVED_FROM.sub("", _current_notes())
+    for spelling in RECORDED:
+        current = current.replace(spelling, "")
+    stale = sorted(set(_OLD_SPELLING.findall(current)))
+    assert stale == [], f"CHANGELOG.md describes the shipped tree with pre-rename names: {stale}"
+
 
 def test_the_harness_modules_are_named_at_their_shipped_home() -> None:
-    """The entry names the harness under `rcp_ndcg_test` (its home after the layout move), not the old one."""
-    flat = " ".join(CHANGELOG.read_text(encoding="utf-8").split())  # a `moved from <old name>` spans a line break
+    """The notes name the harness under `rcp_test` (its home since the layout move), not the old one."""
+    current = _current_notes()
     stale: list[str] = []
     for name in MOVED_HARNESS:
+        module = f"rcp_test.{name}"
+        assert module in current, f"the release notes never name the shipped home {module}"
+        importlib.import_module(module)
         for prefix in PRE_MOVE_PREFIXES:
             old = f"{prefix}{name}"
-            for match in re.finditer(re.escape(old) + r"(?![\w.])", flat):
-                if "moved from `" in flat[max(0, match.start() - 16) : match.start()]:
-                    continue  # the entry states where it moved from; that is history, not a current home
+            for match in re.finditer(re.escape(old) + r"(?![\w.])", current):
+                if "moved from `" in current[max(0, match.start() - 16) : match.start()]:
+                    continue  # the notes state where it moved from; that is history, not a current home
                 stale.append(old)
                 break
     assert stale == [], f"CHANGELOG.md names moved harness modules at their old home: {stale}"
-    for name in MOVED_HARNESS:
-        module = f"rcp_ndcg_test.{name}"
-        assert module in flat, f"CHANGELOG.md never names the shipped home {module}"
-        # the spelling in the entry is historical; the module itself lives on under the current name
-        importlib.import_module(f"rcp_test.{name}")
-
-
-CHANGELOG = ROOT / "CHANGELOG.md"
 
 
 def test_no_change_appears_twice_in_the_release_notes() -> None:
