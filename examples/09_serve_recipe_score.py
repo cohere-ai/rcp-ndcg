@@ -1,7 +1,7 @@
 """Serve a retrieval model from a recipe and score it (needs an engine: set RCP_NDCG_ENGINE_URL).
 
 The engine side is `rcp-vllm serve qwen3-embedding-0.6b` on the stock vLLM image
-(`python3 -m pip install --no-deps rcp-vllm`). This example prints the engine argv the recipe builds and
+(`python3 -m pip install --no-deps cohere-rcp-vllm`). This example prints the engine argv the recipe builds and
 then retrieves with the recipe's client block against the running engine.
 
     python examples/09_serve_recipe_score.py
@@ -22,7 +22,7 @@ if not url:
 try:
     from rcp_vllm.recipe import iter_recipes, serve_argv
 except ImportError:
-    print("skipped: install the serving package first (python3 -m pip install --no-deps rcp-vllm)")
+    print("skipped: install the serving package first (python3 -m pip install --no-deps cohere-rcp-vllm)")
     raise SystemExit(0) from None
 
 recipe = next(r for r in iter_recipes() if r.id == "qwen3-embedding-0.6b")

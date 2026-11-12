@@ -7,7 +7,7 @@ block is the product's endpoint config, kept as plain data here and validated by
 architectures with vLLM lazily through the one ``vllm.general_plugins`` entry point.
 
 The wheel is pure Python and declares only dependencies the stock vLLM image already ships (pydantic, PyYAML),
-so ``pip install --no-deps rcp-vllm`` prepares an engine image without touching its pins (``pip freeze``
+so ``pip install --no-deps cohere-rcp-vllm`` prepares an engine image without touching its pins (``pip freeze``
 then differs by exactly this wheel). Importing this package never imports torch or vLLM.
 
 Public names (pinned by ``tests/contract``): :class:`~rcp_vllm.recipe.RecipeFamily`,

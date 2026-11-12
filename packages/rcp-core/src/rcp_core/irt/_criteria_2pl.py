@@ -192,7 +192,7 @@ class Criteria2PL:
         except ImportError as exc:  # pragma: no cover - exercised only without scipy
             raise ImportError(
                 "Criteria2PL.fit requires scipy (bounded L-BFGS-B). "
-                "Install it directly, or via the package extra: pip install 'rcp-core[irt]'"
+                "Install it directly, or via the package extra: pip install 'cohere-rcp-core[irt]'"
             ) from exc
 
         prior_sd = _validate_prior_sd(prior_sd)

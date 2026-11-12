@@ -155,7 +155,7 @@ def conditional_insert_theta(
     except ImportError as exc:  # pragma: no cover - exercised only without scipy
         raise ImportError(
             "conditional_insert_theta requires scipy (bounded 1-D optimisation). "
-            "Install it directly, or via the package extra: pip install 'rcp-core[irt]'"
+            "Install it directly, or via the package extra: pip install 'cohere-rcp-core[irt]'"
         ) from exc
 
     incident = [(a, b, wt, sl) for a, b, wt, sl in comparisons if a == doc_id or b == doc_id]
