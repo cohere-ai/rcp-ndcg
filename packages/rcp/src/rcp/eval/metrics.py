@@ -295,6 +295,10 @@ class Mrr(_CorpusMetric):
     grade is above 0. This is the metric the tie rule moves first: a tie at the top moves the first hit from
     rank 1 to rank 2. A hit is found or it is not, so a ``k`` deeper than the run changes nothing.
 
+    The mean is over the dataset's labelled queries, as for every metric here (a labelled query the run does not
+    rank scores 0.0); the standalone function divides by every qrels query, refusing a run whose query ids
+    differ.
+
     Raises:
         ValueError: ``k`` is not positive, a grade is not finite or is negative, or a score is not finite.
     """
@@ -310,6 +314,10 @@ class RecallCap(_CorpusMetric):
     positive count and ``k``: a run of ``k`` documents cannot retrieve more than ``k`` positives, so the value
     stays at 1.0 when the query has more positives than ``k`` -- the one difference from :class:`Recall`. A
     query with no relevant document has no denominator, scores 0.0 and stays in the mean.
+
+    The mean is over the dataset's labelled queries, as for every metric here (a labelled query the run does not
+    rank scores 0.0); the standalone function divides by every qrels query, refusing a run whose query ids
+    differ.
 
     Raises:
         ValueError: ``k`` is not positive, a grade is not finite or is negative, or a score is not finite.

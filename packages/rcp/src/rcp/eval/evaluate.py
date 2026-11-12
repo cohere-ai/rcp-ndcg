@@ -13,18 +13,20 @@ no dataset (:meth:`~rcp.data.Rankings.resolve_dataset`). Rows that name no datas
 that read them share query ids, since a query id alone does not say which subset it belongs to.
 
 **Metrics** are resolved through the ``rcp.metrics`` entry-point group (:mod:`rcp.eval.metrics`): the shipped
-three (``rcp``, ``qrel_ndcg``, ``count_ndcg``) and any installed plugin. A plugin is scored per query on the
-dataset's qrels, at every requested cutoff when its ``k_required`` is true and once (at ``k=0``) when it is
-false; the shipped three keep their own labels.
+ten (``rcp_ndcg``, ``qrel_ndcg``, ``count_ndcg`` and the seven corpus metrics) and any installed plugin. A
+metric is scored per query on the dataset's qrels, at every requested cutoff when its ``k_required`` is true and
+once (at ``k=0``) when it is false; the shipped ten keep their own labels: the gains for ``rcp_ndcg``, the count
+gains for ``count_ndcg``, the qrels for the other eight.
 
 **Queries.** Each metric is scored on the queries that have its labels: RCP-nDCG on the queries with gains,
-Count-nDCG on those with count gains, qrel-nDCG and a plugin on those with qrels. A labelled query that a system
-did not rank scores 0 and is reported in :attr:`EvalReport.warnings`. qrel-nDCG is undefined (``None``) for a
-query without a positive grade and drops out of the means. A system whose rankings match nothing of the dataset
-— no row names any of its subsets, or not one ranked id is in its pools or labels — is refused with a
-:class:`~rcp.errors.DataError`: every score would be 0, which reads as a weak system where the input is
-broken. ``systems=`` (``--system`` on the command line) scores only the named systems, so one broken system of
-a multi-system file no longer stops the others; an unknown name is refused, listing the systems the file holds.
+Count-nDCG on those with count gains, qrel-nDCG, the seven corpus metrics and a plugin on those with qrels. A
+labelled query that a system did not rank scores 0 and is reported in :attr:`EvalReport.warnings`. qrel-nDCG is
+undefined (``None``) for a query without a positive grade and drops out of the means. A system whose rankings
+match nothing of the dataset — no row names any of its subsets, or not one ranked id is in its pools or labels —
+is refused with a :class:`~rcp.errors.DataError`: every score would be 0, which reads as a weak system where the
+input is broken. ``systems=`` (``--system`` on the command line) scores only the named systems, so one broken
+system of a multi-system file no longer stops the others; an unknown name is refused, listing the systems the
+file holds.
 
 **Aggregation** follows the paper: the mean over queries per dataset, then the unweighted mean over datasets. The
 summary interval is a percentile bootstrap that resamples queries within each dataset (query-clustered,

@@ -28,11 +28,13 @@ every reader still accepts it. All four distributions carry the tag version; `co
 
 ### Public surface
 
-`rcp_core.metric` supplies eleven metrics for the evaluation programme. Each metric publishes one tie rule. A
-caller cannot select the tie rule.
+`rcp_core.metric` supplies twelve metric functions for the evaluation programme. Eleven of them publish one tie
+rule each, and a caller cannot select that rule. The twelfth is `ndcg`, the paper's own nDCG: its `ties`
+argument selects the rule.
 
 | Metric | Tie rule |
 |---|---|
+| `ndcg` | The caller selects `ties`: `group_mean` (the default), `doc_id_desc` or `input_order`. |
 | `ndcg_float` | `group_mean`. Each document of an equal-score class gets the mean gain of the class. |
 | `per_query_ndcg` | `group_mean`. It uses the rule of `ndcg_float`, and it gives one value per query. |
 | `map` | `doc_id_desc`. The document with the higher id comes first. |
