@@ -451,6 +451,11 @@ def _apply_rewrites(text: str, name: Path) -> tuple[str, list[str]]:
             "packages/rcp-test/tests/test_ledger.py",
         ):
             continue  # their source lists name pre-rename trees' spellings as data, never a live path
+        if rule == "main-name" and name.as_posix() in (
+            "AGENTS.md",
+            ".github/workflows/release.yml",
+        ):
+            continue  # the trusted-publisher clause names the repository the rename came from, on purpose
         if rule == "main-name" and name.as_posix() == "packages/rcp/tests/judging/test_store.py":
             continue  # its parametrize list spells both identity tags as data: a pre-rename store carries the old one
         if rule.startswith("test-") and name.as_posix() == "tests/docs/test_changelog.py":
