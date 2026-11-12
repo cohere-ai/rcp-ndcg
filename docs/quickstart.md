@@ -27,13 +27,15 @@ installed by users ([its page](reference/rcp-test.md)). The extras:
 | `azure` | the Azure Blob storage backend (`az://` URIs) |
 | `http` | `http(s)://` object URLs (fsspec's aiohttp backend) |
 | `data` | the `hf` and `pdf` readers of `rcp data convert` (the Hub dataset loader, PDF rendering) |
+| `vllm` | `rcp-vllm`, the serving recipes and their console, for a config that names a `recipe:` ([recipes and serving models](reference/recipes.md)) |
 | `dev` | the test and lint tools |
 | `docs` | the local documentation preview (mkdocs-material) |
 
 Every retrieval model is served now. The client talks HTTP to the engines (role clients over one transport). It installs
 beside an engine untouched in its own venv. Serving a shipped recipe via `rcp-vllm` adds exactly one pure-Python
-wheel to the engine's environment (`pip install --no-deps`), and nothing else changes. The old `[local]` and `[vllm]`
-extras are gone. The paper's in-process reference implementations live in `experiments/paper/rerankers/reference/` with
+wheel to the engine's environment (`pip install --no-deps`), and nothing else changes. The old in-process `[local]`
+extra is gone. `[vllm]` loads no model in process either: today it brings `rcp-vllm`, one line,
+`pip install "rcp[vllm]"`. The paper's in-process reference implementations live in `experiments/paper/rerankers/reference/` with
 their own pinned requirements, outside the package's lock. BM25 and the hosted APIs need no extra.
 
 From a checkout of the repository, `uv sync --extra hf --extra calibrate` sets up the same environment with
