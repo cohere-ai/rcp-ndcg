@@ -99,7 +99,7 @@ def test_a_missing_rcp_vllm_is_a_typed_error_with_the_install_line(monkeypatch: 
     monkeypatch.setitem(sys.modules, "rcp_vllm", None)  # make the lazy import raise ModuleNotFoundError
     with pytest.raises(ConfigError, match="needs the serving recipes") as excinfo:
         available_recipe_ids()
-    assert "pip install rcp-vllm" in excinfo.value.hint
+    assert "pip install cohere-rcp-vllm" in excinfo.value.hint
 
 
 def test_the_cli_shorthand_is_the_mapping_in_one_string() -> None:

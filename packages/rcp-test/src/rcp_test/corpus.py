@@ -1,6 +1,6 @@
 """Observation corpora: the on-disk format and its one reader (OBSERVATIONS-SPEC sections 3-5 and 7).
 
-A GPU wave records, per recipe, the raw exchanges with a served engine (``rcp-vllm``'s collector writes
+A GPU wave records, per recipe, the raw exchanges with a served engine (``cohere-rcp-vllm``'s collector writes
 them); the verified fake engines and their conformance suite read them back on CPU. This module is the
 format's one home, shared by the writer and every reader: the schema identifiers, :func:`load_corpus` (which
 reads a full corpus's ``records.jsonl`` and a repository subset's ``records.jsonl.gz`` alike, and migrates

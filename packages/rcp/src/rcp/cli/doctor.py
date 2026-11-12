@@ -220,14 +220,17 @@ def _text(report: DoctorReport) -> str:
 @command("doctor", request=DoctorRequest, result=DoctorReport, text=_text)
 def doctor(request: DoctorRequest) -> DoctorReport:
     """Check the environment: versions, installed extras, directories, credentials present, endpoint reachable."""
-    versions = {dist: _version(dist) for dist in ("rcp", "rcp-core", "pydantic", "click", "torch")}
+    versions = {dist: _version(dist) for dist in ("cohere-rcp", "cohere-rcp-core", "pydantic", "click", "torch")}
     checks = []
-    if versions["rcp"] is not None and versions["rcp-core"] != versions["rcp"]:
+    if versions["cohere-rcp"] is not None and versions["cohere-rcp-core"] != versions["cohere-rcp"]:
         checks.append(
             Check(
-                name="rcp-core",
+                name="cohere-rcp-core",
                 status="fail",
-                detail=f"rcp {versions['rcp']} needs rcp-core {versions['rcp']}, found {versions['rcp-core']}",
+                detail=(
+                    f"cohere-rcp {versions['cohere-rcp']} needs cohere-rcp-core "
+                    f"{versions['cohere-rcp']}, found {versions['cohere-rcp-core']}"
+                ),
             )
         )
     for extra, modules in _EXTRAS.items():

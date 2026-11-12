@@ -296,7 +296,7 @@ class JudgeConfig(Endpoint):
 
         Raises:
             MissingInputError: ``path`` is neither a recipe, a file, nor a shipped name.
-            ConfigError: ``path`` names a recipe of another role, or rcp-vllm is absent.
+            ConfigError: ``path`` names a recipe of another role, or cohere-rcp-vllm is absent.
         """
         from rcp.judging.judges import judge_config_data
 

@@ -39,7 +39,7 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version
 
 try:
-    __version__: str = _version("rcp")
+    __version__: str = _version("cohere-rcp")
 except PackageNotFoundError:  # a source tree on sys.path without an install
     __version__ = "0+unknown"
 

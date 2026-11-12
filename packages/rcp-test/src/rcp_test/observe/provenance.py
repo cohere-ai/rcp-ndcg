@@ -304,11 +304,11 @@ def collector_facts(
 
     env = dict(os.environ if environ is None else environ)
     try:
-        package_version: Any = version("rcp-vllm")
+        package_version: Any = version("cohere-rcp-vllm")
     except PackageNotFoundError:
-        package_version = unavailable("rcp-vllm is not installed as a distribution")
+        package_version = unavailable("cohere-rcp-vllm is not installed as a distribution")
     return {
-        "package": "rcp-vllm",
+        "package": "cohere-rcp-vllm",
         "version": package_version,
         "commit": env.get("RCP_SOURCE_COMMIT")
         or unavailable("RCP_SOURCE_COMMIT is not set (the release candidate's manifest records the commit)"),

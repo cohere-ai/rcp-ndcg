@@ -2,7 +2,7 @@
 
 The shipped configs here are **vendor profiles**: ``gpt5_hosted`` (the OpenAI API), a
 :class:`~rcp.judging.JudgeConfig` whose endpoint is the vendor's own. The self-hosted judges
-are **serving recipes** in ``rcp-vllm``'s package data (``rcp_vllm.recipe``), one family
+are **serving recipes** in ``cohere-rcp-vllm``'s package data (``rcp_vllm.recipe``), one family
 per model family, and resolve through the same path as ``reranker: recipe:<id>``: the recipe's
 ``client`` block is the judge config (validated by :class:`~rcp.judging.JudgeConfig`, R30) and
 its ``serve`` block is the engine argv. The three routes a judge may be named by
@@ -64,7 +64,7 @@ def judge_config_data(value: str | Path) -> dict[str, Any]:
     identity (its shipped id, or ``unshipped:sha256:<hex>``).  A recipe names no ``base_url``: a served
     judge's URL arrives at runtime.  Raises :class:`~rcp.errors.ConfigError` when ``value`` names a
     recipe of another role (a judge is judged, not encoded); the ``recipe:`` form (and the bare id, through
-    it) also raises the install line when rcp-vllm is absent -- without the package no bare id can
+    it) also raises the install line when cohere-rcp-vllm is absent -- without the package no bare id can
     resolve as a recipe, so it reads as an unknown config name and the hint points at the ``recipe:`` form,
     which gives the install line; :class:`~rcp.errors.MissingInputError` when ``value`` names nothing.
     """

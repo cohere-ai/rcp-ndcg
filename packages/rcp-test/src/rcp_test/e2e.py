@@ -151,7 +151,7 @@ import sys as _sys
 _record = _os.environ.get("RCP_E2E_PROBE_JSONL")
 if _record:
     _versions = {}
-    for _dist in ("rcp", "rcp-core", "rcp-vllm", "pydantic", "numpy", "tokenizers"):
+    for _dist in ("cohere-rcp", "cohere-rcp-core", "cohere-rcp-vllm", "pydantic", "numpy", "tokenizers"):
         try:
             _versions[_dist] = _metadata.version(_dist)
         except _metadata.PackageNotFoundError:
@@ -1071,8 +1071,10 @@ def check_process_boundary(
     for row in coordinators:
         if row.get("sys_prefix") == engine_prefix or row.get("executable") == engine_executable:
             problems.append(f"the coordinator ran the engine environment's interpreter: {row}")
-        if version is not None and row.get("versions", {}).get("rcp") != version:
-            problems.append(f"the coordinator saw rcp {row.get('versions', {}).get('rcp')}, staged {version}")
+        if version is not None and row.get("versions", {}).get("cohere-rcp") != version:
+            problems.append(
+                f"the coordinator saw cohere-rcp {row.get('versions', {}).get('cohere-rcp')}, staged {version}"
+            )
     return {
         "name": "process boundaries",
         "ok": not problems,

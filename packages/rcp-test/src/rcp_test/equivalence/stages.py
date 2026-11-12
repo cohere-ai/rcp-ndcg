@@ -1901,7 +1901,7 @@ def _jinja_environment(*, strict: bool = True) -> Any:
         from jinja2.sandbox import ImmutableSandboxedEnvironment
     except ImportError as error:  # pragma: no cover - exercised only without jinja2
         raise HarnessError(
-            "the template-render check renders the served chat template with jinja2: install rcp-vllm[test]"
+            "the template-render check renders the served chat template with jinja2: install cohere-rcp-vllm[test]"
         ) from error
     if not strict:
         return ImmutableSandboxedEnvironment(trim_blocks=True, lstrip_blocks=True)
