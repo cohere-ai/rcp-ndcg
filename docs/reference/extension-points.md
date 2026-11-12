@@ -507,16 +507,28 @@ def transport_for(url: str) -> httpx.BaseTransport | None:
 
 ## Metrics (`rcp.metrics`)
 
-A metric scores one query. The shipped `rcp`, `qrel_ndcg` and `count_ndcg` are entries of this group too, added
-by this package. So one lookup covers built-ins and plugins, and one policy refuses a duplicate:
+A metric scores one query. The evaluator averages its values over the dataset's labelled queries, so a corpus
+value is that mean. A labelled query the run does not rank scores `0.0`, and the report warns
+`UNRANKED_QUERIES`.
+
+The ten shipped metrics are entries of this group too, added by this package. Three of them are the nDCGs:
+`rcp_ndcg`, `qrel_ndcg` and `count_ndcg`. Seven are the corpus metrics of `rcp_core.metric` whose value is one
+query's: `ndcg_float`, `map`, `recall`, `precision`, `success`, `mrr` and `recall_cap`. So one lookup covers
+built-ins and plugins, and one policy refuses a duplicate:
 
 ```toml
 [project.entry-points."rcp.metrics"]
-mrr = "my_package.metrics:MeanReciprocalRank"
+toy_metric = "my_package.metrics:MeanAveragePrecision"
+toy_metric_no_cutoff = "my_package.metrics:MeanReciprocalRank"
 ```
 
-`evaluate(metrics=["mrr"])` and `rcp eval score --metric mrr` select it. The entry-point name is the metric name,
-and the class's `name` must equal it.
+`evaluate(metrics=["toy_metric"])` and `rcp eval score --metric toy_metric` select it. The entry-point name is
+the metric name, and the class's `name` must equal it. A name a shipped metric holds is refused, so a plugin
+cannot borrow `map` or `mrr`.
+
+Three metrics of `rcp_core.metric` are not names here, because the seam has no input for them. `hole` reads the
+corpus-wide annotated set. `paired_accuracy` reads `pair_groups`. `coverage` reads
+`{item_id: chosen_probability}`. They are public in `rcp_core.metric` and reached by import.
 
 ### The contract
 
@@ -541,10 +553,11 @@ dataset's scoring protocol, so the tie rule and the pool restriction stay `rcp_c
 - `DataError` (exit 12) when `score` returns something that is not a number and is not `None`. The evaluator
   names the metric and the query.
 
-### A minimal metric
+### Two minimal metrics
 
-This metric takes no cutoff, so the evaluator scores it once. It ranks through the protocol's rule. A pool
-restriction or an exclusion applies to it, as it does to the shipped three.
+The first takes the cutoff, so the evaluator scores it at every requested `k`. The second takes none, so it is
+scored once, at `k=0`. Both rank through the protocol's rule. A pool restriction or an exclusion applies to
+them, as it does to the shipped ten.
 
 ```python
 from collections.abc import Collection, Mapping, Sequence
@@ -554,10 +567,51 @@ from rcp_core.protocol import PROTOCOLS, Protocol, candidate_docs
 from rcp.eval import Metric
 
 
-class MeanReciprocalRank(Metric):
-    """The reciprocal rank of the first document with a positive grade."""
+def _ranked(
+    query: str,
+    ranking: Mapping[str, float],
+    *,
+    protocol: Protocol,
+    candidates: Sequence[str] | None,
+    excluded: Collection[str],
+) -> list[str]:
+    """The protocol's entering documents, best first."""
+    return candidate_docs(protocol, ranking, candidates=candidates, excluded=excluded, query_id=query)
 
-    name = "mrr"
+
+class MeanAveragePrecision(Metric):
+    """MAP@k: the mean of the precisions at every relevant rank, over the query's positives."""
+
+    name = "toy_metric"
+    k_required = True
+
+    def score(
+        self,
+        query: str,
+        ranking: Mapping[str, float],
+        labels: Mapping[str, float],
+        *,
+        protocol: Protocol,
+        k: int,
+        candidates: Sequence[str] | None = None,
+        excluded: Collection[str] = (),
+    ) -> float | None:
+        relevant = {doc_id for doc_id, grade in labels.items() if grade > 0}
+        if not relevant:
+            return None
+        ranked = _ranked(query, ranking, protocol=protocol, candidates=candidates, excluded=excluded)
+        hits, total = 0, 0.0
+        for rank, doc_id in enumerate(ranked[:k], start=1):
+            if doc_id in relevant:
+                hits += 1
+                total += hits / rank
+        return total / len(relevant)
+
+
+class MeanReciprocalRank(Metric):
+    """The reciprocal rank of the first document with a positive grade; it takes no cutoff."""
+
+    name = "toy_metric_no_cutoff"
     k_required = False
 
     def score(
@@ -572,11 +626,14 @@ class MeanReciprocalRank(Metric):
         excluded: Collection[str] = (),
     ) -> float | None:
         relevant = {doc_id for doc_id, grade in labels.items() if grade > 0}
-        ranked = candidate_docs(protocol, ranking, candidates=candidates, excluded=excluded, query_id=query)
+        ranked = _ranked(query, ranking, protocol=protocol, candidates=candidates, excluded=excluded)
         ranks = [rank for rank, doc_id in enumerate(ranked, start=1) if doc_id in relevant]
         return 1.0 / min(ranks) if ranks else None
 
 
+assert MeanAveragePrecision().score(
+    "q1", {"d1": 2.0, "d2": 1.0}, {"d1": 1.0, "d2": 1.0}, protocol=PROTOCOLS["plain"], k=2
+) == 1.0  # both relevant documents are ranked first and second
 assert MeanReciprocalRank().score(
     "q1", {"d1": 2.0, "d2": 1.0}, {"d2": 1.0}, protocol=PROTOCOLS["plain"], k=0
 ) == 0.5  # the only relevant document is ranked second
