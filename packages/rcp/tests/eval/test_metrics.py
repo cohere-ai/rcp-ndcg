@@ -109,6 +109,26 @@ def test_a_corpus_metric_keeps_its_own_tie_rule_under_another_protocol(
     assert report.value("tied", "mrr", k=1) != pytest.approx(1.0), "that is the document-id order"
 
 
+def test_the_input_order_metrics_score_the_run_order_not_the_pool_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``mrr`` and ``recall_cap`` order a tie by the run's insertion order, which a judged pool's own order does
+    not supply: the pool lists the only relevant document first (1.0), the run lists it second (0.0)."""
+    install_metrics(monkeypatch)
+    qrels = {"q1": {"b": 1.0}}
+    scores = {"q1": {"a": 0.5, "b": 0.5}}
+    dataset = Dataset(name="toy", qrels=qrels, candidates={"q1": ["b", "a"]})
+    rankings = Rankings.from_scores(scores, system="tied")
+
+    report = evaluate(rankings, dataset=dataset, metrics=["mrr", "recall_cap"], protocol="plain", k=[1], bootstrap=0)
+
+    assert core_metric.mrr(qrels, scores, k=1) == 0.0, "the core reads the run's order: b is ranked second"
+    assert report.value("tied", "mrr", k=1) == pytest.approx(0.0), "the seam is the core's value"
+    assert report.value("tied", "mrr", k=1) != pytest.approx(1.0), "that is the pool's order, which is no ranking"
+    assert report.value("tied", "recall_cap", k=1) == pytest.approx(0.0), "the same rule, the same value"
+    assert report.value("tied", "recall_cap", k=1) != pytest.approx(1.0), "that is the pool's order"
+
+
 def test_sensitivity_names_a_shipped_corpus_metric(monkeypatch: pytest.MonkeyPatch) -> None:
     """``sensitivity(metric=...)`` reads a metric the report holds: a corpus metric is one, and the pair here
     separates (``bad`` loses half a MAP@2 on every query, by a different amount on each)."""

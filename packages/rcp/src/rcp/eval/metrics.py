@@ -180,13 +180,15 @@ class _CorpusMetric(Metric):
     """One corpus metric of :mod:`rcp_core.metric`, scored on one query.
 
     The arithmetic is the corpus function's, called on a one-query corpus, so a metric has one body and the seam
-    cannot disagree with :mod:`rcp_core.metric` about a query. ``protocol`` supplies the entering documents
-    (:func:`rcp_core.protocol.candidate_docs`: the pool restriction and the exclusions); the order among them is
-    the metric's own tie rule, never the protocol's.
+    cannot disagree with :mod:`rcp_core.metric` about a query. ``protocol`` supplies the *set* of entering
+    documents (:func:`rcp_core.protocol.candidate_docs`: the pool restriction and the exclusions); the run's
+    insertion order among them is kept, because that order is the ``input_order`` tie rule of ``mrr`` and
+    ``recall_cap`` -- the pool's order is often a relevance order, and is never a ranking.
 
     The mean is over the dataset's labelled queries: a labelled query the run does not rank is scored ``0.0``,
-    where the standalone function's own denominator is the queries the run carries. A query is never undefined
-    for these metrics -- one with no relevant document scores ``0.0`` and stays in the mean.
+    where the standalone function divides by the queries it evaluates (``mrr`` and ``recall_cap``: by every
+    qrels query, refusing a run whose query ids differ). A query is never undefined for these metrics -- one
+    with no relevant document scores ``0.0`` and stays in the mean.
     """
 
     function: ClassVar[Callable[..., float]]
@@ -203,8 +205,8 @@ class _CorpusMetric(Metric):
         candidates: Sequence[str] | None = None,
         excluded: Collection[str] = (),
     ) -> float | None:
-        entering = candidate_docs(protocol, ranking, candidates=candidates, excluded=excluded, query_id=query)
-        ordered = {doc_id: ranking[doc_id] for doc_id in entering}
+        entering = set(candidate_docs(protocol, ranking, candidates=candidates, excluded=excluded, query_id=query))
+        ordered = {doc_id: ranking[doc_id] for doc_id in ranking if doc_id in entering}
         return self.function({query: labels}, {query: ordered}, k=k)
 
 
