@@ -30,7 +30,7 @@ from rcp_core.content import (
     VideoPart,
 )
 from rcp_core.gain import Gains, count_gain, gain, pass_probabilities, qrel_gain
-from rcp_core.metric import TieRule, dcg, ndcg
+from rcp_core.metric import TieRule, dcg, ndcg, ndcg_float, per_query_ndcg
 from rcp_core.protocol import PROTOCOLS, MetricName, Protocol, aggregate, score_query
 from rcp_core.records import ID, Document, Input, Query, RankingExample, Text
 from rcp_core.schemas import (
@@ -77,6 +77,8 @@ __all__ = [
     "gain",
     "qrel_gain",
     "ndcg",
+    "ndcg_float",
+    "per_query_ndcg",
     "pass_probabilities",
     "score_query",
 ]

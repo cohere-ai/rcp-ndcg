@@ -5,6 +5,10 @@
 * :func:`dcg`, :func:`ideal_dcg`, :func:`discount` -- its parts, for callers that need a DCG or the position
   discount themselves.
 * :data:`TieRule` -- how equal scores are ordered; :func:`rank_by_score` applies the two rules that give an order.
+* the corpus metrics -- one value per ``(qrels, run)`` corpus. :func:`ndcg_float` and :func:`per_query_ndcg` score
+  continuous qrels with the ``"group_mean"`` credit; the binary-relevance metrics read a grade above 0 as relevant
+  and form a ranking (:func:`map`, :func:`recall`, :func:`precision`, :func:`success`, :func:`mrr`,
+  :func:`recall_cap`, :func:`hole`); :func:`paired_accuracy` and :func:`coverage` form no ranking at all.
 """
 
 from __future__ import annotations
@@ -238,4 +242,182 @@ def ndcg(
     return dcg(ranked_gains, k) / normaliser
 
 
-__all__ = ["TieRule", "dcg", "discount", "ideal_dcg", "ndcg", "rank_by_score", "tie_groups"]
+# ---------------------------------------------------------------------------------------------------------------
+# Corpus metrics: the qrels and the run of a whole corpus, one value per metric and cutoff.
+#
+# Every one of them takes ``qrels = {query_id: {doc_id: grade}}`` and ``results = {query_id: {doc_id: score}}`` and
+# names its own mean denominator in its docstring. Every one of them refuses, with a message, rather than returning a
+# number for an undefined input: a non-finite or negative grade, a non-finite score, a duplicate document id (a
+# mapping cannot carry one) and an empty denominator are errors, never 0.0.
+# ---------------------------------------------------------------------------------------------------------------
+
+_PerQuery = Mapping[str, Mapping[str, float]]
+"""``{query_id: {doc_id: value}}``: a run's scores, or the qrels' grades, for a whole corpus."""
+
+
+def _require_finite_number(value: float, *, what: str) -> None:
+    """Refuse a value that is not a real number, or not a finite one, naming what it was meant to be."""
+    if not isinstance(value, numbers.Real):
+        raise ValueError(f"{what} must be a finite number, got {value!r}")
+    if not math.isfinite(value):
+        raise ValueError(f"{what} must be finite, got {value!r}")
+
+
+def _validate_qrels(qrels: _PerQuery) -> None:
+    """Refuse a grade that is not a finite number of at least 0, naming the query and the document.
+
+    The grade is a gain (:func:`ndcg_float`) or a relevance flag (the binary metrics), and every metric refuses
+    both faults: a NaN grade flows through the sums and returns a NaN, and a negative one is not a relevance a
+    binary metric can read (`protocol.score_query` calls it not positive) while as a gain it leaves ``[0, 1]``.
+    """
+    for query_id, grades in qrels.items():
+        for doc_id, grade in grades.items():
+            _require_finite_number(grade, what=f"the qrel grade for query {query_id!r}, document {doc_id!r}")
+            if grade < 0:
+                raise ValueError(
+                    f"the qrel grade must be at least 0, got {grade!r} for query {query_id!r}, document {doc_id!r}"
+                )
+
+
+def _validate_run(results: _PerQuery) -> None:
+    """Refuse a score that is not a finite number, naming the query and the document.
+
+    A NaN score compares False with everything, so a sort keeps the input order instead -- for a judged pool,
+    that is the relevance order the tie rules exist to keep out of the metric.
+    """
+    for query_id, scores in results.items():
+        for doc_id, score in scores.items():
+            _require_finite_number(score, what=f"the score for query {query_id!r}, document {doc_id!r}")
+
+
+def _positive_docs(grades: Mapping[str, float]) -> list[str]:
+    """One query's relevant documents -- those with a grade above 0 -- in the qrels' order."""
+    return [doc_id for doc_id, grade in grades.items() if grade > 0]
+
+
+def _evaluated_queries(qrels: _PerQuery, results: _PerQuery, *, metric: str) -> list[str]:
+    """The queries the ``evaluated`` denominator averages over, in the qrels' order; refuse when there is none.
+
+    The set is ``qrels`` intersected with ``results`` -- one set and one order, so two metrics that share it sum
+    the same values in the same order. A corpus that scores nothing has no mean: 0.0 would report an undefined
+    value as the measurement "nothing ranked correctly".
+    """
+    evaluated = [query_id for query_id in qrels if query_id in results]
+    if not evaluated:
+        raise ValueError(
+            f"{metric} has no query to average over: it is a mean over the queries in both the qrels and the run, "
+            f"and the qrels name {len(qrels)} queries while the run names {len(results)}. 0.0 would report an "
+            f"undefined mean as a measurement"
+        )
+    return evaluated
+
+
+def _require_matching_query_ids(qrels: _PerQuery, results: _PerQuery, *, metric: str) -> None:
+    """Refuse a run whose query ids are not the qrels', naming the ids on each side.
+
+    ``mrr``, ``recall_cap`` and ``hole`` divide by the number of qrels queries, so a query on one side only makes
+    the value leave ``[0, 1]`` (``hole@1`` returned 2.0 for two runs and one qrel).
+    """
+    only_qrels = sorted(set(qrels) - set(results))
+    only_run = sorted(set(results) - set(qrels))
+    if only_qrels or only_run:
+        raise ValueError(
+            f"{metric} divides by the {len(qrels)} qrels queries, so the run must name exactly those queries; "
+            f"{len(only_qrels)} query id(s) are in the qrels only ({only_qrels[:5]}) and {len(only_run)} are in "
+            f"the run only ({only_run[:5]})"
+        )
+
+
+def _ndcg_float_query(grades: Mapping[str, float], scores: Mapping[str, float], k: int) -> float:
+    """One query's continuous-qrel nDCG@k: :func:`ndcg` with the ``"group_mean"`` credit and the identity gain.
+
+    The one body :func:`ndcg_float` and :func:`per_query_ndcg` share, so the two cannot disagree about a query.
+    The ideal is the query's whole float-qrel set, never only the ranked candidates.
+    """
+    return ndcg(scores, grades, k=k, ties="group_mean", ideal=grades.values())
+
+
+def ndcg_float(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float:
+    """nDCG@k over continuous qrels, averaged over the evaluated queries.
+
+    Equal scores are credited the mean gain of their equal-score class, and the gain is the float qrel score
+    itself, which must be non-negative. The credit is taken over the whole class and the cutoff is applied after
+    it, so a class that straddles ``k`` credits every member with the same mean and only the members inside the
+    cutoff enter the sum.
+
+    Args:
+        qrels: ``{query_id: {doc_id: float qrel}}``. Each value is the gain, so it is finite and at least 0 (apply
+            a sigmoid at dataset creation time, not here). A query's whole set of values is its ideal DCG.
+        results: ``{query_id: {doc_id: score}}``, higher is better, every score finite. A ranked document absent
+            from the qrels counts 0.
+        k: Cutoff, at least 1.
+
+    Returns:
+        The mean of the per-query nDCG@k over the ``evaluated`` queries -- those in both the qrels and the run --
+        in ``[0, 1]``. A query with no positive qrel scores 0.0 and stays in the mean.
+
+    Raises:
+        ValueError: ``k`` is not positive, a grade is not finite or is negative, a score is not finite, or no
+            query is evaluated (an empty qrels, or a run that shares no query id with it).
+    """
+    _validate_k(k)
+    _validate_qrels(qrels)
+    _validate_run(results)
+    evaluated = _evaluated_queries(qrels, results, metric="ndcg_float")
+    return sum(_ndcg_float_query(qrels[query_id], results[query_id], k) for query_id in evaluated) / len(evaluated)
+
+
+def per_query_ndcg(
+    qrels: Mapping[str, _PerQuery],
+    results: Mapping[str, _PerQuery],
+    *,
+    k: int = 10,
+) -> dict[str, list[float]]:
+    """Every dataset's per-query nDCG@k, as ``{dataset: [value, ...]}``; this function never takes a mean.
+
+    This function returns the per-query values behind :func:`ndcg_float`, so it uses the same class-mean credit
+    and the same identity gain on float qrels: one body, so the two cannot disagree about one query. The list
+    holds one value per scored query, in the qrels' order.
+
+    Args:
+        qrels: ``{dataset: {query_id: {doc_id: float qrel}}}``, the values finite and at least 0.
+        results: ``{dataset: {query_id: {doc_id: score}}}``, the scores finite. A dataset the run does not carry
+            scores nothing, and a dataset that only the run carries contributes nothing.
+        k: Cutoff, at least 1.
+
+    Returns:
+        One entry per dataset named by ``qrels``. The list holds the value of every query present in both sides
+        and is empty when none is; a query in the qrels with no ranking is not scored and does not appear. The
+        caller takes the mean (``rcp_core.protocol.aggregate``) and must refuse an empty result rather than
+        average it.
+
+    Raises:
+        ValueError: ``k`` is not positive, a grade is not finite or is negative, or a score is not finite.
+    """
+    _validate_k(k)
+    for dataset_qrels in qrels.values():
+        _validate_qrels(dataset_qrels)
+    for dataset_results in results.values():
+        _validate_run(dataset_results)
+    values: dict[str, list[float]] = {}
+    for dataset, dataset_qrels in qrels.items():
+        dataset_results = results.get(dataset, {})
+        values[dataset] = [
+            _ndcg_float_query(grades, dataset_results[query_id], k)
+            for query_id, grades in dataset_qrels.items()
+            if query_id in dataset_results
+        ]
+    return values
+
+
+__all__ = [
+    "TieRule",
+    "dcg",
+    "discount",
+    "ideal_dcg",
+    "ndcg",
+    "ndcg_float",
+    "per_query_ndcg",
+    "rank_by_score",
+    "tie_groups",
+]
