@@ -22,7 +22,7 @@ from rcp_core import metric as core_metric
 
 from rcp.data import Dataset, Rankings
 from rcp.errors import ConfigError, DataError
-from rcp.eval import METRICS, Metric, evaluate, metric_class, registered_metrics
+from rcp.eval import METRICS, Metric, evaluate, metric_class, registered_metrics, sensitivity
 from tests._helpers._metrics import MeanAveragePrecision, install_metrics, metric_entry
 
 FIXTURE = Path(__file__).resolve().parents[4] / "tests" / "_helpers" / "fixtures" / "paper_protocol_queries.json"
@@ -107,6 +107,26 @@ def test_a_corpus_metric_keeps_its_own_tie_rule_under_another_protocol(
     assert report.value("tied", "map", k=2) != pytest.approx(0.5833333333333333), "that is the stable order"
     assert report.value("tied", "mrr", k=1) == pytest.approx(0.5), "q2's tie keeps a before b: the hit is second"
     assert report.value("tied", "mrr", k=1) != pytest.approx(1.0), "that is the document-id order"
+
+
+def test_sensitivity_names_a_shipped_corpus_metric(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``sensitivity(metric=...)`` reads a metric the report holds: a corpus metric is one, and the pair here
+    separates (``bad`` loses half a MAP@2 on every query, by a different amount on each)."""
+    install_metrics(monkeypatch)
+    qrels = {f"q{i}": {"a": 1.0, "b": 1.0, "c": 0.0, "d": 0.0} for i in range(6)}
+    dataset = Dataset(name="toy", qrels=qrels)
+    good = {query_id: {"a": 4.0, "b": 3.0, "c": 2.0, "d": 1.0} for query_id in qrels}
+    bad = {
+        query_id: {"a": 4.0, "c": 3.0, "b": 2.0, "d": 1.0} if i % 2 else {"c": 4.0, "a": 3.0, "b": 2.0, "d": 1.0}
+        for i, query_id in enumerate(qrels)
+    }
+    rankings = Rankings.concat([Rankings.from_scores(good, system="good"), Rankings.from_scores(bad, system="bad")])
+
+    report = evaluate(rankings, dataset=dataset, metrics=["map"], protocol="plain", k=[2], bootstrap=0)
+
+    assert report.value("good", "map", k=2) == pytest.approx(1.0)
+    assert report.value("bad", "map", k=2) == pytest.approx(0.375), "half the queries lose half a hit"
+    assert sensitivity(report, metric="map", k=2) == pytest.approx(1.0)
 
 
 def test_a_labelled_query_the_run_does_not_rank_is_scored_zero(monkeypatch: pytest.MonkeyPatch) -> None:
