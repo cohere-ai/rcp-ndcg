@@ -1,4 +1,4 @@
-"""Turning a :class:`MediaRef` into bytes or a PIL image.
+"""Turning a :class:`MediaRef` into bytes or a PIL image, and a dataset row's media cell into the stored one.
 
 Content-addressed caching, which is what makes this cheap at corpus scale.  The
 generic :func:`rcp.storage.cache` is URI-keyed and therefore has to ask
@@ -21,12 +21,12 @@ import io
 import json
 import os
 import struct
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
 
-from rcp_core.content import Content, MediaRef, VideoPart
+from rcp_core.content import Content, ImagePart, MediaRef, VideoPart
 
 from rcp import storage
 from rcp.errors import DataError, MissingInputError, RcpNdcgError
@@ -497,6 +497,92 @@ def media_extension(payload: bytes) -> str | None:
     return None
 
 
+def _sniffed_media_extension(payload: bytes, *, column: str) -> str:
+    """The extension a struct media cell's bytes state, refused when their magic numbers name no media type.
+
+    A cell's path suffix is a claim, not a check: when it names no known media type (or names none at all),
+    the bytes themselves must state one, so arbitrary bytes never reach the media cache under a media MIME
+    type.
+    """
+    extension = media_extension(payload)
+    if extension is None:
+        raise DataError(
+            f"the {column} cell's bytes are not a media type any magic number names ({len(payload)} bytes)",
+            hint="the cell is neither a known image nor a known video container; convert it at the source",
+        )
+    return extension
+
+
+def _with_mime(payload: bytes, extension: str) -> tuple[bytes, str, str | None]:
+    """The payload with the MIME type its suffix states: the video table's for a container, ``None`` for an
+    image (``store_media`` derives that one from the extension)."""
+    mime = VIDEO_MIME_BY_SUFFIX.get(extension) if extension not in IMAGE_MIME_BY_SUFFIX else None
+    return payload, extension, mime
+
+
+def encode_media(cell: Any, *, column: str) -> tuple[bytes, str, str | None]:
+    """Bytes, extension and MIME type for a dataset media cell, preferring the undecoded original.
+
+    A cell is a ``{"bytes", "path"}`` dict (the ``datasets`` struct), raw ``bytes`` (what a parquet media
+    column may hold: mteb's Any2Any repositories store the binary directly), or a decoded object (what
+    ``datasets`` hands back for an ``Image`` column: a PIL image). Using the bytes as given avoids a
+    decode/re-encode round trip, which would change the hash of a byte-identical page or clip; a raw cell's
+    format comes from its magic numbers. The MIME is the video table's for a container suffix and ``None``
+    for an image one (the extension states it).
+
+    Args:
+        cell: The media cell as the source hands it back.
+        column: The column it came from (``"image"``, ``"video"``), for the errors.
+
+    Returns:
+        The payload, its extension with its dot, and the MIME type to record beside it (``None`` when the
+        extension states it).
+
+    Raises:
+        DataError: The cell names a path without bytes, carries bytes of no known media type, or is a decoded
+            object this package cannot encode.
+    """
+    if isinstance(cell, dict):
+        payload = cell.get("bytes")
+        if payload:
+            declared = Path(str(cell.get("path") or "")).suffix.lower()
+            if declared in IMAGE_MIME_BY_SUFFIX or declared in VIDEO_MIME_BY_SUFFIX:
+                return _with_mime(payload, declared)
+            # No known suffix: the bytes must state the format (a suffix-less cell used to default to
+            # video/mp4 and store arbitrary bytes under it).
+            return _with_mime(payload, _sniffed_media_extension(payload, column=column))
+        if cell.get("path"):
+            raise DataError(
+                f"the {column} cell names a path ({cell['path']!r}) and carries no bytes; this reader never "
+                "reads a path a data row supplies",
+                hint="a media cell must carry its bytes (a `datasets` {{bytes, path}} struct): the path could "
+                "name any local file or a credentialed remote URI, so it is refused rather than read",
+            )
+        raise DataError(f"the {column} cell has neither bytes nor a path: {sorted(cell)}")
+    if isinstance(cell, bytes | bytearray | memoryview):
+        payload = bytes(cell)
+        extension = media_extension(payload)
+        if extension is None:
+            raise DataError(
+                f"the {column} cell is raw bytes whose format no magic number names ({len(payload)} bytes)",
+                hint="the cell is neither a known image nor a known video container; convert it at the source",
+            )
+        return _with_mime(payload, extension)
+
+    if hasattr(cell, "save"):
+        buffer = io.BytesIO()
+        cell.save(buffer, format="PNG")
+        return _with_mime(buffer.getvalue(), ".png")
+    # A decoded video (datasets' Video feature hands back a decoder object) has no encoder this package
+    # could use without ffmpeg: refuse it by name, never crash with a bare AttributeError.
+    raise DataError(
+        f"the {column} cell is a decoded {type(cell).__name__}, which this reader cannot encode",
+        hint="read the container bytes instead (a repository whose media column holds the raw file reads "
+        "as a container); a decoded video needs a frame policy, which belongs to the judge's media "
+        "preparation, not to the dataset reader",
+    )
+
+
 def default_resolver() -> MediaResolver:
     """The process-wide resolver, so the cache is shared across call sites."""
     global _DEFAULT_RESOLVER
@@ -553,6 +639,49 @@ def store_media(
         height=height,
         num_bytes=len(payload),
     )
+
+
+#: The media columns of a dataset row -- the names mteb's loader reserves -- and the content part each becomes
+#: (audio is deferred).
+_MEDIA_PART_BY_COLUMN: dict[str, type[ImagePart] | type[VideoPart]] = {"image": ImagePart, "video": VideoPart}
+
+
+def media_parts(row: Mapping[str, Any], *, root: str | None = None) -> list[ImagePart | VideoPart]:
+    """A dataset row's media columns as content parts, persisted once, content-addressed.
+
+    The one reading of a row's ``image`` and ``video`` cells: each is encoded (:func:`encode_media`), an
+    image's dimensions are read from its own bytes when the cell does not state them, and the payload is
+    stored once under its hash. Both readers that read a media column call this, so a cell encodes the same
+    way whichever layout it came from.
+
+    Args:
+        row: The raw row as read; an absent or null column contributes no part.
+        root: The directory to store under (see :func:`store_media`); ``None`` stores in the media cache.
+
+    Returns:
+        One part per media cell, in column order (``image`` before ``video``), each carrying a hashed
+        :class:`~rcp_core.content.MediaRef`.
+
+    Raises:
+        DataError: A cell is one :func:`encode_media` refuses.
+    """
+    parts: list[ImagePart | VideoPart] = []
+    for column, part_type in _MEDIA_PART_BY_COLUMN.items():
+        cell = row.get(column)
+        if cell is None:
+            continue
+        cells = cell if isinstance(cell, list) else [cell]
+        for value in cells:
+            if value is None:
+                continue
+            payload, extension, mime = encode_media(value, column=column)
+            width, height = getattr(value, "width", None), getattr(value, "height", None)
+            if width is None and height is None and column == "image":
+                width, height = image_dimensions(payload)  # the bytes are in hand: record what they state
+            parts.append(
+                part_type(ref=store_media(payload, extension, root=root, width=width, height=height, mime=mime))
+            )
+    return parts
 
 
 def decode_rgb(ref: MediaRef, payload: bytes) -> Image:
@@ -718,8 +847,10 @@ __all__ = [
     "content_parts_payload",
     "decode_rgb",
     "default_resolver",
+    "encode_media",
     "image_dimensions",
     "media_extension",
+    "media_parts",
     "media_reference_fingerprint",
     "probe_video_header",
     "sha256_of",

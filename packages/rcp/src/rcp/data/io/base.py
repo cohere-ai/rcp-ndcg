@@ -209,6 +209,54 @@ class DuplicateFold:
         return DuplicateCounts(policy=self.policy, folded=self.folded, resolved=self.resolved)
 
 
+def record_duplicate_counts(
+    fold: DuplicateFold,
+    *,
+    what: str,
+    totals: DuplicateCounts,
+    counted: set[str],
+) -> DuplicateCounts:
+    """Record one table's duplicates pass in a reader's running totals.
+
+    A reader may be asked for one of its tables again (:meth:`SourceReader.documents` twice), so a table's
+    counts are merged into *totals* on its first pass only, and logged whenever the pass did anything. Every
+    reader that records duplicate counts in its provenance records them here: one shape of count, one log
+    line, never a per-format dialect.
+
+    Args:
+        fold: The pass that read the table.
+        what: The table's name (``"corpus"``, ``"top_ranked"``): the key of the first-pass merge and of the
+            log line.
+        totals: The counts so far, the ones the reader's provenance records.
+        counted: The tables already merged into *totals*, which the reader keeps across passes.
+
+    Returns:
+        The counts to record: *totals* plus this pass on the table's first pass, *totals* itself otherwise.
+    """
+    counts = fold.counts()
+    merged = totals
+    if what not in counted:
+        counted.add(what)
+        merged = DuplicateCounts(
+            policy=totals.policy,
+            folded=totals.folded + counts.folded,
+            resolved=totals.resolved + counts.resolved,
+        )
+    _log_duplicate_counts(fold, what)
+    return merged
+
+
+def _log_duplicate_counts(fold: DuplicateFold, what: str) -> None:
+    """The one line a pass that did anything records: how many exact duplicates folded, how many conflicts the
+    policy resolved, and which policy that was."""
+    counts = fold.counts()
+    if counts.folded or counts.resolved:
+        logger.info(
+            f"{fold.source}: {what} duplicates: {counts.folded} exact folded, "
+            f"{counts.resolved} resolved by the {fold.policy.value} policy"
+        )
+
+
 class Provenance(BaseModel):
     """Where a dataset came from and how it was read; a reader's :attr:`SourceReader.provenance`, carried by
     :attr:`~rcp.data.Dataset.provenance`.
@@ -529,6 +577,34 @@ def required_id(row: Mapping[str, Any], keys: Sequence[str], *, source: str, wha
     raise DataError(f"{source}: {what} carries no id (looked for {', '.join(keys)}); an id-less row is not droppable")
 
 
+def text_of(row: Mapping[str, Any], *, what: str, source: str, hint: str) -> str:
+    """A row's ``text`` column: a string; anything else is refused where it is read (nothing is defaulted).
+
+    Args:
+        row: The raw row as read.
+        what: What the row holds (``"corpus row"``, ``"query row"``), for the error.
+        source: Where the row came from, for the error.
+        hint: What to do about a cell that is not text: the caller knows the remedy its own source offers.
+
+    Returns:
+        The text; ``""`` when the cell is absent or null (an image-only row has no text).
+
+    Raises:
+        DataError: The cell holds something that is not text -- mteb's conversation form (a list of turns), a
+            number.
+    """
+    value = row.get("text")
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    raise DataError(
+        f"{source}: the {what}'s 'text' is a {type(value).__name__}, not text",
+        hint=hint,
+        details={"source": source, "what": what},
+    )
+
+
 def sidecar_qrels(rows: Iterable[tuple[int, Mapping[str, Any]]], *, source: str) -> dict[ID, dict[ID, float]]:
     """``{query_id: {doc_id: grade}}`` from ``{"query_id", "qrels": {doc_id: grade}}`` sidecar rows.
 
@@ -559,11 +635,7 @@ def sidecar_qrels(rows: Iterable[tuple[int, Mapping[str, Any]]], *, source: str)
             grade_value = grade(label, source=where)
             if fold.add(f"{query_id}/{doc_id}", (grade_value,)):
                 judged[str(doc_id)] = grade_value
-    if fold.folded or fold.resolved:
-        logger.info(
-            f"{source}: qrels duplicates: {fold.folded} exact folded, {fold.resolved} resolved by the "
-            f"{fold.policy.value} policy"
-        )
+    _log_duplicate_counts(fold, "qrels")
     return out
 
 
@@ -576,7 +648,9 @@ __all__ = [
     "SinkWriter",
     "SourceReader",
     "grade",
+    "record_duplicate_counts",
     "required_id",
     "sidecar_qrels",
+    "text_of",
     "unique_document_ids",
 ]
