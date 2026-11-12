@@ -668,8 +668,112 @@ def hole(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float:
     return total / len(queries)
 
 
+def paired_accuracy(qrels: _PerQuery, results: _PerQuery, pair_groups: Mapping[str, str]) -> float:
+    """The share of two-query groups in which each query scores its own positive above the other's.
+
+    A pair is correct only when both queries score their own first positive above the other query's, so equal
+    scores are not a win, and the metric refuses a run with no pair in the denominator. The comparison is strict
+    (``>``) and reads raw scores, never gains: a document the run does not carry scores ``-inf``, so it loses every
+    comparison.
+
+    Each query's own document is the **first** of its positives in the qrels' insertion order, so a query with two
+    positives takes a different document when its qrels are reordered. No ranking is formed, so none of the three
+    ranking tie rules applies; the strict comparison is this metric's only boundary.
+
+    Args:
+        qrels: ``{query_id: {doc_id: grade}}``; every grade is finite and at least 0, and only the sign is read.
+        results: ``{query_id: {doc_id: score}}``, every score finite.
+        pair_groups: ``{query_id: group_id}``; a group naming exactly two queries is a pair.
+
+    Returns:
+        ``correct / pairs``, in ``[0, 1]``, over the pairs where both queries have a run and a positive qrel. A
+        pair missing either side, and a group that does not name exactly two queries, is skipped.
+
+    Raises:
+        ValueError: ``pair_groups`` is empty, a grade is not finite or is negative, a score is not finite, or no
+            pair survives -- the last is the undefined denominator that was reported as 0.0.
+    """
+    _validate_qrels(qrels)
+    _validate_run(results)
+    if not pair_groups:
+        raise ValueError(
+            "paired_accuracy needs pair_groups, {query_id: group_id}, and it is empty: a pair is the two queries of "
+            "one group, so no pair can be scored"
+        )
+    groups: dict[str, list[str]] = {}
+    for query_id, group_id in pair_groups.items():
+        groups.setdefault(group_id, []).append(query_id)
+    correct = 0
+    pairs = 0
+    for query_ids in groups.values():
+        if len(query_ids) != 2:
+            continue
+        first, second = query_ids
+        if any(query_id not in results or query_id not in qrels for query_id in (first, second)):
+            continue
+        first_positives = _positive_docs(qrels[first])
+        second_positives = _positive_docs(qrels[second])
+        if not first_positives or not second_positives:
+            continue
+        pairs += 1
+        own, other = first_positives[0], second_positives[0]
+        first_ok = results[first].get(own, -math.inf) > results[first].get(other, -math.inf)
+        second_ok = results[second].get(other, -math.inf) > results[second].get(own, -math.inf)
+        if first_ok and second_ok:
+            correct += 1
+    if not pairs:
+        raise ValueError(
+            "paired_accuracy has no pair to divide by: a pair counts only when both of its queries have a run and "
+            f"a positive qrel, and the {len(pair_groups)} grouped queries leave none. 0.0 would report an "
+            f'undefined value as the measurement "no pair ranks its own positive first"'
+        )
+    return correct / pairs
+
+
+def coverage(chosen: Mapping[str, float], *, threshold: float = 0.90) -> float:
+    """The share of answered items whose chosen probability reaches ``threshold``.
+
+    An item is covered when its chosen probability is at least the threshold, the denominator is the set of
+    answered items, and an empty answered set is refused rather than reported as 0.0. The comparison is ``>=``, so
+    an item exactly at the threshold is covered -- this metric's only boundary, and it forms no ranking.
+
+    Args:
+        chosen: ``{item_id: chosen_probability}``, one entry per item the model answered, each a finite fraction
+            in ``[0, 1]``. A declined item is not a key, so it is not in the denominator: a coverage over every
+            item would be the answer rate, a different metric.
+        threshold: The confidence an item must reach, in ``(0, 1]``; 0.90 by default.
+
+    Returns:
+        ``count(p >= threshold) / len(chosen)``, in ``[0, 1]``. 0.0 when every answered item fell below the
+        threshold, which is a real value.
+
+    Raises:
+        ValueError: the answered set is empty, the threshold is not in ``(0, 1]``, an item id is empty, or a
+            probability is not a finite fraction in ``[0, 1]``.
+    """
+    if not 0.0 < threshold <= 1.0:
+        raise ValueError(f"the coverage threshold must be in (0, 1], got {threshold!r}")
+    if not chosen:
+        raise ValueError(
+            "coverage needs at least one answered item: an empty answered set has no denominator, and 0.0 is the "
+            "different fact that every answered item fell below the threshold"
+        )
+    covered = 0
+    for item_id, probability in chosen.items():
+        if not item_id:
+            raise ValueError(f"coverage needs a non-empty item id, got {item_id!r}")
+        _require_finite_number(probability, what=f"the chosen probability of item {item_id!r}")
+        if not 0.0 <= probability <= 1.0:
+            raise ValueError(
+                f"the chosen probability must be a fraction in [0, 1], got {probability!r} for item {item_id!r}"
+            )
+        covered += 1 if probability >= threshold else 0
+    return covered / len(chosen)
+
+
 __all__ = [
     "TieRule",
+    "coverage",
     "dcg",
     "discount",
     "hole",
@@ -678,6 +782,7 @@ __all__ = [
     "mrr",
     "ndcg",
     "ndcg_float",
+    "paired_accuracy",
     "per_query_ndcg",
     "precision",
     "rank_by_score",
