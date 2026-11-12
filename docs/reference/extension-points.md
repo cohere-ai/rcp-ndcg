@@ -539,8 +539,10 @@ corpus-wide annotated set. `paired_accuracy` reads `pair_groups`. `coverage` rea
 | `score(query, ranking, labels, *, protocol, k, candidates=None, excluded=()) -> float \| None` | One query's value. `None` when the metric is undefined for that query. |
 
 `ranking` is the system's `{doc_id: score}`. `labels` is the query's `{doc_id: grade}` qrels. `protocol` is the
-dataset's scoring protocol, so the tie rule and the pool restriction stay `rcp_core`'s.
-`rcp_core.protocol.candidate_docs` is the one ranking rule. A `None` value drops out of the means.
+dataset's scoring protocol, so the pool restriction and the protocol's tie rule stay `rcp_core`'s.
+`rcp_core.protocol.candidate_docs` is the one rule for *which* documents enter: the pool restriction and the
+exclusions. It does not order them. A rank-based metric orders them by score itself, with
+`rcp_core.metric.rank_by_score`. A `None` value drops out of the means.
 
 ### Errors a metric may raise
 
@@ -556,12 +558,13 @@ dataset's scoring protocol, so the tie rule and the pool restriction stay `rcp_c
 ### Two minimal metrics
 
 The first takes the cutoff, so the evaluator scores it at every requested `k`. The second takes none, so it is
-scored once, at `k=0`. Both rank through the protocol's rule. A pool restriction or an exclusion applies to
-them, as it does to the shipped ten.
+scored once, at `k=0`. Both take the entering documents from the protocol's rule and order them by score. A pool
+restriction or an exclusion applies to them, as it does to the shipped ten.
 
 ```python
 from collections.abc import Collection, Mapping, Sequence
 
+from rcp_core.metric import rank_by_score
 from rcp_core.protocol import PROTOCOLS, Protocol, candidate_docs
 
 from rcp.eval import Metric
@@ -575,8 +578,9 @@ def _ranked(
     candidates: Sequence[str] | None,
     excluded: Collection[str],
 ) -> list[str]:
-    """The protocol's entering documents, best first."""
-    return candidate_docs(protocol, ranking, candidates=candidates, excluded=excluded, query_id=query)
+    """The protocol's entering documents, best first (equal scores by document id, descending)."""
+    entering = candidate_docs(protocol, ranking, candidates=candidates, excluded=excluded, query_id=query)
+    return rank_by_score({doc_id: ranking[doc_id] for doc_id in entering}, ties="doc_id_desc")
 
 
 class MeanAveragePrecision(Metric):
@@ -637,6 +641,9 @@ assert MeanAveragePrecision().score(
 assert MeanReciprocalRank().score(
     "q1", {"d1": 2.0, "d2": 1.0}, {"d2": 1.0}, protocol=PROTOCOLS["plain"], k=0
 ) == 0.5  # the only relevant document is ranked second
+assert MeanReciprocalRank().score(
+    "q1", {"d1": 2.0, "d2": 1.0}, {"d2": 1.0}, protocol=PROTOCOLS["plain"], k=0, candidates=["d2", "d1"]
+) == 0.5  # the pool's order is no ranking: by score the hit is still second
 ```
 
 ## Run-event subscribers (`rcp.events`)
