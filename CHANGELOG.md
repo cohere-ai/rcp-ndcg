@@ -26,6 +26,9 @@ every reader still accepts it. All four distributions carry the tag version; `rc
 
 ## 0.0.1 — 2026-11-11
 
+The engine pin is vLLM v0.33.0 throughout this release. An entry that names an older release names the code a
+rule was ported from, not the engine this tree serves.
+
 ### Overview
 
 RCP-nDCG 0.0.1 is the first release, accompanying the paper
@@ -4227,9 +4230,8 @@ text it sends to the declared budget.
   a prompt edit or a tokenizer swap re-judges instead of skipping with stale judgements.
 - **An orphaned think-end never erases a complete answer (sweep-llm M5):** the orphaned-think-end strip applies
   only to the text before the object, so an answer followed by a stray think-end tag parses instead of being
-  recorded `no_json` after every retry and dropped from every fit. (Reversed after 0.0.1: from `PARSE_VERSION` 4
-  the answer is the text after the last `</think>`, so an object only before a stray tag is refused; see
-  Unreleased.)
+  recorded `no_json` after every retry and dropped from every fit. (Reversed within this release: from `PARSE_VERSION` 4
+  the answer is the text after the last `</think>`, so an object only before a stray tag is refused.)
 - **One torn last line of the shared `preprocessing.jsonl` no longer poisons a store (sweep-llm M6):** the
   census file's rows are read through one helper (`rcp_ndcg.data.preprocess.read_census_rows`) that skips a
   torn last row with a warning — the tolerance the judgement records have — and raises the typed `DataError`
@@ -4662,7 +4664,7 @@ text it sends to the declared budget.
   image rows 20-28 on the same RC under flashinfer, triton and cutedsl: every per-token minimum is
   unchanged within the probe's run-to-run spread (text rows 0.7863 / 0.7125 flashinfer, 0.7814 /
   0.7042 triton, 0.7643 / 0.7154 cutedsl; row 26 -0.1145 / -0.1140 / -0.1134) and the per-layer
-  cosines agree to 4 decimals across the three kernels. `topk-embed-v1`'s notes and the topkrun lane
+  cosines agree to 4 decimals across the three kernels. `topk-embed-v1`'s notes and that family's lane
   report are rescoped accordingly; no recipe behaviour, gate, bound or dtype changed.
 
 - **The committed corpora carry no private infrastructure** (the pre-release review's release blocker): every
@@ -5596,7 +5598,6 @@ Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-yo
   vendors a copy of the canonical-JSON recipe, because it imports no repository code. The owner is
   `packages/rcp-core/src/rcp_core/_hashing.py`, and it decides every digest; the copy is a copy, and its
   `tests/fixtures/hashing_vectors.json` holds the same bytes as the owner's
-  `packages/rcp/tests/support/hashing_vectors.json`, so one set of vectors decides both implementations and a
-  divergence fails on either side. The copy's terms: it names this module as the authority in its own changelog,
+  `packages/rcp/tests/support/hashing_vectors.json`, so one set of vectors decides both implementations. The copy's terms: it names this module as the authority in its own changelog,
   it moves no digest, and it expires at the next major release of `rcp_core` or earlier, when the two
   implementations collapse into one and the vectors are cut again from the new authority or deleted.
