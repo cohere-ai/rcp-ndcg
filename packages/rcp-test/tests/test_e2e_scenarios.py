@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from rcp_test.e2e import (
@@ -531,6 +532,31 @@ def test_a_content_override_in_the_scenario_judge_config_is_refused() -> None:
         build_run_config(scenario, recipes_root=[RECIPES])
 
 
+def _staged_dataset(tmp_path: Path) -> dict[str, Any]:
+    """A one-query ``jsonl:`` dataset, for the tests that stage a run directory.
+
+    Staging records the dataset's name (``Pipeline._write_config`` reads ``self.dataset``), so the run is staged
+    from its dataset's own reader: a shipped scenario's ``suite:`` dataset reads the Hub, and passes only where
+    a warm Hub cache holds it -- CI has none. The rows are the shape the driver's staged run uses
+    (``test_e2e_driver.py``'s ``_staged_run``).
+    """
+    rows = tmp_path / "rows.jsonl"
+    rows.write_text(
+        json.dumps(
+            {
+                "query_id": "q1",
+                "query": "what is the capital of france",
+                "doc_ids": ["d1", "d2"],
+                "docs": ["paris", "lyon"],
+                "qrels": {"d1": 1, "d2": 0},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return {"uri": f"jsonl:{rows}"}
+
+
 def test_the_run_report_fails_when_no_phase_is_recorded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The ``phases recorded`` row derives its ok from the phase plan, like every other row of the T4 report
     (the builder's status is ``all(check["ok"])``): a run whose plan came out empty fails, never a green row.
@@ -540,7 +566,9 @@ def test_the_run_report_fails_when_no_phase_is_recorded(tmp_path: Path, monkeypa
     """
     from rcp_test import e2e
 
-    scenario = load_scenario(SCENARIOS / "text-four-phases.yaml").model_copy(update={"pair": 1})
+    scenario = load_scenario(SCENARIOS / "text-four-phases.yaml").model_copy(
+        update={"pair": 1, "dataset": _staged_dataset(tmp_path)}
+    )
     monkeypatch.setattr(e2e, "_phase_facts", lambda pipeline: [])
     monkeypatch.setattr(e2e, "run_job_script", lambda script, *, out: (0, out / "job.log"))
     builder = e2e.ScenarioResultBuilder(scenario)
