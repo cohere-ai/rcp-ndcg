@@ -21,8 +21,8 @@ pull request that changes `tests/contract/snapshots/` or `schemas/` must add an 
 
 Every artifact schema carries its own version (`rcp.<name>.v1`), bumped only when that artifact changes
 incompatibly, independently of the package version. `rcp-ndcg.<name>.v1` is the spelling from before 0.0.1, and
-every reader still accepts it. All four distributions carry the tag version; `rcp` pins
-`rcp-core==<version>`; `rcp-vllm` pins no sibling; `rcp-test` is never published.
+every reader still accepts it. All four distributions carry the tag version; `cohere-rcp` pins
+`cohere-rcp-core==<version>`; `cohere-rcp-vllm` pins no sibling; `rcp-test` is never published.
 
 ## 0.0.1 — 2026-11-11
 
@@ -35,11 +35,11 @@ RCP-nDCG 0.0.1 is the first release, accompanying the paper
 [Rubric-Calibrated Preferences: Cross-Query Calibration of LLM Judgments via Item Response Theory](https://arxiv.org/abs/2609.35739).
 It ships three published distributions and one unpublished one:
 
-- **`rcp-core`** -- the metric: nDCG, the gains, the scoring protocols, the public records and the IRT
+- **`cohere-rcp-core`** -- the metric: nDCG, the gains, the scoring protocols, the public records and the IRT
   estimators, on numpy and pydantic alone.
-- **`rcp`** -- the pipeline and the `rcp` command built on it: datasets and rankings, retrieval,
-  judging, calibration, evaluation, runs and their runners. It pins `rcp-core` to its own version.
-- **`rcp-vllm`** -- the serving half: the serving recipes (24 families, 44 variants; every retrieval
+- **`cohere-rcp`** -- the pipeline and the `rcp` command built on it: datasets and rankings, retrieval,
+  judging, calibration, evaluation, runs and their runners. It pins `cohere-rcp-core` to its own version.
+- **`cohere-rcp-vllm`** -- the serving half: the serving recipes (24 families, 44 variants; every retrieval
   variant must pass its end-to-end GPU validation against its reference implementation before the tag, and
   every judge variant its judge probe and the T4 scenarios, a judge recipe carrying no equivalence
   reference; the tag ships no `unverified` recipe -- a variant whose gate failed ships only under the
@@ -84,14 +84,14 @@ entries under that section keep the names of the day they were written.
 
 ### Public surface
 
-**Distributions.** Four distributions, one version: `rcp-core` (numpy and pydantic; the `irt` extra adds
-torch and scipy), `rcp` (the pipeline and the `rcp` command, pinning `rcp-core==<version>`),
-`rcp-vllm` (the lean serving package: pydantic and PyYAML, no sibling pin) and the unpublished
-`rcp-test`. Python 3.12; the three published ones ship on PyPI (`pip install rcp`, `uvx rcp`) by
+**Distributions.** Four distributions, one version: `cohere-rcp-core` (numpy and pydantic; the `irt` extra adds
+torch and scipy), `cohere-rcp` (the pipeline and the `rcp` command, pinning `cohere-rcp-core==<version>`),
+`cohere-rcp-vllm` (the lean serving package: pydantic and PyYAML, no sibling pin) and the unpublished
+`rcp-test`. Python 3.12; the three published ones ship on PyPI (`pip install cohere-rcp`, `uvx cohere-rcp`) by
 the release workflow on each `v*` tag, with the release's `requirements-constraints.txt` (its lock, exported)
-beside it. Extras of `rcp`: `hf`, `calibrate`, `mteb`, `data`, `s3`, `azure`, `http`, `vllm`, `dev`
+beside it. Extras of `cohere-rcp`: `hf`, `calibrate`, `mteb`, `data`, `s3`, `azure`, `http`, `vllm`, `dev`
 and `docs`. `hf` holds `huggingface-hub` and `tokenizers` (the judge's tokenizer, without torch); `vllm`
-holds `rcp-vllm`, the serving recipes and their console. BM25 (bm25s, with PyStemmer's stemmers) needs no
+holds `cohere-rcp-vllm`, the serving recipes and their console. BM25 (bm25s, with PyStemmer's stemmers) needs no
 extra. Every distribution carries `LICENSE` (Apache-2.0) and `NOTICE`, which
 attributes the third-party code the packages adapt.
 
@@ -1517,6 +1517,17 @@ owner pushes, with the move to a Hugging Face organisation).
   in `PUBLIC_MODULES`. The public surface is the field and the three names it admits.
 - **The `schema list` id description states the id the command emits**: `rcp.cli.schema.SchemaInfo.id` said
   `rcp-ndcg.<name>.v1`; the exported `rcp.schema-list.v1` now says `rcp.<name>.v1`.
+
+### Changed — the PyPI names take the `cohere-` prefix
+
+- **The three published distributions are `cohere-rcp`, `cohere-rcp-core` and `cohere-rcp-vllm`**: `rcp` on
+  PyPI is a third-party project (`koehlja/rcp`), which is what `pip install rcp` installs, so every published
+  name takes the prefix. `cohere-rcp` pins `cohere-rcp-core==<version>`, `cohere-rcp-vllm` still pins no
+  sibling, and `rcp-test` is never published under either spelling. The repository is `cohere-ai/rcp`.
+- **Nothing a program imports or runs moves**: the import packages (`rcp`, `rcp_core`, `rcp_vllm`,
+  `rcp_test`), the `rcp` and `rcp-vllm` console scripts and the `rcp.*` entry-point groups keep their names, so
+  an install is `pip install cohere-rcp` followed by `import rcp`. The artifact tags (`rcp.<name>.v1`), the
+  public dataset ids and the `RCP_NDCG_*` environment variables are identities and do not move either.
 
 ### Changed — the rename
 

@@ -2,18 +2,18 @@
 
 ## Install
 
-RCP-nDCG needs Python 3.12 or later, and will be on PyPI (as `rcp`):
+RCP-nDCG needs Python 3.12 or later, and will be on PyPI (as `cohere-rcp`):
 
 ```bash
-pip install "rcp[hf,calibrate]" --extra-index-url https://download.pytorch.org/whl/cpu
+pip install "cohere-rcp[hf,calibrate]" --extra-index-url https://download.pytorch.org/whl/cpu
 ```
 
-`uvx rcp` runs the command line without installing it (`uvx --from "rcp[hf]" rcp ...` with extras).
+`uvx cohere-rcp` runs the command line without installing it (`uvx --from "cohere-rcp[hf]" rcp ...` with extras).
 
-`rcp-core` is the metric, the gain, the scoring protocols and the IRT estimators. The metric, gain and protocols
+`cohere-rcp-core` is the metric, the gain, the scoring protocols and the IRT estimators. The metric, gain and protocols
 need numpy and pydantic only. The IRT estimators need its `irt` extra (torch and scipy), which the `calibrate` extra
-below brings. `rcp` adds the data loaders, the judging client, the calibration, the evaluation and the CLI. The
-third distribution, `rcp-vllm`, is the lean serving package. It holds the GPU-validated serving recipes and
+below brings. `cohere-rcp` adds the data loaders, the judging client, the calibration, the evaluation and the CLI. The
+third distribution, `cohere-rcp-vllm`, is the lean serving package. It holds the GPU-validated serving recipes and
 `rcp-vllm serve <recipe-id>` for the stock vLLM image ([recipes and serving models](reference/recipes.md)).
 `rcp-test`, an unpublished contributor package (reference cases, conformance, the GPU job tooling), is never
 installed by users ([its page](reference/rcp-test.md)). The extras:
@@ -27,24 +27,24 @@ installed by users ([its page](reference/rcp-test.md)). The extras:
 | `azure` | the Azure Blob storage backend (`az://` URIs) |
 | `http` | `http(s)://` object URLs (fsspec's aiohttp backend) |
 | `data` | the `hf` and `pdf` readers of `rcp data convert` (the Hub dataset loader, PDF rendering) |
-| `vllm` | `rcp-vllm`, the serving recipes and their console, for a config that names a `recipe:` ([recipes and serving models](reference/recipes.md)) |
+| `vllm` | `cohere-rcp-vllm`, the serving recipes and their console, for a config that names a `recipe:` ([recipes and serving models](reference/recipes.md)) |
 | `dev` | the test and lint tools |
 | `docs` | the local documentation preview (mkdocs-material) |
 
 Every retrieval model is served now. The client talks HTTP to the engines (role clients over one transport). It installs
-beside an engine untouched in its own venv. Serving a shipped recipe via `rcp-vllm` adds exactly one pure-Python
+beside an engine untouched in its own venv. Serving a shipped recipe via `cohere-rcp-vllm` adds exactly one pure-Python
 wheel to the engine's environment (`pip install --no-deps`), and nothing else changes. The old in-process `[local]`
-extra is gone. `[vllm]` loads no model in process either: today it brings `rcp-vllm`, one line,
-`pip install "rcp[vllm]"`. The paper's in-process reference implementations live in `experiments/paper/rerankers/reference/` with
+extra is gone. `[vllm]` loads no model in process either: today it brings `cohere-rcp-vllm`, one line,
+`pip install "cohere-rcp[vllm]"`. The paper's in-process reference implementations live in `experiments/paper/rerankers/reference/` with
 their own pinned requirements, outside the package's lock. BM25 and the hosted APIs need no extra.
 
 From a checkout of the repository, `uv sync --extra hf --extra calibrate` sets up the same environment with
 [uv](https://github.com/astral-sh/uv). From git, the release tag installs both packages (pip needs the core in the
-same command, because `rcp` pins it; with uv the `rcp` line alone suffices):
+same command, because `cohere-rcp` pins it; with uv the `cohere-rcp` line alone suffices):
 
 ```bash
-pip install "rcp-core @ git+https://github.com/cohere-ai/rcp-ndcg@v0.0.1#subdirectory=packages/rcp-core" \
-            "rcp[hf,calibrate] @ git+https://github.com/cohere-ai/rcp-ndcg@v0.0.1#subdirectory=packages/rcp" \
+pip install "cohere-rcp-core @ git+https://github.com/cohere-ai/rcp-ndcg@v0.0.1#subdirectory=packages/rcp-core" \
+            "cohere-rcp[hf,calibrate] @ git+https://github.com/cohere-ai/rcp-ndcg@v0.0.1#subdirectory=packages/rcp" \
             --extra-index-url https://download.pytorch.org/whl/cpu
 ```
 
@@ -82,7 +82,7 @@ the datasets and shows a complete example.
 
 ### Serve an open model and score it
 
-Engine side, on the stock `vllm/vllm-openai` image: `python3 -m pip install --no-deps rcp-vllm` (the one
+Engine side, on the stock `vllm/vllm-openai` image: `python3 -m pip install --no-deps cohere-rcp-vllm` (the one
 change the engine environment takes; `pip freeze` differs by exactly that wheel), then serve a recipe:
 
 ```bash
@@ -91,7 +91,7 @@ rcp-vllm serve qwen3-reranker-0.6b --port 8001   # a reranker, in another termin
 # `rcp-vllm serve <id> --dry-run` prints the engine argv and exits
 ```
 
-Client side, `rcp-vllm` installed beside `rcp`, and a retriever config whose encoder names the recipe;
+Client side, `cohere-rcp-vllm` installed beside `cohere-rcp`, and a retriever config whose encoder names the recipe;
 `base_url` and the other run-time fields stay on the config (an explicit content field must equal the recipe's,
 or the config is refused naming both values):
 
@@ -148,7 +148,7 @@ python experiments/run_all.py
 
 One complete run config holds candidates from a served encoder and reranker (their recipes supply the client blocks). It
 also holds a judge config and one engine per role, started inside the job. The engine image prepares
-`python3 -m pip install --no-deps rcp-vllm`; with the recipes the engine command is `rcp-vllm serve
+`python3 -m pip install --no-deps cohere-rcp-vllm`; with the recipes the engine command is `rcp-vllm serve
 <id>`.
 
 ```yaml
@@ -156,7 +156,7 @@ also holds a judge config and one engine per role, started inside the job. The e
 dataset: suite:nanobeir
 candidates:
   from: retrieval
-  # with `rcp-vllm` installed, `encoder: {recipe: qwen3-embedding-0.6b}` (and `rerank: {recipe:
+  # with `cohere-rcp-vllm` installed, `encoder: {recipe: qwen3-embedding-0.6b}` (and `rerank: {recipe:
   # qwen3-reranker-0.6b}`) take their whole client block from the recipe instead of the fields below; a
   # self-hosted role config here must still declare its text budget (tokenizer + max_tokens), and a served
   # reranker sets use_activation explicitly

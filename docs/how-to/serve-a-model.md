@@ -11,12 +11,12 @@ serving models](../reference/recipes.md). Hosted APIs (Cohere, Voyage, Gemini) n
 
 ## 1. The engine host: one wheel on the stock image
 
-The serving recipes and the `rcp-vllm serve` command ship in the `rcp-vllm` distribution. This is
+The serving recipes and the `rcp-vllm serve` command ship in the `cohere-rcp-vllm` distribution. This is
 the lean serving package; its only dependencies are pydantic and PyYAML. Install it with `--no-deps`. This is the one change that the engine environment takes. A `pip freeze` before and after differs by exactly this
 wheel.
 
 ```bash
-python3 -m pip install --no-deps rcp-vllm==<version>
+python3 -m pip install --no-deps cohere-rcp-vllm==<version>
 rcp-vllm serve qwen3-embedding-0.6b --port 8000
 ```
 
@@ -31,7 +31,7 @@ Two options exist when the image does not carry the wheel. Bake it into your ima
 install it inline where the engine command runs:
 
 ```bash
-bash -lc 'python3 -m pip install --no-deps rcp-vllm==<version> && exec rcp-vllm serve <id> --port 8000'
+bash -lc 'python3 -m pip install --no-deps cohere-rcp-vllm==<version> && exec rcp-vllm serve <id> --port 8000'
 ```
 
 The same two forms work in a run config's `serve:` block. Its `command` is yours verbatim ([runs and job

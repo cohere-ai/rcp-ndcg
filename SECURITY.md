@@ -2,8 +2,8 @@
 
 ## Supported versions
 
-Security fixes land on the latest release only. The published distributions (`rcp`, `rcp-core`,
-`rcp-vllm`) carry one version and are released together; upgrade to the newest one before reporting
+Security fixes land on the latest release only. The published distributions (`cohere-rcp`, `cohere-rcp-core`,
+`cohere-rcp-vllm`) carry one version and are released together; upgrade to the newest one before reporting
 anything that may already be fixed.
 
 ## Reporting a vulnerability

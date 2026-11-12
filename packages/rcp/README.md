@@ -21,8 +21,8 @@ gives the method and its validation.
 </p>
 <p align="center"><em>The RCP-nDCG pipeline (Figure 2 of the paper).</em></p>
 
-This repository holds three published distributions. They are `rcp` (the pipeline and the command line),
-`rcp-core` (the metric) and `rcp-vllm` (the serving recipes). It also holds the unpublished `rcp-test` for contributors. The
+This repository holds three published distributions. They are `cohere-rcp` (the pipeline and the command line),
+`cohere-rcp-core` (the metric) and `cohere-rcp-vllm` (the serving recipes). It also holds the unpublished `rcp-test` for contributors. The
 scripts that reproduce the paper's tables from the public data are in `experiments/`. Runnable examples are in
 `examples/`.
 
@@ -31,25 +31,25 @@ scripts that reproduce the paper's tables from the public data are in `experimen
 RCP-nDCG needs Python 3.12 or later; install it from PyPI:
 
 ```bash
-pip install "rcp[hf,calibrate]" --extra-index-url https://download.pytorch.org/whl/cpu
+pip install "cohere-rcp[hf,calibrate]" --extra-index-url https://download.pytorch.org/whl/cpu
 rcp --version
 ```
 
-or, without installing anything, `uvx rcp --version`. To work from the repository, install from a
+or, without installing anything, `uvx cohere-rcp --version`. To work from the repository, install from a
 checkout instead: `uv sync --extra hf --extra calibrate`. The
 [quickstart](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/quickstart.md#install) has the git install and
 the full extras table. The extras add three groups. The first is the Hugging Face Hub (`hf`). The second is torch
 for the calibration fit (`calibrate`), and the CPU build from the PyTorch index above is enough. The third is
 MTEB (`mteb`), and the quickstart table lists all nine. Every retrieval model is served now, so no extra carries
-in-process model code. `rcp-core` comes with `rcp`. It is the metric, the gains, the scoring protocols and the
-IRT estimators, with numpy and pydantic only (`pip install rcp-core`). A command that needs a missing extra exits
+in-process model code. `cohere-rcp-core` comes with `cohere-rcp`. It is the metric, the gains, the scoring protocols and the
+IRT estimators, with numpy and pydantic only (`pip install cohere-rcp-core`). A command that needs a missing extra exits
 with code 10 and prints the install line.
 
 ## Distributions
 
-- `rcp` -- the judging pipeline, the calibration, the evaluation and the command line.
-- `rcp-core` -- the metric, the gains, the scoring protocols and the IRT estimators (numpy and pydantic only).
-- `rcp-vllm` -- the lean serving package: the GPU-validated serving recipes and `rcp-vllm serve
+- `cohere-rcp` -- the judging pipeline, the calibration, the evaluation and the command line.
+- `cohere-rcp-core` -- the metric, the gains, the scoring protocols and the IRT estimators (numpy and pydantic only).
+- `cohere-rcp-vllm` -- the lean serving package: the GPU-validated serving recipes and `rcp-vllm serve
   <recipe-id>` for the stock vLLM image ([recipes and serving models](https://github.com/cohere-ai/rcp-ndcg/blob/main/docs/reference/recipes.md)).
 
 The unpublished `rcp-test` holds the repository's reference cases, conformance suite and GPU job tooling
@@ -116,7 +116,7 @@ dataset that ships with the package (`rcp data fetch --dataset tiny --out tiny` 
 ### 2. Serve an open model and score it
 
 The retrieval commands score any served encoder and reranker. Engine side, on the stock `vllm/vllm-openai`
-image: `python3 -m pip install --no-deps rcp-vllm`. That is the one change that the engine environment takes.
+image: `python3 -m pip install --no-deps cohere-rcp-vllm`. That is the one change that the engine environment takes.
 Then `rcp-vllm serve qwen3-embedding-0.6b --port 8000`, and `rcp-vllm serve qwen3-reranker-0.6b --port
 8001` for the reranker. Client side, a retriever config whose encoder names the recipe -- the recipe supplies
 the client block, `base_url` and the other run-time fields stay yours:

@@ -13,7 +13,7 @@ Anywhere else, such as a downstream's own suite, installs it **from a git subdir
 pip install "rcp-test @ git+https://github.com/cohere-ai/rcp-ndcg.git@v0.0.1#subdirectory=packages/rcp-test"
 ```
 
-It depends on `rcp` and `rcp-vllm` at the version of the release. The dependency never points the other way.
+It depends on `cohere-rcp` and `cohere-rcp-vllm` at the version of the release. The dependency never points the other way.
 Its own README holds the runnable commands. This page maps what lives where.
 
 ## What it holds

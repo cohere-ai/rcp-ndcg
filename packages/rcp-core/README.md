@@ -7,11 +7,11 @@ estimators. It needs numpy and pydantic only; the `irt` extra adds torch and sci
 Install it from PyPI (Python 3.12):
 
 ```bash
-pip install rcp-core            # metric, gains, protocols, schemas
-pip install "rcp-core[irt]"     # + torch and scipy, for the Bradley-Terry and 2PL fits
+pip install cohere-rcp-core            # metric, gains, protocols, schemas
+pip install "cohere-rcp-core[irt]"     # + torch and scipy, for the Bradley-Terry and 2PL fits
 ```
 
-`rcp` pins `rcp-core==<version>`; the two release in lockstep.
+`cohere-rcp` pins `cohere-rcp-core==<version>`; the two release in lockstep.
 
 ```python
 from rcp_core import PROTOCOLS, count_gain, gain, ndcg, pass_probabilities, qrel_gain, score_query

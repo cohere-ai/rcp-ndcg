@@ -16,7 +16,7 @@ pip install "rcp-test @ git+https://github.com/cohere-ai/rcp-ndcg.git@v0.0.1#sub
 ```
 
 No published package names it, and the release workflow builds only the three published distributions by
-name, so it is never published with them. It depends on `rcp` and `rcp-vllm` at the release's
+name, so it is never published with them. It depends on `cohere-rcp` and `cohere-rcp-vllm` at the release's
 version — never the other way round.
 
 ## What a case is

@@ -11,10 +11,10 @@ A recipe's `client` block is plain data, validated when `rcp` reads it.
 
 Three contexts, three lines:
 
-- **The engine environment** (the stock vLLM image): `python3 -m pip install --no-deps rcp-vllm` -- the
+- **The engine environment** (the stock vLLM image): `python3 -m pip install --no-deps cohere-rcp-vllm` -- the
   wheel's only dependencies are pydantic and PyYAML, which the image ships; a `pip freeze` before and after
   differs by exactly this wheel.
-- **The client environment**: `pip install rcp rcp-vllm` -- the second package resolves `recipe:<id>`
+- **The client environment**: `pip install cohere-rcp cohere-rcp-vllm` -- the second package resolves `recipe:<id>`
   and runs `serve`.
 - **Recipe data only**: `import rcp_vllm` reads the recipes; it never imports vLLM or torch.
 
@@ -37,7 +37,7 @@ with the exact install line, judged in the interpreter the `vllm` executable's s
 another environment must carry the wheel itself). Example, on the stock image:
 
 ```bash
-python3 -m pip install --no-deps rcp-vllm
+python3 -m pip install --no-deps cohere-rcp-vllm
 rcp-vllm serve qwen3-embedding-0.6b --port 8000
 rcp-vllm serve ./my-family/ --variant my-reranker-0.6b --set serve.max_num_seqs=64
 ```

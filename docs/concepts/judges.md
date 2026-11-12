@@ -52,7 +52,7 @@ the switch.
    identity is the recipe's id. Judgements therefore record the server-side settings that they came from.
    `rcp-vllm serve <id> --dry-run` prints the exact argv. The recipe's notes carry the memory arithmetic for one
    B200 and one H100, the default serving environments. The recipes are an optional extra of this package.
-   `pip install "rcp[vllm]"` installs the sibling `rcp-vllm`. A `recipe:` config on an install without it is
+   `pip install "cohere-rcp[vllm]"` installs the sibling `cohere-rcp-vllm`. A `recipe:` config on an install without it is
    refused, and the refusal names that install line. The import is lazy, so nothing else needs the extra.
 2. **Your own recipe directory**: `--judge recipe:./my-family`, `recipe:../my-family/family.yaml` or `recipe:/abs/path`.
    A family directory of your own loads through the same schema, families included. It is marked unshipped with

@@ -154,7 +154,7 @@ unless the runner's `image` names another). That image installs the same release
 the job starts:
 
 ```bash
-uvx --from 'rcp[calibrate,hf,s3,azure]==<version>' \
+uvx --from 'cohere-rcp[calibrate,hf,s3,azure]==<version>' \
   --constraints https://github.com/cohere-ai/rcp-ndcg/releases/download/v<version>/requirements-constraints.txt \
   --index https://download.pytorch.org/whl/cpu --index-strategy unsafe-best-match \
   rcp run resume --run <run_dir> --mirror <uri>
@@ -165,7 +165,7 @@ is therefore the version that the release was tested with. `unsafe-best-match` l
 CPU index next to PyPI for every package. torch then resolves to its CPU build at the locked version. Without
 it, uv stops at the first index that has a package, and it fails. On Kubernetes uv's cache lives on the
 scratch volume. Without PyPI, install from the repository instead. Use
-`--from 'rcp[calibrate,hf,s3,azure] @ git+https://github.com/cohere-ai/rcp-ndcg@v<version>'` in the
+`--from 'cohere-rcp[calibrate,hf,s3,azure] @ git+https://github.com/cohere-ai/rcp-ndcg@v<version>'` in the
 larger `ghcr.io/astral-sh/uv:python3.12-trixie` image, which has git.
 
 **Before the release is on PyPI**, the coordinator installs from a **wheelhouse** instead of PyPI. One example
@@ -598,7 +598,7 @@ writes an object with `pipe_file` on a remote target. A local or shared target p
 atomically through `storage.publish_bytes`. It reads an object with `cat_file`, and it lists a prefix with
 `ls`. A remote target never asks whether an object exists, renames or appends. A local target's whole-file
 write is one temp-file rename, and its temp files are skipped. GCS works as installed, because `gcsfs` is a
-dependency. S3 needs `s3fs` (`pip install "rcp[s3]"`), and Azure needs `adlfs` (`[azure]`). A protocol
+dependency. S3 needs `s3fs` (`pip install "cohere-rcp[s3]"`), and Azure needs `adlfs` (`[azure]`). A protocol
 with no filesystem installed or registered stops the run at start with exit 10, naming what is missing.
 `hf://` works, but every write to the Hub is a commit and its rate limits apply. Publish a finished run there,
 and mirror a running one to an object store.
