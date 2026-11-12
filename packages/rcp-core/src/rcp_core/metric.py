@@ -599,10 +599,80 @@ def mrr(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float:
     return total / len(queries)
 
 
+def recall_cap(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float:
+    """R_cap@k over the ``all-qrels`` denominator: the depth-capped recall of BEIR's ``custom_metrics``.
+
+    Equal scores keep the run's insertion order, and the denominator is the smaller of the positive count and
+    ``k``. A run of ``k`` documents cannot retrieve more than ``k`` positives, so the cap keeps the value at 1.0
+    when the query has more positives than ``k`` -- which is the one difference from :func:`recall`.
+
+    The mean divides by the number of qrels queries, so a qrels query with no run contributes 0.0 -- and a run
+    query the qrels do not name is refused rather than counted.
+
+    Args:
+        qrels: ``{query_id: {doc_id: grade}}``; every grade is finite and at least 0, and only the sign is read.
+        results: ``{query_id: {doc_id: score}}``, higher is better, every score finite, and its query ids exactly
+            the qrels'.
+        k: Cutoff, at least 1. It is also the cap on the denominator.
+
+    Returns:
+        The mean over the qrels' queries of ``|{d in top_k : rel(q, d)}| / min(|R_q|, k)``, in ``[0, 1]``. A query
+        with no relevant document has no denominator, scores 0.0 and stays in the mean.
+
+    Raises:
+        ValueError: ``k`` is not positive, a grade is not finite or is negative, a score is not finite, the qrels
+            are empty, or the run's query ids differ from the qrels' (both sides are named).
+    """
+    queries = _qrels_queries(qrels, results, k, metric="recall_cap")
+    total = 0.0
+    for query_id in queries:
+        grades = qrels[query_id]
+        ranking = rank_by_score(results[query_id], ties="input_order")[:k]
+        retrieved = sum(1 for doc_id in ranking if grades.get(doc_id, 0.0) > 0)
+        denominator = min(len(_positive_docs(grades)), k)
+        if denominator:  # no relevant document: the query scores 0.0 and stays in the mean
+            total += retrieved / denominator
+    return total / len(queries)
+
+
+def hole(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float:
+    """hole@k over the ``all-qrels`` denominator: the share of the top k that the qrels never annotated.
+
+    Equal scores keep the run's insertion order, and a document is annotated when any query of the corpus names it
+    in the qrels. The annotated set is therefore corpus-wide: a document judged for one query is judged for this
+    metric. This is BEIR's coverage gap, read from the annotated set rather than from a grade.
+
+    The mean divides by the number of qrels queries, so a qrels query with no run contributes 0.0 -- and a run
+    query the qrels do not name is refused rather than counted, which is the case that returned 2.0 for a share.
+
+    Args:
+        qrels: ``{query_id: {doc_id: grade}}``; every grade is finite and at least 0. Only the document ids are
+            read, never the grades.
+        results: ``{query_id: {doc_id: score}}``, higher is better, every score finite, and its query ids exactly
+            the qrels'.
+        k: Cutoff, at least 1. It is the denominator, so an empty ranking scores 0.0.
+
+    Returns:
+        The mean over the qrels' queries of ``|{d in top_k : d is not annotated}| / k``, in ``[0, 1]``.
+
+    Raises:
+        ValueError: ``k`` is not positive, a grade is not finite or is negative, a score is not finite, the qrels
+            are empty, or the run's query ids differ from the qrels' (both sides are named).
+    """
+    queries = _qrels_queries(qrels, results, k, metric="hole")
+    annotated = {doc_id for grades in qrels.values() for doc_id in grades}
+    total = 0.0
+    for query_id in queries:
+        ranking = rank_by_score(results[query_id], ties="input_order")[:k]
+        total += sum(1 for doc_id in ranking if doc_id not in annotated) / k
+    return total / len(queries)
+
+
 __all__ = [
     "TieRule",
     "dcg",
     "discount",
+    "hole",
     "ideal_dcg",
     "map",
     "mrr",
@@ -612,6 +682,7 @@ __all__ = [
     "precision",
     "rank_by_score",
     "recall",
+    "recall_cap",
     "success",
     "tie_groups",
 ]

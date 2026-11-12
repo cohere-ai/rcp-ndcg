@@ -33,6 +33,7 @@ from rcp_core.gain import Gains, count_gain, gain, pass_probabilities, qrel_gain
 from rcp_core.metric import (
     TieRule,
     dcg,
+    hole,
     map,
     mrr,
     ndcg,
@@ -40,6 +41,7 @@ from rcp_core.metric import (
     per_query_ndcg,
     precision,
     recall,
+    recall_cap,
     success,
 )
 from rcp_core.protocol import PROTOCOLS, MetricName, Protocol, aggregate, score_query
@@ -86,6 +88,7 @@ __all__ = [
     "count_gain",
     "dcg",
     "gain",
+    "hole",
     "map",
     "mrr",
     "qrel_gain",
@@ -95,6 +98,7 @@ __all__ = [
     "pass_probabilities",
     "precision",
     "recall",
+    "recall_cap",
     "score_query",
     "success",
 ]
