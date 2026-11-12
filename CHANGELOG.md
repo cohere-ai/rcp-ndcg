@@ -24,20 +24,6 @@ incompatibly, independently of the package version. `rcp-ndcg.<name>.v1` is the 
 every reader still accepts it. All four distributions carry the tag version; `rcp` pins
 `rcp-core==<version>`; `rcp-vllm` pins no sibling; `rcp-test` is never published.
 
-## Unreleased
-
-### Changed — the licensed hashing copy
-
-- **`rcp_core._hashing` is the authority for the copy in `emb_utils/base/hashing.py`**: the private
-  `emb-utils` library holds a copy of this module's recipe, because the leaf imports no repository code. The
-  licence has four terms. The owner is `packages/rcp-core/src/rcp_core/_hashing.py`, and it decides every
-  digest. The golden vectors are shared: `packages/rcp/tests/support/hashing_vectors.json` holds the
-  input-to-digest pairs, and the copy holds the same bytes in its own `tests/fixtures/hashing_vectors.json`,
-  so one set of bytes decides both implementations. Both sides record the copy in their
-  changelog, and this entry is the authority's side. The licence expires at the next major release of
-  `rcp_core`, or earlier if the two implementations collapse into one. At that point a lane re-cuts the
-  vectors from the new authority, or deletes the copy.
-
 ## 0.0.1 — 2026-11-11
 
 ### Overview
@@ -46,21 +32,24 @@ RCP-nDCG 0.0.1 is the first release, accompanying the paper
 [Rubric-Calibrated Preferences: Cross-Query Calibration of LLM Judgments via Item Response Theory](https://arxiv.org/abs/2609.35739).
 It ships three published distributions and one unpublished one:
 
-- **`rcp-ndcg-core`** -- the metric: nDCG, the gains, the scoring protocols, the public records and the IRT
+- **`rcp-core`** -- the metric: nDCG, the gains, the scoring protocols, the public records and the IRT
   estimators, on numpy and pydantic alone.
-- **`rcp-ndcg`** -- the pipeline and the `rcp-ndcg` command built on it: datasets and rankings, retrieval,
-  judging, calibration, evaluation, runs and their runners. It pins `rcp-ndcg-core` to its own version.
-- **`rcp-ndcg-vllm`** -- the serving half: the serving recipes (24 families, 44 variants; every retrieval
+- **`rcp`** -- the pipeline and the `rcp` command built on it: datasets and rankings, retrieval,
+  judging, calibration, evaluation, runs and their runners. It pins `rcp-core` to its own version.
+- **`rcp-vllm`** -- the serving half: the serving recipes (24 families, 44 variants; every retrieval
   variant must pass its end-to-end GPU validation against its reference implementation before the tag, and
   every judge variant its judge probe and the T4 scenarios, a judge recipe carrying no equivalence
   reference; the tag ships no `unverified` recipe -- a variant whose gate failed ships only under the
   owner's explicit disposition list, exactly the two `topk-embed-v1` variants for 0.0.1) as
-  package data, the `rcp-ndcg-vllm serve <recipe-id>` command that turns one into a `vllm serve` command for
+  package data, the `rcp-vllm serve <recipe-id>` command that turns one into a `vllm serve` command for
   the stock `vllm/vllm-openai` image, the model plugins and the engine patches. Its dependencies are pydantic
-  and PyYAML, it never imports `rcp-ndcg`, torch or vLLM at import time, and it pins no sibling.
-- **`rcp-ndcg-test`** -- the unpublished validation tooling: the model-card reference cases and their
+  and PyYAML, it never imports `rcp`, torch or vLLM at import time, and it pins no sibling.
+- **`rcp-test`** -- the unpublished validation tooling: the model-card reference cases and their
   generated strata, one conformance suite with two targets, the verified fake engines, the equivalence harness
   and the recorder, and the release-candidate build, bootstrap and wave tooling. It is never published.
+
+Every name above is the one that ships. `### Changed — the rename` below records the move to it, and the
+entries under that section keep the names of the day they were written.
 
 ### Highlights
 
@@ -68,43 +57,45 @@ It ships three published distributions and one unpublished one:
   of the same model -- and the served model's name. The package starts, builds and configures no engine: vLLM,
   a gateway or a hosted API all work unchanged. What an endpoint reports about itself is recorded beside the
   judgements and never enters an identity. With a `serve:` section a run starts one engine per role in a
-  SLURM or Kubernetes job, and for the shipped recipes the engine command is `rcp-ndcg-vllm serve <id>`.
+  SLURM or Kubernetes job, and for the shipped recipes the engine command is `rcp-vllm serve <id>`.
 - **The recipes.** 24 families and 44 variants (16 retrieval families, 8 judge families) as package data,
-  read by `recipe: <id>` in a role config or a run's `serve:` block and served by `rcp-ndcg-vllm serve <id>`;
+  read by `recipe: <id>` in a role config or a run's `serve:` block and served by `rcp-vllm serve <id>`;
   every retrieval variant must pass its end-to-end GPU validation against its reference implementation before
   the tag, and every judge variant its judge probe and the T4 scenarios (a judge recipe carries no
   equivalence reference; the tag ships no `unverified` recipe; a variant whose gate failed ships only under
   the owner's explicit disposition list, exactly the two `topk-embed-v1` variants for 0.0.1), and each
-  family's `family.yaml` records its pins, budgets and `status` (the catalog is the `rcp-ndcg-vllm` README).
+  family's `family.yaml` records its pins, budgets and `status` (the catalog is the `rcp-vllm` README).
 - **One preparation pipeline for every role.** Explicit budgets (a tokenizer and `max_tokens` per role),
   anchor-preserving client-side cuts, recorded in the census and in a per-row `ProcessingRecord`, chunk
   pooling by maximum, media counted in tokens -- never money, never engine-side.
 - **The evaluation surface.** `eval score` under the paper's scoring protocols, `eval compare`, `eval
-  explain`, the exported `rcp-ndcg.result-record.v1` results, and MTEB interoperability through the tasks each
+  explain`, the exported `rcp.result-record.v1` results, and MTEB interoperability through the tasks each
   released dataset ships.
 - **Reproduction.** `experiments/` recomputes the paper's leaderboards, the human contest study and the
   external-judge comparisons from the public datasets and checks every value against the paper
   ([REPRODUCIBILITY.md](REPRODUCIBILITY.md)); `examples/` holds nine runnable scripts, six of them offline;
-  `skills/rcp-ndcg/` is a skill for coding agents that use the package.
+  `skills/rcp/` is a skill for coding agents that use the package.
 - **The paper's judges ran on SGLang**; the paper's submission code is the record of those engine commands,
-  which this repository does not ship. This release serves the same checkpoints on vLLM v0.31.0.
+  which this repository does not ship. This release serves the same checkpoints on vLLM v0.33.0, the
+  recipes' pinned stock image.
 
 ### Public surface
 
-**Distributions.** Four distributions, one version: `rcp-ndcg-core` (numpy and pydantic; the `irt` extra adds
-torch and scipy), `rcp-ndcg` (the pipeline and the `rcp-ndcg` command, pinning `rcp-ndcg-core==<version>`),
-`rcp-ndcg-vllm` (the lean serving package: pydantic and PyYAML, no sibling pin) and the unpublished
-`rcp-ndcg-test`. Python 3.12; the three published ones ship on PyPI (`pip install rcp-ndcg`, `uvx rcp-ndcg`) by
+**Distributions.** Four distributions, one version: `rcp-core` (numpy and pydantic; the `irt` extra adds
+torch and scipy), `rcp` (the pipeline and the `rcp` command, pinning `rcp-core==<version>`),
+`rcp-vllm` (the lean serving package: pydantic and PyYAML, no sibling pin) and the unpublished
+`rcp-test`. Python 3.12; the three published ones ship on PyPI (`pip install rcp`, `uvx rcp`) by
 the release workflow on each `v*` tag, with the release's `requirements-constraints.txt` (its lock, exported)
-beside it. Extras of `rcp-ndcg`: `hf`, `calibrate`, `mteb`, `data`, `s3`, `azure`, `http`, `dev`,
-`docs`. `hf` holds `huggingface-hub` and `tokenizers` (the judge's tokenizer, without torch). BM25 (bm25s, with
-PyStemmer's stemmers) needs no extra. Every distribution carries `LICENSE` (Apache-2.0) and `NOTICE`, which
+beside it. Extras of `rcp`: `hf`, `calibrate`, `mteb`, `data`, `s3`, `azure`, `http`, `vllm`, `dev`
+and `docs`. `hf` holds `huggingface-hub` and `tokenizers` (the judge's tokenizer, without torch); `vllm`
+holds `rcp-vllm`, the serving recipes and their console. BM25 (bm25s, with PyStemmer's stemmers) needs no
+extra. Every distribution carries `LICENSE` (Apache-2.0) and `NOTICE`, which
 attributes the third-party code the packages adapt.
 
 **Python modules.** One entry per public module; a name that a module re-exports is listed under each module
 that exports it.
 
-- `rcp_ndcg_core`: the core in one import. The metric `ndcg` and `dcg` with `TieRule`; the gains `gain`,
+- `rcp_core`: the core in one import. The metric `ndcg` and `dcg` with `TieRule`; the gains `gain`,
   `pass_probabilities`, `count_gain` and `qrel_gain` with the type `Gains`; the scoring protocols `Protocol`,
   `PROTOCOLS`, `score_query` and `aggregate`, with `MetricName` (`rcp_ndcg`, `qrel_ndcg`, `count_ndcg`). The public
   records: `ItemParams` (2PL `gamma` and `beta` per criterion), `QueryParams` (`tau`, `alpha`), `Judgement` (one
@@ -117,26 +108,26 @@ that exports it.
   return) and `EstimateFlags` (the estimate's `degenerate` and `low_information` reads). The content parts of a
   query or a document:
   `Content`, `TextPart`, `ImagePart`, `VideoPart`, their union `Part`, `MediaRef` and `Modality`.
-- `rcp_ndcg_core.metric`: `ndcg(scores, gains, *, k=10, ties="group_mean", ideal=None)`, `dcg`, `ideal_dcg` and
+- `rcp_core.metric`: `ndcg(scores, gains, *, k=10, ties="group_mean", ideal=None)`, `dcg`, `ideal_dcg` and
   `discount` (`1 / log2(rank + 1)`), with the tie rules `TieRule = "group_mean" | "doc_id_desc" | "input_order"`.
   RCP-, qrel- and Count-nDCG differ only in their gains. `rank_by_score` orders documents with a deterministic
   tie-break, and `tie_groups(scores)` gives the equal-score classes that `group_mean` credits, for custom metrics.
-- `rcp_ndcg_core.gain`: `gain(theta, items)` (the RCP gain), `pass_probabilities` (per criterion, for one ability
+- `rcp_core.gain`: `gain(theta, items)` (the RCP gain), `pass_probabilities` (per criterion, for one ability
   or an array), `count_gain(passes, placements)` (the Count-nDCG baseline), `qrel_gain(grade, scheme="linear")`,
   the type `Gains` (query id to document id to a gain in [0, 1]), `item_arrays`, which reads and checks item
   parameters of any shape, and `sigmoid`, the one logistic function of both packages.
-- `rcp_ndcg_core.protocol`: `Protocol` and its presets `PROTOCOLS` (`nanobeir`, `bright`, `vidore`, `trecdl`,
+- `rcp_core.protocol`: `Protocol` and its presets `PROTOCOLS` (`nanobeir`, `bright`, `vidore`, `trecdl`,
   `mteb`, `plain`), `resolve_protocol` (a preset name to its `Protocol`), `candidate_docs` (the documents of one
   query that enter the ranking once the protocol has removed the excluded ids, the document that shares the
   query's id, and what lies outside the judged pool), `score_query` and `aggregate` (the mean over queries per
   dataset, then the unweighted mean over datasets), with `MetricName`. A query without a positive grade has an
   undefined qrel-nDCG and is left out of the mean.
-- `rcp_ndcg_core.irt`: `fit_bradley_terry`, `fit_calibration` (the 2PL fit, returning a `CalibrationFit` with its
+- `rcp_core.irt`: `fit_bradley_terry`, `fit_calibration` (the 2PL fit, returning a `CalibrationFit` with its
   `FitDiagnostics`), `score_document` (a document's ability from its own rubric answers, the items frozen) and
   `insert_document` (a new document into a tournament fit, the existing abilities frozen), with `Priors`,
   `AbilityPrior`, `DEFAULT_SE_TARGET` and `MIN_OPPONENTS`, and the refusals `UnidentifiableInsertion`,
   `ScaleMovementError` and `JudgeOverlapError`. torch is imported on first use only.
-- `rcp_ndcg` (`import rcp_ndcg as rcp`): the facade. Seventeen functions, `load_dataset`, `load_rankings`,
+- `rcp` (`import rcp`): the facade. Seventeen functions, `load_dataset`, `load_rankings`,
   `evaluate`, `compare`, `retrieve`, `rerank`, `fuse`, `estimate`, `judge`, `calibrate`, `score_documents`,
   `insert_documents`, `run`, `ndcg`, `gain`, `records_from_report` and `records_from_run`; the types
   `Dataset`, `Rankings`, `Gains`, `JudgeConfig`, `Endpoint`, `RetrieverConfig`, `RerankerConfig`,
@@ -144,7 +135,7 @@ that exports it.
   `CostEstimate`, `EvalReport`, `Comparison`, `Protocol`, `RunConfig`, `Run`, `ResultRecord`,
   `ResultDataset`, `ResultMetric`, `ResultSubject`, `ResultsSink` and `ResultArtifact`; and `__version__`.
   `rcp.run(..., estimate=True)` returns a `CostEstimate`, otherwise a `Run`.
-- `rcp_ndcg.data`: `Dataset` and `load_dataset` over URIs (`hf://`, `suite:`, `beir:`, `jsonl:`, `mteb:`, `images:`, `videos:`,
+- `rcp.data`: `Dataset` and `load_dataset` over URIs (`hf://`, `suite:`, `beir:`, `jsonl:`, `mteb:`, `images:`, `videos:`,
   `frames:`), the public suites `SUITES` of `Suite` records (a suite's name is also its protocol preset;
   `VIDORE_NATIVE_LANGUAGE` gives the language each ViDoRe v3 domain is scored in), `Rankings` (one table: `system`,
   `dataset`, `query_id`, `doc_id`, `score`; `DEFAULT_SYSTEM` names a single unnamed system) and `load_rankings`
@@ -167,7 +158,7 @@ that exports it.
   would share an id are refused. The preprocessing policies `Preprocessing`, `TextPolicy`, `ChunkPolicy`, `ImagePolicy`
   and `VideoPolicy` (below), and the judge's tokenizer: `load_tokenizer` and `TextTokenizer` load a Hugging Face
   repository's `tokenizer.json` (optionally `@revision`) or a local one, once per process.
-- `rcp_ndcg.data.preprocess`: what a judge sees of a document. `Preprocessing` holds the policies of one judging
+- `rcp.data.preprocess`: what a judge sees of a document. `Preprocessing` holds the policies of one judging
   pass and is part of its identity. `TextPolicy(on_overflow, max_tokens)` with `OnOverflow` (`keep`, `truncate`,
   `chunk`, `fail`), `DEFAULT_MAX_TOKENS` and `DEFAULT_TEXT_POLICY`; `ChunkPolicy(max_tokens, overlap_tokens)`.
   Text limits count tokens of the judge's tokenizer, and every cut falls at a token boundary of the original text,
@@ -180,7 +171,7 @@ that exports it.
   scores as its best chunk) and `max_pool_rubric_window_by_document` (a document passes a criterion in a window
   when any of its chunks does). `ImagePolicy` is a pixel budget plus the judge's image processor family
   (`processor`, resolved by `ImagePolicy.for_processor`); `VideoPolicy` chooses the frames a judge is shown.
-- `rcp_ndcg.retrieval`: `RetrieverConfig`, a union of `BM25Config`, `DenseConfig` and `LateInteractionConfig`;
+- `rcp.retrieval`: `RetrieverConfig`, a union of `BM25Config`, `DenseConfig` and `LateInteractionConfig`;
   the encoder and reranker configs `EncoderConfig` and `RerankerConfig`, unions by `api`: `openai_embeddings`
   (`ServedEmbedding`), `vllm_pooling` (`ServedPooling`), `rerank` (`ServedReranker`), `plugin_embedding`,
   `plugin_pooling` and `plugin_reranker` (`PluginEmbedding`, `PluginPooling`, `PluginReranker`: a served
@@ -193,7 +184,7 @@ that exports it.
   `store`/`sweep` encode a corpus once at full width and score the declared Matryoshka cuts. `validate_retriever`
   and `validate_reranker` check a config against its engine. Rankings are read per dataset
   (`Rankings.for_query`). A hosted encoder refuses a `batch_size` over its vendor's limit.
-- `rcp_ndcg.judging`: judging. `JudgeConfig` is one OpenAI-compatible endpoint (an `Endpoint`) with its `decoding`,
+- `rcp.judging`: judging. `JudgeConfig` is one OpenAI-compatible endpoint (an `Endpoint`) with its `decoding`,
   `max_images`, `max_videos`, `tokenizer` (a Hugging Face repository id with an optional `@revision`, or a
   `tokenizer.json` path; the shipped self-served judges name their model's repository) and `image_processor`
   (`qwen2_vl`, `qwen2_5_vl`, `qwen3_vl`); `base_url` is one URL or a list of replica URLs, `urls` the tuple, and
@@ -216,7 +207,7 @@ that exports it.
   assumptions. `load_prompt` returns a
   `Prompt`: the tournament and the C1 to C5 rubric prompts, for text, page images and video; a prompt without
   `{query_placeholder}` and `{passages_placeholder}` is refused.
-- `rcp_ndcg.calibration`: `read_judgements` (every judgement of the given stores, per window its latest valid
+- `rcp.calibration`: `read_judgements` (every judgement of the given stores, per window its latest valid
   one) and `calibrate` (modes `auto`, `tournament`, `rubric_only`; judges `single` or `pooled`; rubric verdicts must
   answer exactly the family's declared criteria `C1..CK`, and a window judged twice counts once), with `Priors` and
   `judged_bt_l2` (the Bradley-Terry penalty the stores' live tournament fit used). The immutable `Calibration` has a
@@ -225,7 +216,7 @@ that exports it.
   `ThetaRow`s, with a `gain` column. `score_documents` and `insert_documents` add documents the calibration lacks
   and return an `Extension` of `ExtensionRecord`s with its `AnchorReport`; `select_opponents` plans an insertion
   (with `window=`, the plan split into windows that each hold the new document).
-- `rcp_ndcg.eval`: `evaluate` returns an `EvalReport` of the `METRICS` (`rcp_ndcg`, `qrel_ndcg`, `count_ndcg`) per query
+- `rcp.eval`: `evaluate` returns an `EvalReport` of the `METRICS` (`rcp_ndcg`, `qrel_ndcg`, `count_ndcg`) per query
   (`QueryValue`), per dataset (`DatasetValue`, whose `num_queries` counts the queries with a defined value) and as the
   summary (`SummaryValue`, with a bootstrap interval), with typed `ReportWarning`s. Rankings over a suite whose subsets
   share query ids (BRIGHT, ViDoRe v3, NanoBEIR) need their `dataset` column, or one subset scored on its own; without it
@@ -238,10 +229,10 @@ that exports it.
   `QueryExplanation`: each system's top k (`SystemExplanation`, `RankedDocument`), the gaps between systems split into
   selection and ordering (`ScoreDelta`), and the criteria's item parameters once, as `CriterionParams` in `items`;
   `per_criterion` gives each criterion's `CriterionContribution` to a gain.
-- `rcp_ndcg.eval.mteb`: `get_tasks` returns the released suites as mteb tasks scored with `ndcg_float_at_k`
+- `rcp.eval.mteb`: `get_tasks` returns the released suites as mteb tasks scored with `ndcg_float_at_k`
   (group-mean ties) at the cutoffs `K_VALUES`; `ndcg_float_scores` computes those scores, and `task_metadata` reads
   a suite's released revision and task metadata from its `rcp_ndcg_tasks.py`.
-- `rcp_ndcg.runs`: `RunConfig` (unknown keys refused; `extends:`; a relative path resolves against the file that
+- `rcp.runs`: `RunConfig` (unknown keys refused; `extends:`; a relative path resolves against the file that
   declares it, before `extends:` merges the files; `RunConfig.load` also takes a packaged config's name;
   `RunConfig.local_inputs()` lists the local paths a job would need, which a Kubernetes job refuses; `RunConfig.mirror`
   and `mirror_interval_s`), and `RunConfig.serve`, a `ServeConfig`: the judge's engine, your image and verbatim command,
@@ -265,7 +256,7 @@ that exports it.
   (restore, then mirror while a block runs) and `restore`. A mirror can be any fsspec URI, `file://` or a plain path
   included; one no installed filesystem serves is refused before a run directory is created, and in `--dry-run` and
   `--estimate`. Restoring replaces whole files when the local manifest is older than the mirror's.
-- `rcp_ndcg.runners`: `JobSpec` (a named command, with `serve`), `JobOptions` and `Resources` (a runner's `resources`
+- `rcp.runners`: `JobSpec` (a named command, with `serve`), `JobOptions` and `Resources` (a runner's `resources`
   and `env` are its jobs' defaults, env names must be shell identifiers, and every path a job records is absolute),
   the `JobRunner` protocol (submit, status, logs, cancel over a `JobHandle`, with a `JobStatus`; a cancel that
   cannot find or stop its job raises; a `synchronous` runner runs its job inside `submit`, so its handle is the
@@ -277,14 +268,14 @@ that exports it.
   without a container runtime refuses an `image`; Kubernetes StatefulSet and Service names are cut to 52
   characters, deterministically), `worker_script`
   (the bash script a job's task runs), `install_argv` and `COORDINATOR_IMAGE` (a coordinator installs the release
-  into a stock uv image with uvx), and `ENTRY_POINT_GROUP`, the `rcp_ndcg.runners` entry-point group for other
+  into a stock uv image with uvx), and `ENTRY_POINT_GROUP`, the `rcp.runners` entry-point group for other
   runners.
-- `rcp_ndcg.examples`: the tiny example dataset (`tiny()`) and the run configs `tiny`, `rejudge_nfcorpus` and
+- `rcp.examples`: the tiny example dataset (`tiny()`) and the run configs `tiny`, `rejudge_nfcorpus` and
   `nano_nfcorpus_gpt5` (`run_config_names`, `run_config_path`), shipped as package data.
-- `rcp_ndcg.testing`: `FakeJudge`, a deterministic offline judge (its rubric's criterion difficulties are
+- `rcp.testing`: `FakeJudge`, a deterministic offline judge (its rubric's criterion difficulties are
   `DEFAULT_DIFFICULTIES`), and `build_tiny_world`, a small judged and calibrated world on disk (`TinyWorld`), built
   from `tiny_rows` with the small schedules `TINY_TOURNAMENT` and `TINY_RUBRIC`.
-- `rcp_ndcg.errors`: typed errors with exit codes (`ExitCode`): `RcpNdcgError` and its subclasses `UsageError`,
+- `rcp.errors`: typed errors with exit codes (`ExitCode`): `RcpNdcgError` and its subclasses `UsageError`,
   `ConfigError`, `MissingInputError`, `CredentialsError`, `ProviderError`, `CapabilityError`, `Interrupted`,
   `DependencyError` (`dependency_error` builds one whose hint installs the missing extra), `IdentityError` and
   `DataError`; `classify` maps any exception onto them, and `error_class(exit_code)` gives the class of an exit code (a
@@ -294,13 +285,13 @@ that exports it.
   `WarningCode` from `WARNING_CODES` (`APPROXIMATE_IMAGE_TOKENS`, `BT_L2_MISMATCH`, `INVALID_WINDOWS`,
   `UNCALIBRATED_DOCUMENTS`, `UNREADABLE_RUN`).
 
-**Command line (`rcp-ndcg`).** `data` (fetch, inspect, validate, convert into a layout `load_dataset` reads,
+**Command line (`rcp`).** `data` (fetch, inspect, validate, convert into a layout `load_dataset` reads,
 formats), `retrieval` (index, search, rerank, fuse, store, sweep), `judge` (tournament, rubric, check, reparse),
 `calibration` (fit, score, insert,
 show), `eval` (score, compare, explain), `results` (sinks, export), `run` (start, resume, status, logs, cancel,
 list, show), `schema` (list, show,
 export), `mcp` (serve) and `doctor`. Every command except `mcp serve` takes `--json` and prints one
-`rcp-ndcg.cli.v1` document; judging and runs take `--estimate` and `--dry-run`; `run start` takes
+`rcp.cli.v1` document; judging and runs take `--estimate` and `--dry-run`; `run start` takes
 `--runner` and `--detach`, and its `--dry-run` prints what a runner would submit; `run resume` takes
 `--engine ROLE=URL`, the engine URLs a runner hands its job at run time, and `--runner` to submit a failed
 run again. `run start --judge` lists the shipped judge recipes (and the `gpt5_hosted` profile) in its help, and
@@ -314,7 +305,7 @@ command (a judging identity that differs from the store's) and write nothing.
 recorded steps. `calibration insert --dry-run --judgements STORE --out PLAN` plans an insertion's windows with the
 store's schedule, and `judge tournament --plan PLAN` asks exactly those windows. `run start` takes a config file or
 a packaged config's name (`run start tiny`); `data fetch --dataset tiny --out DIR` copies the example data.
-`eval score --json` prints the summary, the per-dataset means and the warnings (`rcp-ndcg.eval-score.v1`), with
+`eval score --json` prints the summary, the per-dataset means and the warnings (`rcp.eval-score.v1`), with
 `--per-query` and `--fields` to add or select, and `--out` for the full report; `eval explain` reads a run or a
 saved report (`--report`) and adds texts only with `--include-text`; `eval compare --run` leaves the reference
 systems `candidates` and `judge` out unless `--include-reference`; a run's `evaluation.systems` take multi-system
@@ -326,13 +317,13 @@ expected, did-you-mean, and whether `--set` or the file set it).
 9 interrupted, 10 dependency, 11 identity, 12 data; 7 is retired and never returned. A judge endpoint that refuses
 the credentials (HTTP 401, 403) stops a pass with exit 5, and one without the route or model (HTTP 404) with exit 6.
 
-**MCP tools** (`rcp-ndcg mcp serve`). Read-only: `describe` (the command index), `schema_show`, `data_inspect`,
+**MCP tools** (`rcp mcp serve`). Read-only: `describe` (the command index), `schema_show`, `data_inspect`,
 `eval_compare`, `eval_explain`, `calibration_show`, `run_list`,
 `run_show`, `run_status`, `estimate`. `eval_score` is not read-only: it overwrites `out` with the full report when
 given (its `out`, `per_query`, `fields` are as on the command line). Destructive: `run_cancel`. `run_start` starts a
-run and returns its directory at once. The tool list and a call are Python calls too: `rcp_ndcg.mcp.tool_manifest()` and `rcp_ndcg.mcp.call_tool()`.
+run and returns its directory at once. The tool list and a call are Python calls too: `rcp.mcp.tool_manifest()` and `rcp.mcp.call_tool()`.
 
-**JSON Schemas** (`schemas/`, `rcp-ndcg schema export`): the configs `run-config` and `judge-config`; the artifacts
+**JSON Schemas** (`schemas/`, `rcp schema export`): the configs `run-config` and `judge-config`; the artifacts
 `judgement`, `judgement-store` (a store's `identity.json`), `calibration` (a calibration's `items.json`),
 `calibration-coverage`, `calibration-identity`, `extension-record` (a line of a calibration's `extensions.jsonl`),
 `index`, `run-manifest`, `eval-report` and `comparison`; the output
@@ -346,7 +337,7 @@ property carries a description (a config field's is its model's documentation).
   only the kept positions, so a client that declares `document_skip_engine_side` checks a consistent count; the
   endpoint config does not carry the rule's role gate, so the product's own `fake://` path passes neither and
   is unchanged.
-- **`rcp_ndcg.testing.runner_conformance(runner, job=...)`** is the `rcp_ndcg.runners` seam's contract as one
+- **`rcp.testing.runner_conformance(runner, job=...)`** is the `rcp.runners` seam's contract as one
   check a plugin runner's own tests call: the four `JobRunner` methods, the answers' shapes (`submit` returns one
   handle per job, `status` a `JobStatus`, `logs` a string), and the optional `render`, `renders_phases` and
   `run_root` members when declared.
@@ -362,7 +353,7 @@ property carries a description (a config field's is its model's documentation).
   wire -- the registered `openai_chat` adapter's recipe-facing spelling, so both names resolve to one adapter
   and neither enters an identity. A judge recipe carries **no `reference`** (`Recipe.reference` is `None`; every
   other role still requires one, and the equivalence harness refuses a judge by name). A judge recipe's `client`
-  block **is** rcp-ndcg's judge config, validated by `rcp_ndcg.judging.JudgeConfig` when rcp-ndcg reads
+  block **is** rcp's judge config, validated by `rcp.judging.JudgeConfig` when rcp reads
   `recipe: <id>`. Ten judge recipes ship as eight families (decision 34):
   `qwen3.5-397b-a17b-nvfp4`, `gpt-oss-120b`, `qwen3.6-27b-fp8`, `qwen3.8-27b-fp8`,
   `qwen3.8-flash-next-nvfp4`, `qwen3.8-flash-next-fp8` (the six of decision 15) and the four Gemma 4 judges
@@ -370,30 +361,30 @@ property carries a description (a config field's is its model's documentation).
   `status: verified`, with its per-variant golden snapshot and its memory arithmetic for one B200 and one
   H100 (decision 41: one GPU where the weights fit, the smallest tensor parallel size that fits a B200
   otherwise, the H100 shape a documented `serve --set resources.gpus=<n>` override). Every variant renders
-  through `rcp-ndcg-vllm serve <id>`; the engine flags (reasoning parser, quantisation, KV-cache dtype, media
+  through `rcp-vllm serve <id>`; the engine flags (reasoning parser, quantisation, KV-cache dtype, media
   limit) are the recipe's `serve` block. The family schema gains a per-variant `licence` (the NVFP4 and FP8
   releases of one model are licensed differently) and `extra_args` joins the declared per-variant `serve`
   fields.
 - **`--judge <recipe-id>` and `judge: recipe:<id>`** resolve through the same path as `reranker: recipe:<id>`:
-  `rcp_ndcg.judging.JudgeConfig.load` accepts a recipe id, `recipe:<id>` or `recipe:<path>` (a family directory
+  `rcp.judging.JudgeConfig.load` accepts a recipe id, `recipe:<id>` or `recipe:<path>` (a family directory
   of the operator's own: unshipped, `unverified`, identified by its content hash), a shipped vendor profile
   (`gpt5_hosted`) or a YAML path. `JudgeConfig.base_url` may be unset for a recipe -- the URL arrives from a
   run's `serve:` block or `RCP_NDCG_ENGINES`, and a client built without one is refused with a typed message --
-  and `JudgeConfig.recipe` records the recipe's identity in the judgement store. `rcp_ndcg.inference.recipes`
+  and `JudgeConfig.recipe` records the recipe's identity in the judgement store. `rcp.inference.recipes`
   gains `recipe_source`.
-- **`rcp-ndcg judge check --judge <config|recipe|fake>`**: a short conformance probe of an endpoint before a
+- **`rcp judge check --judge <config|recipe|fake>`**: a short conformance probe of an endpoint before a
   long run. It sends the shipped tournament and rubric prompts over two fixed windows and reports, per stage,
   whether the answer schema was accepted, whether the answer parsed with the stage's own parser, and whether
   the endpoint reported a reasoning channel beside the answer; the report's `ok` is the verdict. Public:
-  `rcp_ndcg.judging.check_judge`, `JudgeCheck`, `JudgeCheckReport`, and the command's
-  `rcp-ndcg.judge-check-report.v1` schema.
-- **`rcp-ndcg.judging.JudgeConfig` gains `recipe`** (the serving recipe the client block came from) and its
+  `rcp.judging.check_judge`, `JudgeCheck`, `JudgeCheckReport`, and the command's
+  `rcp.judge-check-report.v1` schema.
+- **`rcp.judging.JudgeConfig` gains `recipe`** (the serving recipe the client block came from) and its
   `base_url` becomes optional; `known_adapters("judge")` lists `chat` beside `openai_chat`.
 
 - **The pipeline records are public, and the compatibility rows are gone** (owner decision 37): the records
-  `Document`, `Query`, `RankingExample` (with `Text`, `Input` and `ID`) live in `rcp_ndcg_core.records` -- renamed
-  from the private `_records`, `__all__` declared, no shim -- and are re-exported by the `rcp_ndcg_core` and
-  `rcp_ndcg.data` facades, so a reader/writer plugin imports a public path. `Dataset.from_records` takes the
+  `Document`, `Query`, `RankingExample` (with `Text`, `Input` and `ID`) live in `rcp_core.records` -- renamed
+  from the private `_records`, `__all__` declared, no shim -- and are re-exported by the `rcp_core` and
+  `rcp.data` facades, so a reader/writer plugin imports a public path. `Dataset.from_records` takes the
   records themselves or plain dicts with their field names and aliases, and `Dataset.queries`/`Dataset.corpus` hold
   them; the compatibility row models `QueryRow`/`DocumentRow` are deleted, with their strict rules moved into the
   records (unknown keys refused, numeric ids read as strings on every record, `RankingExample` included). The
@@ -402,10 +393,10 @@ property carries a description (a config field's is its model's documentation).
   them -- one home, `Document.model_content`/`Query.format_query`/`Query.format_content` on the records, read by
   the data layer and the role clients alike. The snapshots and schemas are regenerated; every importer in the
   repository uses the public path.
-- **The IRT estimator classes the pipeline refits are readable from the package**: `rcp_ndcg_core.irt` exports
+- **The IRT estimator classes the pipeline refits are readable from the package**: `rcp_core.irt` exports
   `BradleyTerryEstimator` and `RaschEstimator` (read lazily: touching them imports torch, as the stand-alone
-  fits already do, while importing the package stays torch-free). `rcp_ndcg.calibration` and `rcp_ndcg.judging`
-  read them from `rcp_ndcg_core.irt` instead of its private submodules.
+  fits already do, while importing the package stays torch-free). `rcp.calibration` and `rcp.judging`
+  read them from `rcp_core.irt` instead of its private submodules.
 - **The pplx plugin serves both late sizes**: `PplxLateMultiVectorModel` now replaces the generation-only head
   (`ParallelLMHead`/`LogitsProcessor`) with vLLM's `StageMissingLayer` before the parent builds it -- neither
   checkpoint ships `lm_head` tensors (the 0.6B ties it, the 9B declares `tie_word_embeddings: false` and ships
@@ -415,7 +406,7 @@ property carries a description (a config field's is its model's documentation).
 - **One join and the two instructions**: a document is read
   where a model's text is formatted, with MTEB's retrieval dataloader rule, byte for byte --
   `(title + " " + body).strip()`, the body alone (stripped) without a title
-  (`rcp_ndcg_core.records.mteb_document_text`, `Document.model_content(title=...)`,
+  (`rcp_core.records.mteb_document_text`, `Document.model_content(title=...)`,
   the new `DocumentTitle`). A role config may declare `title: separate` (the title as its own leading text part,
   the body untouched) instead. The two instructions live in two fields and are placed once each: the TASK
   instruction (`Dataset.task_instruction`, plus `Dataset.task_instruction_for(side)`) is placed by the role
@@ -436,9 +427,9 @@ property carries a description (a config field's is its model's documentation).
   is now named by its content in a judging pass's identity (queries, corpus, labels, pools, exclusions and the
   task instruction) instead of failing on the missing URI, and a loaded dataset's identity carries its
   `task_instruction` beside its URI and revision.
-- **Deployment overrides at serve time** (owner decision 36): `rcp-ndcg-vllm serve <id> --set <path>=<value>`
+- **Deployment overrides at serve time** (owner decision 36): `rcp-vllm serve <id> --set <path>=<value>`
   sets the engine's resource, scheduling and address knobs without touching the recipe. The recipe schema
-  declares that surface once (`rcp_ndcg_vllm.recipe.FIELD_ROLES`, whose values are the `RecipeFieldRole`
+  declares that surface once (`rcp_vllm.recipe.FIELD_ROLES`, whose values are the `RecipeFieldRole`
   `CONTENT`/`RUNTIME`/`DEPLOYMENT` roles), and only a DEPLOYMENT path may be named: `resources.gpus`
   (`--tensor-parallel-size`), `serve.gpu_memory_utilization`, `serve.max_num_seqs`,
   `serve.max_num_batched_tokens`, `serve.host`, `serve.port` and `serve.max_model_len` -- the last refused,
@@ -454,12 +445,12 @@ property carries a description (a config field's is its model's documentation).
   (the GPU waves serve the recipes as shipped). A value is checked against its declared kind and range (`--port`/`serve.port` 0..65535, 0 being
   the engine's own ephemeral port; a finite `serve.gpu_memory_utilization` strictly above 0), and the refusal
   names the flag the operator used.
-  `rcp_ndcg_vllm.recipe` gains `RecipeFieldRole`, `FieldSpec`, `deployment_fields`,
+  `rcp_vllm.recipe` gains `RecipeFieldRole`, `FieldSpec`, `deployment_fields`,
   `parse_deployment_overrides` and `recipe_digest`, `serve_argv` gains the `deployment` keyword (its `port` is
-  now optional: the deployment value, else the caller's port, applies), and the `rcp-ndcg-vllm` console gains
+  now optional: the deployment value, else the caller's port, applies), and the `rcp-vllm` console gains
   `--set`.
-- **User recipe files** (decision 36): `rcp-ndcg-vllm serve ./family-dir/ [--variant <id>]` and
-  `recipe:./family-dir` (or `recipe:/abs/path`) in `rcp-ndcg` configs and the `--retriever`/`--reranker`
+- **User recipe files** (decision 36): `rcp-vllm serve ./family-dir/ [--variant <id>]` and
+  `recipe:./family-dir` (or `recipe:/abs/path`) in `rcp` configs and the `--retriever`/`--reranker`
   shorthands load a family directory through the same schema, families included, with the `schema_version`
   check unchanged. A name that looks like a recipe id is the catalog's recipe first (a directory of the same
   name in the working directory does not shadow it; `./name` names the file). Such a recipe is **unshipped**:
@@ -471,7 +462,7 @@ property carries a description (a config field's is its model's documentation).
   stands (a run's `status`/resume, an index reload): the pointer is recognised, so `recipe:./dir` works end to
   end. `load_recipe` gains the `variant` keyword, the console gains `--variant`, `client_config` and
   `expand_role_recipe` put that identity in the config's `recipe` field, and the corpus provenance
-  (`rcp_ndcg_test.observe.provenance.recipe_facts`) records `shipped`.
+  (`rcp_test.observe.provenance.recipe_facts`) records `shipped`.
 - **`ImagePolicy.max_soft_tokens` and the `gemma4` processor family**: the Gemma 4 image/video processors resize
   to a soft-token budget (280 per image, 140 per video frame) rather than a pixel range; the client reproduces
   their aspect-ratio-preserving resize, prepares its fixed point (the Gemma 4 resize is not idempotent, so the
@@ -482,19 +473,19 @@ property carries a description (a config field's is its model's documentation).
   template) may carry `query_prompt`/`doc_prompt`, which is the only way the task prefix reaches a
   content-only chat render.
 - **The shipped recipes: 24 families, 44 variants** (owner decision 34: one family, many sizes, every size its
-  own tested recipe id). The recipes are family directories -- `rcp_ndcg_vllm/recipes/<family>/family.yaml`
+  own tested recipe id). The recipes are family directories -- `rcp_vllm/recipes/<family>/family.yaml`
   (the shared serve/client/reference blocks plus a `variants` table of per-size facts), the family's ONE
   `reference.py` (parameterised by the resolved recipe the harness passes with `--recipe`), its one chat
   template where the model needs one, its `reference.in`/`reference.lock` (one locked, hashed reference
   environment per family) and its `sources`. Every variant resolves to a full `Recipe` (the recipe schema is
-  unchanged) and every consumer takes variant ids: `rcp-ndcg-vllm serve <variant-id>`, `recipe: <variant-id>`
-  in `rcp-ndcg`, the catalog, the harness's discovery, the wave lists and one pairs file per variant; a family
-  id is never served. `rcp_ndcg_vllm.recipe` exports the family loader (`RecipeFamily`, `Variant`, `load_family`,
+  unchanged) and every consumer takes variant ids: `rcp-vllm serve <variant-id>`, `recipe: <variant-id>`
+  in `rcp`, the catalog, the harness's discovery, the wave lists and one pairs file per variant; a family
+  id is never served. `rcp_vllm.recipe` exports the family loader (`RecipeFamily`, `Variant`, `load_family`,
   `load_recipe`, `resolve_recipe`, `iter_families`, `iter_recipes`), the deployment surface (`FIELD_ROLES`,
   `deployment_fields`, `parse_deployment_overrides`), `serve_argv`, `recipe_digest` and
   `plugin_distribution_name`, and the family file format has its own exported schema beside the recipe's.
   Every variant keeps its own contract test, its stage-1 tests, its pairs file and its golden, and the catalog
-  (24 families, 44 variants: 16 retrieval families and 8 judge families) is the table in the `rcp-ndcg-vllm`
+  (24 families, 44 variants: 16 retrieval families and 8 judge families) is the table in the `rcp-vllm`
   README, whose rows are checked against the resolved recipes. The families and sizes this release adds (the
   paper's runs cover 18 of the variants) are the `pplx-embed-v1` dense pair (1024/2560 dims, mean pooling, the
   pplx plugin's config class, MIT), both `pplx-embed-v2-late` sizes and `pplx-embed-v2-context-9b-preview`,
@@ -521,13 +512,13 @@ property carries a description (a config field's is its model's documentation).
   variant-level override of `client.tokenizer` (injected as `model@revision` unless the family declares one)
   is refused naming the field.
 - **The retrieval stack declares its behaviour versions and the index's payload**:
-  `rcp_ndcg.retrieval` exports `INDEX_BEHAVIOUR_VERSION`, `RETRIEVE_BEHAVIOUR_VERSION` and
+  `rcp.retrieval` exports `INDEX_BEHAVIOUR_VERSION`, `RETRIEVE_BEHAVIOUR_VERSION` and
   `RERANK_BEHAVIOUR_VERSION` -- explicit constants, bumped deliberately when an output-producing step's
   numbers change, that enter the index identity, the retrieve and rerank step identities and the rerank
   checkpoint key (the package version is deliberately not used: every release would invalidate every resume
   and judgement pool; a judgement's identity is prompt- and model-defined and is not versioned). `Index`
   gains `behaviour_version` and `payload` (the sha256 of every payload file, `{relative name: sha256}`), and
-  `rcp_ndcg.storage` exports `publication_lock`, the advisory lock an index build takes exclusively and a
+  `rcp.storage` exports `publication_lock`, the advisory lock an index build takes exclusively and a
   search takes shared while it verifies and reads the payload (the media cache's own publication lock is now
   the same call).
 - **`normalize: false` beside `mrl_dim` is refused at the config**: the Matryoshka head
@@ -536,23 +527,23 @@ property carries a description (a config field's is its model's documentation).
   endpoint declares its MRL head once -- `mrl_kind` (`truncation`, `projection` or unset), the card's
   supported output dimensions as `mrl_dims` (a discrete table) or `mrl_range` (`[min, max]` prose, with the
   floor enforced client-side) and, for a projection kind, `mrl_projection` (the checkpoint's
-  learned `*.safetensors` matrices, read through `rcp_ndcg.storage`) -- and a run selects `k` from that
+  learned `*.safetensors` matrices, read through `rcp.storage`) -- and a run selects `k` from that
   declaration
   (`mrl_dim` on both role configs, client-side; the engine-side `dimensions` stays dense-only and
   truncation-kind-only). Every refusal names the field and the fix: a `k` outside the declaration,
   `mrl_dims` beside `mrl_range`, `dimensions`
   beside `mrl_dim`, `dimensions` on another kind, a declared kind without a declaration, and a projection kind
-  without its source (or with a range, which names no chain). The one head home is `rcp_ndcg.data.mrl`
+  without its source (or with a range, which names no chain). The one head home is `rcp.data.mrl`
   (`MrlHead`, `mrl_cut`, `MrlProjection`): the
-  truncation cut moves there from `rcp_ndcg.data.postprocess`, and the projection head loads the declared
+  truncation cut moves there from `rcp.data.postprocess`, and the projection head loads the declared
   chain in float32 and renormalises. Every row the head changed carries a `ProcessingRecord` with the new
   `mrl_cut` mechanism and its kind, `k` and full width (`mrl_cut` joins `CHANGE_MECHANISMS`). The
-  full-width `EmbeddingStore` (`rcp_ndcg.data.EmbeddingStore`, `StoredVectors`, `load_embedding_store`)
+  full-width `EmbeddingStore` (`rcp.data.EmbeddingStore`, `StoredVectors`, `load_embedding_store`)
   holds corpus and query vectors, ragged offsets for late interaction, and a `store.json` with the schema
   and provenance (model, revision, recipe, prompt digest, tokenizer, budget, full width, dtype, the
   declared MRL head), content-addressed by the retrieval identity plus a full-width marker;
-  `rcp_ndcg.retrieval.build_store`/`load_store`/`sweep` wire it, and the new `rcp-ndcg retrieval store` and
-  `rcp-ndcg retrieval sweep` commands build it and evaluate every declared `k` from it (per-k rankings
+  `rcp.retrieval.build_store`/`load_store`/`sweep` wire it, and the new `rcp retrieval store` and
+  `rcp retrieval sweep` commands build it and evaluate every declared `k` from it (per-k rankings
   `<model>@<k>`, then `evaluate`/`compare`) in one forward pass.
 - **Every recipe declares its MRL head, and `recipe: <id>` selects from it** (owner decision 39): every
   shipped embedding and multi-vector variant declares its kind and the model card's set once in
@@ -564,7 +555,7 @@ property carries a description (a config field's is its model's documentation).
   `recipe: <id>` config's `mrl_dim`/`dimensions` is a *selection*: accepted when `k` is in the declared set
   and refused naming the set otherwise (no longer a CONTENT disagreement with the recipe's declared
   `null`). The per-variant client whitelist (`PER_VARIANT_CLIENT_FIELDS`) gains the MRL fields (a size's
-  card set changes with its width), and the `MRL` column of the `rcp-ndcg-vllm` catalog names every
+  card set changes with its width), and the `MRL` column of the `rcp-vllm` catalog names every
   variant's set.
 
 - **The data model carries provenance**: `Document.title` is a
@@ -581,38 +572,38 @@ property carries a description (a config field's is its model's documentation).
   (`top_ranked` pools), `excluded()`, `gains()`/`thetas()` (the released calibrated values), `provenance`
   (the new `Provenance`, `DuplicateCounts` and `DuplicatesPolicy` models) and `task`/`task_instruction`, and
   every `Dataset` is built from a reader through one function. The reader and writer tables are now the
-  `rcp_ndcg.readers` and `rcp_ndcg.writers` entry-point groups (the same seam as the job runners and
-  adapters; the built-ins are declared in `rcp-ndcg`'s manifest): a third-party format is one class in its
-  own package, and the shared conformance suite is public as `rcp_ndcg.testing.io_conformance`.
+  `rcp.readers` and `rcp.writers` entry-point groups (the same seam as the job runners and
+  adapters; the built-ins are declared in `rcp`'s manifest): a third-party format is one class in its
+  own package, and the shared conformance suite is public as `rcp.testing.io_conformance`.
 - **`hf://` is mteb's layout, and `mteb:<Task>` loads a task through mteb** (owner decisions 28, 31, 32):
-  the Hub reader (`rcp_ndcg.data.io.hub`, the `hf` entry point) is driven by the dataset card, following
+  the Hub reader (`rcp.data.io.hub`, the `hf` entry point) is driven by the dataset card, following
   mteb's own resolution -- `{s-}corpus` / `{s-}queries` / `{s-}qrels` configs, the `query` config override,
   the `default`-then-`qrels` fallback, `{s-}top_ranked` pools, an `{s-}instruction` config whose rows win
   over the queries' own column, the requested split else the config's only one -- reads parquet, jsonl,
   jsonl.gz and tsv directly through `huggingface_hub` and pyarrow (no `datasets`, no `mteb`), and reads
-  rcp-ndcg's extras (the qrels `gain`/`theta` columns, the `-excluded` config). `mteb:<TaskName>[/<subset>]
+  rcp's extras (the qrels `gain`/`theta` columns, the `-excluded` config). `mteb:<TaskName>[/<subset>]
   [@split]` (the `[mteb]` extra) runs mteb's own loader and converts its `RetrievalSplitData`, so the 113
   custom-loaded tasks read through the same contract; it records the task name, subset, split and pinned
   revision, and carries `TaskMetadata.prompt` into `task_instruction`.
 - **`load_dataset` takes `split=`** for `hf://`, `mteb:` and `beir:` (the requested split; `None` is `"test"`,
   or the source's own convention).
-- **`rcp_ndcg.errors.WarningCode` gains `CARD_UNCACHED`**: an offline `hf://` load whose dataset card is not
+- **`rcp.errors.WarningCode` gains `CARD_UNCACHED`**: an offline `hf://` load whose dataset card is not
   in the local cache falls back to the plain `{subset}/` path layout and says so (the card-declared configs
   are unavailable until one online run caches the card).
-- **`rcp_ndcg.data.media` gains `media_extension(payload)`** (the format a media payload's magic numbers name)
+- **`rcp.data.media` gains `media_extension(payload)`** (the format a media payload's magic numbers name)
   and `image_dimensions(payload)`; `store_media(..., mime=)` records a MIME type a suffix alone cannot state
   (a video container).
 - **One processing pipeline, one postprocess home**: the split of
-  `rcp_ndcg.data.preprocess` and the declared stage order of the role clients. Every public name keeps its import
-  path (`rcp_ndcg.data.preprocess` is the aggregation facade), and the contract snapshot records the moved homes:
-  the judge text policy, the chunk geometry and `Preprocessing` live in `rcp_ndcg.data.text_policy`; the cut
-  record (`CutCause`, `TextCutRecord`) and the census (`TextTruncationCensus`) in `rcp_ndcg.data.census`; the
-  served roles' `TextBudget` and `fit` in `rcp_ndcg.data.text_budget`; the census files' record I/O
+  `rcp.data.preprocess` and the declared stage order of the role clients. Every public name keeps its import
+  path (`rcp.data.preprocess` is the aggregation facade), and the contract snapshot records the moved homes:
+  the judge text policy, the chunk geometry and `Preprocessing` live in `rcp.data.text_policy`; the cut
+  record (`CutCause`, `TextCutRecord`) and the census (`TextTruncationCensus`) in `rcp.data.census`; the
+  served roles' `TextBudget` and `fit` in `rcp.data.text_budget`; the census files' record I/O
   (`drop_torn_last_line`, `census_sink_lock`, `append_census_rows`, `read_census_rows`) in
-  `rcp_ndcg.storage.census` (exported from `rcp_ndcg.storage`); and the postprocess of model output
+  `rcp.storage.census` (exported from `rcp.storage`); and the postprocess of model output
   (`l2_normalize`, `max_pool_scores_by_document`, `max_pool_rubric_window_by_document` and
-  `skip_keep_mask`) in `rcp_ndcg.data.postprocess` (`l2_normalize` re-exported from `rcp_ndcg.inference.types` as
-  before; the Matryoshka head's `mrl_cut` moved on to `rcp_ndcg.data.mrl`, decision 39). `rcp_ndcg.inference.clients._base.STAGES` declares the one preparation pipeline every role composes
+  `skip_keep_mask`) in `rcp.data.postprocess` (`l2_normalize` re-exported from `rcp.inference.types` as
+  before; the Matryoshka head's `mrl_cut` moved on to `rcp.data.mrl`, decision 39). `rcp.inference.clients._base.STAGES` declares the one preparation pipeline every role composes
   (normalise -> empty -> media -> render -> budget -> lower), and the per-row `ProcessingRecord` is its one output.
   The facade's `__all__` grows by three names the old module carried at module level but did not export:
   `needs_tokenizer`, `require_tokenizer` and `census_sink_lock`.
@@ -622,7 +613,7 @@ property carries a description (a config field's is its model's documentation).
 - **The engine's video sampling (owner decision 2026-10-09)**: `VideoPolicy` gains `fps`, the vLLM v0.31.0
   `Qwen3VLVideoBackend`'s own rule, and `num_frames` becomes optional: a `wire: video_url` policy declares
   exactly one of `num_frames` (a pinned uniform count) or `fps` (the engine's rate), and `wire: frames` still
-  requires `num_frames`. The new `rcp_ndcg.data.resolution.qwen3_vl_video_frame_indices` ports the backend's
+  requires `num_frames`. The new `rcp.data.resolution.qwen3_vl_video_frame_indices` ports the backend's
   rule (`int(total_frames / original_fps * fps)`, clamped to its 30 fps ceiling and 4..768 frame bounds), and
   `content_media_tokens` gains an optional `tokenizer`: a `qwen3_vl` container under `fps` is counted from the
   clip's recorded frame count and rate, its timestamp lines exactly when the client's tokenizer is passed (the
@@ -643,12 +634,12 @@ property carries a description (a config field's is its model's documentation).
   it from).
 
 - **The MTEB dataset writer** (the `mteb` writer of `WRITERS`, `data convert --to mteb`):
-  `rcp_ndcg.data.io.mteb.MtebWriter` writes exactly what mteb's `push_dataset_to_hub` writes -- configs
+  `rcp.data.io.mteb.MtebWriter` writes exactly what mteb's `push_dataset_to_hub` writes -- configs
   `{s-}corpus` (`id`, `title`, `text`), `{s-}queries` (`id`, `text`, `instruction` only when a query carries
   one), `{s-}qrels` (`query-id`, `corpus-id`, `score` as int64) and `{s-}top_ranked` -- one parquet shard per
   config at `{config}/{split}-00000-of-00001.parquet`, and a README whose `configs:` front matter is what
   `load_dataset` (and through it mteb's `RetrievalDatasetLoader`) reads the directory with; `card=` (a mteb
-  `TaskMetadata` or its fields) renders the card from mteb's own template. rcp-ndcg's extras ride only where
+  `TaskMetadata` or its fields) renders the card from mteb's own template. rcp's extras ride only where
   mteb ignores them: the calibrated `gain`/`theta` columns ride on the qrels, and the exclusions travel in the
   `{s-}excluded` config and are folded out of `top_ranked` (out of the corpus when the data has no pool). A
   grade that is not a whole number is refused (mteb's loader casts the int64 `score` column down to int32,
@@ -662,7 +653,7 @@ property carries a description (a config field's is its model's documentation).
   query (mteb's own cap), ties by document id descending. An existing file is merged the way mteb's own writer
   merges: the (subset, split) written replaces theirs, the file's other splits, subsets and its
   `mteb_model_meta` stay.
-- **Scoring stored rankings inside mteb** (`rcp_ndcg.eval.mteb`, the `mteb` extra):
+- **Scoring stored rankings inside mteb** (`rcp.eval.mteb`, the `mteb` extra):
   `stored_rankings_model(rankings, meta)` wraps stored `Rankings` as mteb's `SearchProtocol` -- the served
   scores are the asked queries only, restricted to the task's `top_ranked` pool when it has one, capped at
   `top_k` with ties by document id descending -- and `model_meta(name, revision, **fields)` builds mteb's
@@ -671,7 +662,7 @@ property carries a description (a config field's is its model's documentation).
   layout (`results/{org__model}/{revision}/{Task}.json` with `model_meta.json` and `run_settings.jsonl`), ready
   for `submit_results`; the integer `ndcg_at_10` equals our `qrel_ndcg` under the suite's protocol (the tie
   rules agree).
-- `tools/republish_mteb.py` re-lays the published rcp-ndcg datasets in the writer's exact layout, every subset
+- `tools/republish_mteb.py` re-lays the published rcp datasets in the writer's exact layout, every subset
 the published task definitions read -- all 48 ViDoRe v3 language subsets, not only the eight native-language
 ones the paper scores -- each at the split its definition pins (NanoBEIR `train`, BRIGHT `standard`, ViDoRe v3
 `test`; owner decision 40), with a corpus shared by several subsets written once (the card's `-corpus` entries
@@ -688,17 +679,17 @@ owner pushes, with the move to a Hugging Face organisation).
   null: the internal `MediaRef` is content-addressed, and mteb reads the bytes. `write_dataset(...
   corpus_group=)` writes a suite's shared corpus once, counts its rows once and refuses a repeated group whose
   rows differ.
-- **The layout move**: the repository is four distribution directories (`rcp-ndcg/`, `rcp-ndcg-core/`,
-  `rcp-ndcg-vllm/`, `rcp-ndcg-test/`; the root manifest is the uv workspace only). `rcp-ndcg-vllm` is the lean
+- **The layout move**: the repository is four distribution directories (`packages/rcp/`, `packages/rcp-core/`,
+  `packages/rcp-vllm/`, `packages/rcp-test/`; the root manifest is the uv workspace only). `rcp-vllm` is the lean
   serving package (dependencies pydantic and PyYAML only; the recipes are package data read through
-  `importlib.resources`; the `rcp-ndcg-vllm serve <recipe-id> [--dry-run]` console; the topk and pplx model
-  plugins fold into `rcp_ndcg_vllm/models/` under one lazily registering `vllm.general_plugins` entry point and
+  `importlib.resources`; the `rcp-vllm serve <recipe-id> [--dry-run]` console; the topk and pplx model
+  plugins fold into `rcp_vllm/models/` under one lazily registering `vllm.general_plugins` entry point and
   one version guard, and the separate plugin distributions are gone). The validation tooling -- the equivalence
   harness, the engine recorder, the wave runner and node scripts, the request generator, the T4 driver -- and
-  the verified emulators and observation corpora (`rcp_ndcg_test.engines`, `rcp_ndcg_test.corpus`, `corpora/`,
-  the conformance suite) move to the unpublished `rcp-ndcg-test` (owner decision 20); the product keeps
-  `rcp_ndcg.inference.fake` and the offline helpers, and routes a `fake://<engine>-<version>/<recipe>` URL
-  through the new `rcp_ndcg.fake_transports` entry-point group (`rcp-ndcg-test` registers its emulators;
+  the verified emulators and observation corpora (`rcp_test.engines`, `rcp_test.corpus`, `corpora/`,
+  the conformance suite) move to the unpublished `rcp-test` (owner decision 20); the product keeps
+  `rcp.inference.fake` and the offline helpers, and routes a `fake://<engine>-<version>/<recipe>` URL
+  through the new `rcp.fake_transports` entry-point group (`rcp-test` registers its emulators;
   without one the refusal is typed, naming the package).
 - **`recipe: <id>`** (docs-firstcontact Q1, owner decision 17): a role config that names a shipped serving
   recipe takes its whole client block from it -- explicit CONTENT fields must equal the recipe's or the config
@@ -707,33 +698,33 @@ owner pushes, with the move to a Hugging Face organisation).
   point at it (`ctxl-*`, `octen`); the ones that reproduce the paper's own path keep every explicit field and
   no pointer.
 - **The recipe file format is the versioned contract** (owner decision 18): every recipe carries
-  `schema_version`, the exported JSON Schema pins it, and `rcp-ndcg` checks the versions it reads
-  (`rcp_ndcg.inference.recipes.RECIPE_SCHEMA_VERSIONS`) when it resolves `recipe: <id>` -- no lockstep version
-  pin between rcp-ndcg and rcp-ndcg-vllm (core and rcp-ndcg keep theirs).
-- `rcp_ndcg.inference` exports the recipe-resolution surface: `available_recipe_ids`, `expand_role_recipe`,
+  `schema_version`, the exported JSON Schema pins it, and `rcp` checks the versions it reads
+  (`rcp.inference.recipes.RECIPE_SCHEMA_VERSIONS`) when it resolves `recipe: <id>` -- no lockstep version
+  pin between rcp and rcp-vllm (core and rcp keep theirs).
+- `rcp.inference` exports the recipe-resolution surface: `available_recipe_ids`, `expand_role_recipe`,
   `recipe_client_data`, `recipe_role`, `shorthand_config`, `RECIPE_SCHEMA_VERSIONS`.
-- The layering charters rename `rcp_ndcg.llm` to `rcp_ndcg.judging` (owner decision 21); the module's names do
+- The layering charters rename `rcp.llm` to `rcp.judging` (owner decision 21); the module's names do
   not move.
-- `rcp-ndcg-test` is never published and installs from a git subdirectory (owner decision 22); its README and
+- `rcp-test` is never published and installs from a git subdirectory (owner decision 22); its README and
   the docs say so.
 - The release workflow builds and publishes the three published distributions from their own directories in the
-  order core -> rcp-ndcg -> vllm; no plugin wheels are built or published. One merged NOTICE ships
+  order core -> rcp -> vllm; no plugin wheels are built or published. One merged NOTICE ships
   byte-identical in all four distributions.
 - The pplx folded plugin registers a second architecture for `pplx-embed-v2-late-0.6b`: the late checkpoint's
   `Qwen3_5Model` (absent from vLLM v0.31.0's registry) resolves to
-  `rcp_ndcg_vllm.models.pplx.late.PplxLateMultiVectorModel`, a `ColQwen3_5Model` subclass that loads the
+  `rcp_vllm.models.pplx.late.PplxLateMultiVectorModel`, a `ColQwen3_5Model` subclass that loads the
   checkpoint's separate `1_Dense/model.safetensors` head (one tensor, `linear.weight` [128, 1024]) into
   `custom_text_proj` with a shape check -- the stock weight discovery never reads a subdirectory file
   (default_loader.py globs the snapshot root) -- and marks the zero-initialised projection bias loaded; the
   checkpoint's `model_type qwen3_5` is native, so no config class registers and no remote code runs
-  (`trust_remote_code: false`). The T3 task matrix (`rcp_ndcg_test.quality.TASK_MATRIX`) gains the recipe
+  (`trust_remote_code: false`). The T3 task matrix (`rcp_test.quality.TASK_MATRIX`) gains the recipe
   under visual documents (retrieval, vidore) and late interaction, text (nanobeir, bright); its pairs file
   `pairs/pplx-embed-v2-late-0.6b.jsonl` is generated (33 rows at MEDIA_SET_VERSION 3; the media rows record
   the client's skip-ids media refusal, the recipe's named no-verify path).
-- `rcp_ndcg.eval.mteb.task_subsets(source)` reads a published suite file's `_SUBSETS` alias map (each subset's
+- `rcp.eval.mteb.task_subsets(source)` reads a published suite file's `_SUBSETS` alias map (each subset's
   published task name, read as data; `{}` for the files that predate the task-name keys) -- the lookup
-  `rcp_ndcg.eval.mteb.get_tasks` resolves its `names` through.
-- **The media request set carries video and interleaved rows** (`rcp_ndcg_test.observe.media_set`,
+  `rcp.eval.mteb.get_tasks` resolves its `names` through.
+- **The media request set carries video and interleaved rows** (`rcp_test.observe.media_set`,
   `MEDIA_SET_VERSION` 3; the text rows' sampling untouched): a recipe with video input and a declared policy
   (`client.max_videos` and `client.video_policy`) plans an MJPEG AVI clip per size (64x64 and 224x224), alone
   and with text, at the policy's declared frame count -- tiny RIFF containers written on CPU from PIL-drawn
@@ -749,7 +740,7 @@ owner pushes, with the move to a Hugging Face organisation).
   manifest records `media:video`, `media:video:icon`/`:page`, `media:video+text`, `media:mixed_batch`,
   `media:query_image`, `media:interleaved` and `media:several_images` present or absent with the reason;
   pairs regenerated for the three media recipes (their text rows byte-identical).
-- **The media gate gates video and interleaved order** (`rcp_ndcg_test.equivalence.media`): a video's
+- **The media gate gates video and interleaved order** (`rcp_test.equivalence.media`): a video's
   declared frame count gates against the reference's `--mode media` (the sampling both sides declare), and
   its container's token count gates against the engine -- the stage probes the sent container's header (the
   product's `probe_video_header`) and counts it exactly (`content_media_tokens` under the client's declared
@@ -763,9 +754,9 @@ owner pushes, with the move to a Hugging Face organisation).
   video per request, a 4-frame pinned sampling) carries the video and interleaved tests.
 
 - **The media gate's fix round**: the recorder records a media side the role client refuses as a
-  `client_refusal` record (`rcp_ndcg_test.record.refusal_exchange`; no status, nothing sent), so a refusal never
+  `client_refusal` record (`rcp_test.record.refusal_exchange`; no status, nothing sent), so a refusal never
   ends a corpus step and loses its text rows (topk-embed-v1-small's image documents); the checkpoint's own files
-  come through one reader (`rcp_ndcg_test.equivalence.checkpoint.checkpoint_file`, `checkpoint_pixel_budget`),
+  come through one reader (`rcp_test.equivalence.checkpoint.checkpoint_file`, `checkpoint_pixel_budget`),
   where only an absent file (the Hub's answer, or the cache's record of it) falls through to the next source; a
   file neither cached nor askable is unknown, and that or any other read failure is unresolved; the
   media stage names a side the reference refuses (`reference_refused`, which the generator prunes) before a side
@@ -773,7 +764,7 @@ owner pushes, with the move to a Hugging Face organisation).
   are `observe.media_set.planned_media_rows` (renamed from `media_rows`, which stays the pairs-file reader in
   `equivalence.media`). The test stub resizes with the product's own `smart_resize`, so on CPU only the
   reference comparison can catch a product resize bug.
-- **The media request set is generated and recorded** (`rcp_ndcg_test.observe.media_set`, `MEDIA_SET_VERSION` 1,
+- **The media request set is generated and recorded** (`rcp_test.observe.media_set`, `MEDIA_SET_VERSION` 1,
   versioned apart from the text sampling so no recipe's text rows move): a recipe with image input plans one
   pairs row per image size bucket of OBSERVATIONS-SPEC section 1 (tiny, icon, A4 at 72/150/300 dpi, a 16:9
   slide, a tall receipt, an extreme aspect ratio; deterministic PNGs inline) and a captioned page, after its
@@ -783,7 +774,7 @@ owner pushes, with the move to a Hugging Face organisation).
   (`validation.media_check` in `pairs/manifest.json`; a media failure is recorded, never pruned), stage 1's
   red rows map back to the text rows' positions, and the recorder sends each media row with its media, one
   item (a reranker's pair) per request.
-- **The media stage of the equivalence harness** (`rcp_ndcg_test.equivalence.media.stage_media`, run by
+- **The media stage of the equivalence harness** (`rcp_test.equivalence.media.stage_media`, run by
   `equivalence.run` beside stages 1 and 2 for a recipe with image or video input): stages 1 and 2 are text-only, so
   nothing proved that a served vision-language recipe shows its model the images its reference sees. For every
   pairs row that carries `media` (inline `MediaRef` entries with their `kind`; a side's content is its media in
@@ -804,25 +795,25 @@ owner pushes, with the move to a Hugging Face organisation).
   wave blocker, when that budget cannot be read. The test stub engine resizes images as the engine's processor does
   (`--model-image-factor`, `--model-image-pixels`, `--mm-processor-kwargs`), and the `fixture-vl-embed`
   fixture is a vision embedder pinned below its family's stock floor.
-- **A recipe that declares a key twice is refused** (`rcp_ndcg_vllm.load_recipe`): YAML keeps the last of two equal
+- **A recipe that declares a key twice is refused** (`rcp_vllm.load_recipe`): YAML keeps the last of two equal
   keys silently, so a recipe declaring a field twice served whichever came last. The loader raises
   `RecipeError` naming the key and its line; the `fixture-rerank-noisy` fixture declared `use_activation` twice
   (both `true`) and now declares it once.
-- **Change handling reads corpora through the one reader**: `rcp_ndcg_test.changes` (the committed-corpora
-  selection and staleness) reads each manifest through `rcp_ndcg_test.corpus.load_corpus` and refuses a
+- **Change handling reads corpora through the one reader**: `rcp_test.changes` (the committed-corpora
+  selection and staleness) reads each manifest through `rcp_test.corpus.load_corpus` and refuses a
   corpus whose hashes do not hold (`HarnessError` naming the mismatches) instead of parsing `manifest.json`
   itself; the conformance wiring (`tests/_engines.py`) reads through the same reader. The two re-record
   selections state their scopes: `changes changed` compares the corpora committed in the repository, the
   wave runner's `--changed-since <wave.json>` a previous wave's index (`observe.corpus.changed_since`).
-- **`rcp_ndcg.runs.execution.stage_run(pipeline)`**: the one staging of a run directory before a job runs it (the
+- **`rcp.runs.execution.stage_run(pipeline)`**: the one staging of a run directory before a job runs it (the
   layout, the resolved `run.yaml`, the manifest in status `submitted`). `submit_run` calls it, and
-  `rcp_ndcg_test.e2e.stage_run_dir` -- the GPU end-to-end driver, which runs the job itself -- now calls it
+  `rcp_test.e2e.stage_run_dir` -- the GPU end-to-end driver, which runs the job itself -- now calls it
   instead of the pipeline's private `run.yaml` writer.
 - **Re-keyed corpora name the manifest they were re-keyed from**: each `recipe.rekeyed` entry carries
   `from_manifest_sha256` and `from_manifest_file_sha256` beside `from_behaviour_fingerprint`, the link from the
   repository subset to the full corpus it was cut from (`qwen3-reranker-8b`, `qwen3-vl-reranker-2b`; their
   manifest digests and the corpus indexes recomputed). The conformance suite requires both on every entry.
-- **The stub engine speaks vLLM's chat path, and stage 2 runs on the messages route**: `rcp-ndcg-vllm`'s test stub
+- **The stub engine speaks vLLM's chat path, and stage 2 runs on the messages route**: `rcp-vllm`'s test stub
   engine refused `messages` bodies, so stage 2 on the `messages` route was untested. It now frames each
   conversation as vLLM v0.31.0's chat path does (parts handed to the served chat template as their modality,
   the request's `add_generation_prompt`), resizes images as the engine's processor does under the served pixel
@@ -830,7 +821,7 @@ owner pushes, with the move to a Hugging Face organisation).
   `--limit-mm-per-prompt`, an undecodable image, a video container it cannot decode) and reports
   `usage.prompt_tokens` on every chat-shaped and `/rerank` reply; a stage-2 test passes a template that frames
   once and fails one that frames twice.
-- **The harness reads the checkpoint's own chat template** (`rcp_ndcg_test.equivalence.stages.checkpoint_chat_template`,
+- **The harness reads the checkpoint's own chat template** (`rcp_test.equivalence.stages.checkpoint_chat_template`,
   `CHECKPOINT_TEMPLATE_FILES`): a `messages` recipe without `serve.chat_template` reported its
   `template_render_check` as `not_run`, so the frame the engine renders there was never checked. The check now
   reads the checkpoint's own template at the pinned revision, in the order the engine resolves it
@@ -847,12 +838,12 @@ owner pushes, with the move to a Hugging Face organisation).
   on `PoolingEndpoint` (its media lowering sends no such field), and `false` -- the engine's default -- is
   stored as `None`, so no identity re-keys. The equivalence harness's messages template check renders every
   captured conversation with the flag that request carried, its parts as vLLM hands them to the template
-  (`rcp_ndcg_test.equivalence.stages.engine_conversation`: `image_url` as `{"type": "image"}`, `video_url` as
+  (`rcp_test.equivalence.stages.engine_conversation`: `image_url` as `{"type": "image"}`, `video_url` as
   `{"type": "video"}`).
-- **Two public accessors of `rcp-ndcg-test`, and the release rule for stale corpora**:
-  `rcp_ndcg_test.fingerprint.stored_tokenizer(spec)` returns a registered tokenizer store's verified
+- **Two public accessors of `rcp-test`, and the release rule for stale corpora**:
+  `rcp_test.fingerprint.stored_tokenizer(spec)` returns a registered tokenizer store's verified
   `tokenizer.json` bytes and SHA-256 (the golden replay materialises the recipe's tokenizer with it), and
-  `rcp_ndcg_test.record.bare_exchange` records one bare probe as a captured exchange (the wave runner's
+  `rcp_test.record.bare_exchange` records one bare probe as a captured exchange (the wave runner's
   readiness edge uses it); no caller imports a private helper for either. With `RCP_NDCG_RELEASE=1` the
   conformance suite requires `tests/conformance/stale.json` empty, as it requires the waiver file empty; the
   re-key of a corpus whose fingerprint moved by metadata only is a documented procedure
@@ -866,7 +857,7 @@ owner pushes, with the move to a Hugging Face organisation).
   enters the family key). A policy without a budget refuses the declaration. The media fit's shrink step
   carries the declared policy's every field (the pinning included) into its minimum policy, so a pinned budget
   below the stock floor shrinks to its own minimum; a shrink the policy cannot express is a typed `DataError`
-  naming the budget. `rcp_ndcg_vllm`'s recipe
+  naming the budget. `rcp_vllm`'s recipe
   validator checks both sides: a pinned client needs `serve.mm_processor_kwargs.images_kwargs` with both
   numbers, and every pixel number serve pins (nested or flat, `min_pixels`/`max_pixels` or the HF processor's
   `size: {shortest_edge, longest_edge}`) must equal the client's -- a serve pin beside a client that declares
@@ -881,7 +872,7 @@ owner pushes, with the move to a Hugging Face organisation).
   `max_tokens` on the rerank config (at or over it the pair budget always binds first), and is refused
   beside `on_overflow: chunk` and on a hosted profile without a tokenizer (inert). The equivalence harness's
   rerank audit holds every captured document span to it, as it holds the query span to its share.
-- **A role client records, per input row, what it changed** (`rcp_ndcg.data.preprocess.ProcessingRecord`,
+- **A role client records, per input row, what it changed** (`rcp.data.preprocess.ProcessingRecord`,
   `RoleClient.processing`): every role client's preparation emits one record for each input row it changed
   before sending it -- none for a row sent as given -- naming each change by its mechanism
   (`CHANGE_MECHANISMS`: `empty_doc`, `media_resize`, `media_drop`, `document_share`, `query_share`,
@@ -897,55 +888,55 @@ owner pushes, with the move to a Hugging Face organisation).
   a content count under it, so whether a role client changed an input is read from the record. The pooling
   client's census rows now name each input's original position (an omitted empty document no longer shifts
   a later one's id), as the rerank client's do.
-- **`rcp-ndcg-vllm` recipes: `reference.known_deviations` accepts `over_cap_cut_differs`** beside
+- **`rcp-vllm` recipes: `reference.known_deviations` accepts `over_cap_cut_differs`** beside
   `anchor_drop_over_cap`: a reference that keeps the anchors but cuts over-cap content its own way (a joint
   `longest_first` truncation where the client settles the query at its share) declares it, and the harness
   reports those inputs outside the gates. A reference stays the paper's or the model card's; it never
   copies the client's cut to make an over-cap row pass. `schema/recipe.schema.json` carries the new value,
   and the new read-only property `ReferenceSpec.over_cap_deviation` names the declared over-cap deviation
   (or `None`), which the harness's stages read.
-- **The adapter seam's contract is declared and checked** (`rcp_ndcg.inference.adapters.base`): `AdapterBase`
+- **The adapter seam's contract is declared and checked** (`rcp.inference.adapters.base`): `AdapterBase`
   carries the credential and capability ClassVars (`HOSTED`, `API_KEY_ENV`, `KEY_REQUIRED`, `AUTH_HEADER`,
   `DEFAULT_BASE_URL`, `MAX_BATCH`, `SUPPORTS_DIMENSIONS`, `ENCODING_FORMAT`, `REQUEST_SHAPES`) with declared
   defaults and the
   constructor convention (an adapter is built with its role config). `register_adapter` and the
-  `rcp_ndcg.adapters` entry-point loader refuse a class without the three members (`calls`, `interpret`,
+  `rcp.adapters` entry-point loader refuse a class without the three members (`calls`, `interpret`,
   `usage`) or the five credential facts, and a class that does not declare `HOSTED` itself (the base's
   `False` would silently serve a hosted wire as an engine) -- previously duck-typed with defaults that could
   be wrong, and a
-  missing member failed only at the first request. `rcp_ndcg.testing.adapter_contract` is the contract-test
+  missing member failed only at the first request. `rcp.testing.adapter_contract` is the contract-test
   kit the unified-inference design promised: name/role, members, facts, construction, and a recorded round's
   alignment and usage, as one listed failure set.
-- `AuthProfile.homes` and `AuthProfile.applies_to(url)` (`rcp_ndcg.inference.transport`): the URLs a
+- `AuthProfile.homes` and `AuthProfile.applies_to(url)` (`rcp.inference.transport`): the URLs a
   profile's key variables belong to, and whether they may authenticate a request to a replica URL -- exactly
   one of them, a trailing slash aside (see Security).
-- `rcp_ndcg.support.urls.safe_url`: the form of a URL that may reach a log, an error or a record
+- `rcp.support.urls.safe_url`: the form of a URL that may reach a log, an error or a record
   -- userinfo, query and fragment stripped, the host and path as written. The one redactor: the inference
   layer's logs, errors and engine records and the storage cache's messages (which lower-cased the bucket
   name and broke an IPv6 host) all call it. `EngineInfo.url` validates itself through it, so a run manifest
   never persists credentials embedded in a URL.
-- `rcp_ndcg.data.preprocess`: `fixed_overhead` (the one home of a request frame's fixed token cost, shared by
+- `rcp.data.preprocess`: `fixed_overhead` (the one home of a request frame's fixed token cost, shared by
   `fit` and the role clients' media allowances), `rendered_request` and `rendered_pair_tokens` (the one home
   of the assembled render, so a client's budget check measures what `fit` verified), and
   `TextBudget.shape_max_tokens(shape)` (the one home of a shape's budget: `query_max_tokens` on the embedding
   roles' query shape, else `max_tokens`).
-- `rcp_ndcg.data.prepare`: `PreparedRequest.content_tokens` (per-content media token counts) and
+- `rcp.data.prepare`: `PreparedRequest.content_tokens` (per-content media token counts) and
   `PreparedRequest.per_content()` (each content's slice of a prepared request, in one pass -- the role
   clients prepare a request once and fit each wire request's slice, never re-inlining prepared bytes; a
   corpus encode is one request, so the slicing is linear in it); `MediaCensus.recorded()` (the public read the tests use instead of private
   state).
-- `rcp_ndcg.data.media`: `data_uri` (the one builder of every inline `data:` URI the package writes) and
-  `DEFAULT_IMAGE_MIME` beside it; `rcp_ndcg.data.prepare.DEFAULT_IMAGE_MIME` is re-exported from the new home.
-- `rcp_ndcg.inference`: `RoleClient.usage` (the sender's accounting, as the judge's), `EmbeddingClient.probe`
+- `rcp.data.media`: `data_uri` (the one builder of every inline `data:` URI the package writes) and
+  `DEFAULT_IMAGE_MIME` beside it; `rcp.data.prepare.DEFAULT_IMAGE_MIME` is re-exported from the new home.
+- `rcp.inference`: `RoleClient.usage` (the sender's accounting, as the judge's), `EmbeddingClient.probe`
   (the transport's replica probe; the embed client sends no media probe request, so it runs no engine media
   check), and `VllmPooling.media_probe_baseline` (the media probe's no-media baseline, the same `messages`
   shape).
 - **The role clients expose their text budget**: `EmbeddingClient`, `PoolingClient` and `RerankClient` gain the
   read-only `text_budget` (the `TextBudget` the client fits every request to, as built from its config; `None`
   without `max_tokens`), so harnesses and case loaders read the client's budget instead of rebuilding it.
-- **T4 end to end: the run scenarios the GPU validation drives inside the pod** (`rcp-ndcg-vllm`): the
-  scenario configs `rcp-ndcg-vllm/scenarios/*.yaml` (schema `schema/scenario.schema.json`),
-  the stage `python -m rcp_ndcg_test.e2e`, the entry `rcp-ndcg-test/src/rcp_ndcg_test/jobs/e2e.sh` and the submission
+- **T4 end to end: the run scenarios the GPU validation drives inside the pod** (`rcp-vllm`): the
+  scenario configs `packages/rcp-vllm/scenarios/*.yaml` (schema `schema/scenario.schema.json`),
+  the stage `python -m rcp_test.e2e`, the entry `packages/rcp-test/src/rcp_test/jobs/e2e.sh` and the submission
   flag `submit.sh --script e2e` (beside `bootstrap` and `wave0`; the wave list names scenario ids). One
   scenario materializes a `RunConfig`, renders its phased job script with the SLURM renderer
   (`container_runtime: none`) and runs it in the pod: the coordinator through `install_argv` from the
@@ -957,44 +948,44 @@ owner pushes, with the move to a Hugging Face organisation).
   `BackendUnavailableError`; a resume finishes), `identity` (the same run on new ports: nothing
   recomputes) and `vidore` (ViDoRe v3 page images). Offline counterparts in the root suite: the golden
   rendered script (harness tests), the four-phase supervision re-run with the verified fake engines as
-  its encoder and reranker engines (`rcp_ndcg_test.engines` emulators of `qwen3-embedding-0.6b` and
+  its encoder and reranker engines (`rcp_test.engines` emulators of `qwen3-embedding-0.6b` and
   `qwen3-reranker-8b` served over HTTP, each coordinator's recorded request answered `replayed`; the judge
   phase keeps the supervision stub, no judge corpus being recorded;
   `tests/runners/test_supervision_replay.py`) and the observed outage behaviour as a transport
   test (`tests/inference/test_outage_observed.py`).
-- **`rcp_ndcg_test.corpus` is the whole format seam**: `ObservationCorpus.nondeterminism` exposes the
+- **`rcp_test.corpus` is the whole format seam**: `ObservationCorpus.nondeterminism` exposes the
   corpus's `nondeterminism.json` (parsed; `None` when absent; an unreadable one is a `DataError`), and
-  `rcp_ndcg_test.engines.corpus_tolerance` reads it there; the append-only `verification.jsonl` lives
+  `rcp_test.engines.corpus_tolerance` reads it there; the append-only `verification.jsonl` lives
   here (`VERIFICATION_FILE`, `VERIFICATION_SCHEMA`, `append_verification` -- which refuses a record of
-  another schema -- and `verification_records`; moved from `rcp_ndcg.testing.engines`) and no integrity
+  another schema -- and `verification_records`; moved from `rcp.testing.engines`) and no integrity
   hash covers it (`write_subset_index` and the collector's `write_corpus` leave it out); the one raw-body
-  normaliser `normalise_raw` sits beside `normalise_body` (moved from `rcp_ndcg.testing.engines`); the
+  normaliser `normalise_raw` sits beside `normalise_body` (moved from `rcp.testing.engines`); the
   section-4 provenance check is public (`PROVENANCE_KEYS`, `missing_provenance`; moved from
-  `rcp_ndcg_vllm.observe.corpus`, where it was private); and `credential_findings` also names an
+  `rcp_vllm.observe.corpus`, where it was private); and `credential_findings` also names an
   `X-Api-Key` header, a cookie and a secret-valued field (`api_key`, `client_secret`, `password`,
   `access_token`, ... with a string value), never a tokenizer vocabulary's integer ids.
-- **`rcp_ndcg_test.engines`: the verified fake engines**. One
+- **`rcp_test.engines`: the verified fake engines**. One
   emulator per (engine, version, recipe, behaviour fingerprint), selected as
-  `fake://vllm-0.31.0/<recipe>` (`rcp_ndcg.inference.fake` routes engine-version hosts there); the
+  `fake://vllm-0.31.0/<recipe>` (`rcp.inference.fake` routes engine-version hosts there); the
   protocol is emulated (routes, request validation, error bodies, result ordering and framing, usage
   counts and token counting with the recipe's real tokenizer files) and the model outputs are
   replayed for observed inputs -- a declared deterministic surrogate for unseen ones (`surrogate_vector`
   and `surrogate_matrix` draw one SHAKE-256 stream per vector, `surrogate_scores` one draw per score;
   no value is pinned), marked
   `replayed`/`surrogate`/`mixed` in `x-rcp-ndcg-emulator-source`, recorded per reply in `answer_log`.
-  The emulators read corpora through the format's one reader, `rcp_ndcg_test.corpus`
+  The emulators read corpora through the format's one reader, `rcp_test.corpus`
   (`exchanges_of` views its records, `corpus_tolerance` takes the tolerance the corpus's
   `nondeterminism.json` derived from same-request repetitions -- `None` when none was measured, so a
   replay is compared exactly, never with an invented tolerance -- and each bound applies jointly);
   `find_corpora` resolves corpora by scanning manifests, `behaviour_diff` writes the per-input delta
   report, and
   the registry (`registry`, `transport_for`, `split_engine_host` -- the one engine-host pattern
-  `rcp_ndcg.inference.fake.RE_ENGINE_URL` routes) resolves by (engine, version, fingerprint) with the
-  `rcp_ndcg.emulators` entry-point group for out-of-tree emulators. An emulator refuses an engine
+  `rcp.inference.fake.RE_ENGINE_URL` routes) resolves by (engine, version, fingerprint) with the
+  `rcp.emulators` entry-point group for out-of-tree emulators. An emulator refuses an engine
   version or recipe revision it was not verified against; the conformance suite
   (`tests/conformance/`) replays every recorded exchange and the staleness check names the changed
   fingerprint inputs (waivers: `tests/conformance/waivers.json`, empty at release).
-- **`rcp_ndcg_test.fingerprint`: the recipe behaviour fingerprint**:
+- **`rcp_test.fingerprint`: the recipe behaviour fingerprint**:
   `behaviour_fingerprint(recipe)` (rule `rcp-fp/4`: the SHA-256 of the checkpoint id and revision, the
   engine image and its version floor, the serve block, the source hash of every plugin module the recipe's
   engine runs, the template file's bytes, the tokenizer's SHA-256 and exactly the client fields that
@@ -1005,14 +996,14 @@ owner pushes, with the move to a Hugging Face organisation).
   `fingerprint_changes` and the one tokenizer resolution (`load_recipe_tokenizer`,
   `tokenizer_sha256`, `use_tokenizer_store` -- vendored `tokenizer.json` copies whose SHA-256 is
   verified on every read).
-- **`rcp_ndcg_test.changes`: change handling**: `recipe_state` (one
+- **`rcp_test.changes`: change handling**: `recipe_state` (one
   recipe's fingerprint recomputed and compared with every committed corpus of it, found by scanning
-  manifests with `rcp_ndcg_test.engines.find_corpora`), `resolve_corpus` (the corpus of the current
+  manifests with `rcp_test.engines.find_corpora`), `resolve_corpus` (the corpus of the current
   fingerprint, or `StaleCorpusError` naming the changed inputs per recorded corpus), `waiver_covers`
   (a dated, reasoned, unexpired staleness waiver), `changed_recipes` (the re-record-changed-only
   selection: `unchanged`/`changed`/`new`/`unloadable` per recipe, the changed inputs named) and
   `behaviour_report` (the behaviour diff of two corpora of one recipe), as functions and
-  `python -m rcp_ndcg_test.changes` (`changed` and `diff`).
+  `python -m rcp_test.changes` (`changed` and `diff`).
 - **The provisional corpora after the families' recipe changes**: three corpora are current as recorded
   (`octen-embedding-8b`, `qwen3-embedding-0.6b`, `zembed-1-embedding`); two are re-keyed to the current
   fingerprint because only inputs that shape none of their recorded exchanges moved (`qwen3-reranker-8b`:
@@ -1024,7 +1015,7 @@ owner pushes, with the move to a Hugging Face organisation).
   `zerank-2-reranker`): the replays skip them and each must fail the staleness gate naming exactly the
   declared inputs. The NanoBEIR golden's rerank view replays `qwen3-reranker-8b` (same recorded texts;
   the pinned metrics are unchanged).
-- **The corpora under `rcp-ndcg-test/corpora/`**: the provisional shakedown corpus (12 recipes, 48
+- **The corpora under `packages/rcp-test/corpora/`**: the provisional shakedown corpus (12 recipes, 48
   exchanges) as repository subsets in the observation-corpus format (`records.jsonl.gz`, the manifest
   with a `provisional` statement -- valid to build and test the emulators, not release evidence --,
   `nondeterminism.json`, `index.json`; the manifest hashes in the repository's corpus index; a shared
@@ -1052,36 +1043,36 @@ owner pushes, with the move to a Hugging Face organisation).
   (`x-rcp-ndcg-emulator-route`, `EMULATED_ROUTES`, `VllmEmulator.unobserved_routes`, listed in the
   verification record); the unobserved `/pooling` and `/tokenize` follow vLLM v0.31.0's source
   (`PoolingResponse`, the bytes framing's `metadata`, `TokenizeResponse`; `embed_dtype` `float32`,
-  `endianness` `native` by default). `RE_ENGINE_URL` is exported from `rcp_ndcg.inference.fake`
-  (`rcp_ndcg_test.engines` is pinned as public API).
-- **`rcp_ndcg_test.corpus`: the observation-corpus format and its one reader** (new module; `rcp_ndcg.testing`
+  `endianness` `native` by default). `RE_ENGINE_URL` is exported from `rcp.inference.fake`
+  (`rcp_test.engines` is pinned as public API).
+- **`rcp_test.corpus`: the observation-corpus format and its one reader** (new module; `rcp.testing`
   is now a package, its names unchanged). `load_corpus` reads a GPU wave's corpus directory -- the full corpus's
   `records.jsonl` or a repository subset's `records.jsonl.gz` with its `index.json` -- and migrates records of an
   older `RECORD_SCHEMA` through `register_record_migration` (a record from a newer collector, or one without a
   migration path, is a `DataError`); `integrity_mismatches` checks every hashed file and the manifest's own digest
   (`manifest_digest`), `write_subset_index` writes a subset's index, `normalise_body` strips the volatile reply
   fields (`NORMALISATION_VERSION` 1: request ids and `created` timestamps) and `credential_findings` names the
-  credential shapes a text carries. The collector in `rcp-ndcg-vllm` writes this format; the verified fake
+  credential shapes a text carries. The collector in `rcp-vllm` writes this format; the verified fake
   engines read it here. A frozen schema-1 sample (`tests/observation_corpus_v1/`) pins that it stays readable.
-- **The observation corpus, the T3 quality stage and the negative controls (`rcp-ndcg-test`)**:
-  `rcp_ndcg_test.record.record_corpus` records a corpus in the corpus format (`rcp_ndcg_test.corpus`):
+- **The observation corpus, the T3 quality stage and the negative controls (`rcp-test`)**:
+  `rcp_test.record.record_corpus` records a corpus in the corpus format (`rcp_test.corpus`):
   the request plan (`observe.requests.corpus_plan`: the pairs rows, the over-length ladder and the long content
   kinds through the client and uncut, the wire variants, the protocol edges) twice in one engine process and
   once after a restart, `/tokenize` of the exact prompts, and the section-4 provenance (`observe.provenance`);
-  `observe.corpus` keys it by engine version and `rcp_ndcg_test.fingerprint.behaviour_fingerprint`, measures the
+  `observe.corpus` keys it by engine version and `rcp_test.fingerprint.behaviour_fingerprint`, measures the
   non-determinism over true repetitions, runs the acceptance checks and cuts the repository subset
-  (`python -m rcp_ndcg_test.observe.corpus verify|subset`).  `quality.py` is the T3 stage: the served path
+  (`python -m rcp_test.observe.corpus verify|subset`).  `quality.py` is the T3 stage: the served path
   through the product's CLI, the `mteb` reference, RCP-nDCG@10 and qrel-nDCG@10 gated vs the reference and the
   paper's numbers, `QUALITY.md`, and a recording proxy for the golden-replay corpus.  `observe.controls` derives
   the negative controls (a)-(f) as real vLLM breakages (recipe variants, or request-body patches through
   `equivalence.wire.patched_wire`).  `run_wave` gains `--record-corpus`, `--changed-since`, `--quality`
   (`--paper-numbers`) and `--controls`; a passing control fails the recipe.  The format is documented in
-  `rcp-ndcg-test/schema/observation-corpus.md`.
-- **`rcp_ndcg_test.observe` (the `rcp-ndcg-test` distribution)**: the deterministic observation request
+  `packages/rcp-test/schema/observation-corpus.md`.
+- **`rcp_test.observe` (the `rcp-test` distribution)**: the deterministic observation request
   generator -- `GENERATOR_VERSION`, `SEED`, `PINNED_DATASET_COMMITS`, the synthetic adversarial set stored as
   text -- writing one stage-2 pairs file per recipe in the harness's pairs format plus `pairs/manifest.json`
   (per-row provenance, stratum presence records, file hashes, excluded source ids, the recipes that could not
-  load with their error, and what stage-1 validation ran). `python -m rcp_ndcg_test.observe.requests` generates
+  load with their error, and what stage-1 validation ran). `python -m rcp_test.observe.requests` generates
   it under a stall watchdog (`faulthandler` to stderr every 60 s); runs merge into the manifest per recipe (a
   recipe a run touched replaces its file, skipped and pruned entries), so one bounded invocation per recipe
   composes. Stage-1 validation probes the offline fake with a `/pooling` recipe's reply width bounded (`dim` 8
@@ -1114,7 +1105,7 @@ owner pushes, with the move to a Hugging Face organisation).
   shape); `fit` applies it to the content spans before measuring (through the new `TemplateSpec.normalisers`
   and `TemplateSpec.normalize_text`), so the reference and the engine see the same text. The census rows keep
   the raw input on their original side. The new `ContentNormalizer` type is exported from
-  `rcp_ndcg.data.templates`.
+  `rcp.data.templates`.
 - **Late-interaction skip ids**: `PoolingEndpoint.document_skip_token_ids` (CONTENT, default `()`): the
   pooling client drops document vectors at the positions whose token id is listed -- the ids it sent,
   tokenised from the fitted render -- checks the returned vector count against them (a mismatch is a typed
@@ -1145,19 +1136,19 @@ owner pushes, with the move to a Hugging Face organisation).
   writable), and an unknown name's hint names the nearest ones before the full list.
 - A prompt prefix has one home: `query_prompt`/`doc_prompt` beside a `template` is refused with a
   `ConfigError` naming the template segment to use instead (the fields stay for template-less configs).
-- **The results-export seam** (owner decision 40): a versioned `rcp-ndcg.result-record.v1` record
-  (`rcp_ndcg.results`: `ResultRecord`, `ResultSubject`, `ResultDataset`, `ResultMetric`, `ResultArtifact`),
+- **The results-export seam** (owner decision 40): a versioned `rcp.result-record.v1` record
+  (`rcp.results`: `ResultRecord`, `ResultSubject`, `ResultDataset`, `ResultMetric`, `ResultArtifact`),
   one row per system x dataset x metric x cutoff, carrying the run identity, the dataset revision, the recipe
   or model identity the run names (the judge's and the candidates') and the scoring protocol --
   `dataset.protocol` is the preset name and
   `dataset.protocol_spec` the full `Protocol` (qrel gain, tie rule, pool restriction, rounding), so an
   importer can state another convention and two records differing only in protocol never compare equal
   (`record_id` digests the protocol). The record's JSON Schema is exported as
-  `schemas/result-record.v1.json`. Sinks are the `rcp_ndcg.results` entry-point group (the same seam as
-  `rcp_ndcg.readers`/`writers`/`runners`), with the built-ins `jsonl` (one record per line), `parquet` (one
+  `schemas/result-record.v1.json`. Sinks are the `rcp.results` entry-point group (the same seam as
+  `rcp.readers`/`writers`/`runners`), with the built-ins `jsonl` (one record per line), `parquet` (one
   row per metric row) and `null`, and the shared contract check
-  `rcp_ndcg.testing.results_conformance`. `records_from_report` and `records_from_run` build records from an
-  `EvalReport` or a run directory; the new `rcp-ndcg results` group lists the sinks (`results sinks`) and
+  `rcp.testing.results_conformance`. `records_from_report` and `records_from_run` build records from an
+  `EvalReport` or a run directory; the new `rcp results` group lists the sinks (`results sinks`) and
   exports (`results export --run DIR [--report FILE] --sink NAME --out URI`, `--system`, `--include-reference`).
   The run manifest's `DatasetRef` records the subset, split and task the data was read at, and a report's
   `inputs` carry them too, so an exported record states the real provenance rather than the `test` convention.
@@ -1169,14 +1160,14 @@ owner pushes, with the move to a Hugging Face organisation).
   out -- and `engine.step_budget_s` is the recipe's floor on every harness step's wall-clock budget
   (seconds; the wave runner's formula from the recipe's request count can only raise it).  The exported
   `schema/recipe.schema.json` carries both.
-- **Count-nDCG has its product path**: `rcp_ndcg.calibration.count_gains(judgements)`
+- **Count-nDCG has its product path**: `rcp.calibration.count_gains(judgements)`
   is the one derivation of the rubric-only gains (per window, per criterion, through `count_gain`), keyed as
-  `Calibration.gains()` is; `evaluate(..., count_gains=...)` takes it, and `rcp-ndcg eval score --metrics
+  `Calibration.gains()` is; `evaluate(..., count_gains=...)` takes it, and `rcp eval score --metrics
   count_ndcg --judgements STORE` (repeatable) is the command-line route. `ReportInputs` gains `judgements`, so
   `eval explain --report` re-scores a saved Count-nDCG report, and the `eval_score` MCP tool takes `judgements`
   too. The hint for missing count gains names the rubric windows and this derivation instead of the tournament
   store.
-- **`rcp_ndcg.errors.WarningCode` gains `NO_VALID_TOURNAMENT_EVIDENCE`**: a document whose
+- **`rcp.errors.WarningCode` gains `NO_VALID_TOURNAMENT_EVIDENCE`**: a document whose
   tournament windows are all invalid carries no comparison, and the fit says so instead of presenting the mean
   ability as judged. `CalibrationCoverage` gains `no_tournament_evidence_documents` (the
   `"<dataset>||<query_id>/<doc_id>"` list, in `coverage.json`).
@@ -1191,30 +1182,30 @@ owner pushes, with the move to a Hugging Face organisation).
   forever. `wait_on_outage_s: null` stays the explicit "wait indefinitely" choice, documented as such.
 - **`RunConfig.step_budget_s`** (new, default `None`): a per-step wall-clock budget in seconds. The shared
   transport checks it before each request and after every park, and the judging pass before each phase's
-  windows; a step over budget stops at the next seam with the new `rcp_ndcg.errors.StepBudgetExceededError`
+  windows; a step over budget stops at the next seam with the new `rcp.errors.StepBudgetExceededError`
   (exit code 9, `INTERRUPTED`), the store keeps every judgement it wrote, and `run resume` continues from
   there. `None` leaves the steps unbudgeted.
-- **`rcp_ndcg.errors.StepBudgetExceededError`** is the typed error of an exceeded `step_budget_s` (an
+- **`rcp.errors.StepBudgetExceededError`** is the typed error of an exceeded `step_budget_s` (an
   `Interrupted` subclass: the state on disk is consistent and resumable).
-- **`rcp-ndcg judge tournament|rubric` takes `--mirror-interval <seconds>`** (default 60, the run config's
+- **`rcp judge tournament|rubric` takes `--mirror-interval <seconds>`** (default 60, the run config's
   `mirror_interval_s`), so the standalone judging pass's mirror flushes at the interval the run config would
   use.
 - **The request generator's identity separates its semantic version from its sampling seed**: the new
-  `rcp_ndcg_test.observe.requests.GENERATOR_SEED` (`"1/rcp-observe-v1"`, the exact sampling stream version 1
+  `rcp_test.observe.requests.GENERATOR_SEED` (`"1/rcp-observe-v1"`, the exact sampling stream version 1
   drew from) keys every sampling step, and `GENERATOR_VERSION` (now 2) is the semantic version bumped for every
   change to the generator's output -- so a bump records the artifact without re-drawing a row.
-  `rcp_ndcg_test.observe` re-exports it, the pairs manifest records `GENERATOR_VERSION`, `GENERATOR_SEED` and
+  `rcp_test.observe` re-exports it, the pairs manifest records `GENERATOR_VERSION`, `GENERATOR_SEED` and
   `SEED`, and the corpus collector block records `generator_seed` beside `generator_version`.
-- **The verified fake engines model media and chat-shaped records** (`rcp_ndcg_test.engines`): `messages` is a
+- **The verified fake engines model media and chat-shaped records** (`rcp_test.engines`): `messages` is a
   prompt carrier (not an unmodelled field), the new `ChatPrompts` derives one engine prompt per conversation
   from the strategy's render callable, `RequestPrompts` dispatches an `input` body to a text strategy and a
   `messages` body to the chat one, and `PairPrompts` models a media side; a media part is keyed by the new
   `MediaIdentity` (its bytes' SHA-256 plus the recipe's declared processing) and its engine tokens are counted
   with the product's own `content_media_tokens`.  `VllmEmulator.unmodelled_records` names every recorded 2xx
   exchange the model layer could not model (the verification record carries the list), and
-  `rcp_ndcg_test.errors.EmulatorUnmodelledError` is the typed refusal behind both the skipped record and the
+  `rcp_test.errors.EmulatorUnmodelledError` is the typed refusal behind both the skipped record and the
   marked 400 a request for it answers.
-- **`rcp_ndcg_test.equivalence.wire` exposes `recipe_config`** (the product's validated endpoint config a
+- **`rcp_test.equivalence.wire` exposes `recipe_config`** (the product's validated endpoint config a
   recipe's `client` block implies, one home with `role_client`) and **`prompt_tokens`** (the engine's
   `usage.prompt_tokens` of a captured exchange, one reader for the media stage's engine check and stage 1's new
   prompt-token probe).
@@ -1222,11 +1213,11 @@ owner pushes, with the move to a Hugging Face organisation).
   an engine URL, the engine's own `usage.prompt_tokens` of one captured request per shape must equal the token
   count of the render the client budgeted against -- the check that the declared frame the `messages` budget
   rests on is the frame the engine renders.  `not_run` without an engine, never passed.
-- **The media stage declares its scope** (`rcp_ndcg_test.equivalence.media.MEDIA_GATE_SCOPE`, `"input"`, and
+- **The media stage declares its scope** (`rcp_test.equivalence.media.MEDIA_GATE_SCOPE`, `"input"`, and
   `MEDIA_GATE_SCOPE_NOTE`): the stage document and `EQUIVALENCE.md` carry `scope` and `scope_note` saying that
   it compares what the client sends and what the engine counts, never a media vector or score (that half is a
   separate media output stage).
-- **The media request set gains the video protocol edges** (`rcp_ndcg_test.observe.media_set`):
+- **The media request set gains the video protocol edges** (`rcp_test.observe.media_set`):
   `edge:too_many_videos` (`max_videos + 1` clips in one request) and `edge:corrupt_video` (a container whose
   bytes do not decode), each sent bare and recorded present or absent with the reason in the corpus plan's
   strata -- the video half of the image edges (a video-only recipe gets them too).  The corpus request plan
@@ -1242,34 +1233,34 @@ owner pushes, with the move to a Hugging Face organisation).
   model weights and the HF cache, shared by every replica and kept across restarts), `tolerations`, `affinity`
   and `priority_class` (rendered on the Job's pod and every engine pod). `engine_node_selector` now merges
   into the Job pod's `nodeSelector` for a single-replica engine (a conflicting key is refused) and is refused
-  for a job with no engine; the `rcp-ndcg/job` label value is the capped Job name. `KubernetesRunner.note(handle)` reports
+  for a job with no engine; the `rcp/job` label value is the capped Job name. `KubernetesRunner.note(handle)` reports
   why a job's pods are not running (the scheduler's message, an image-pull failure), and `run status` puts it in
   its note; `KubernetesRunner.status` reports a Job whose pods are all Pending as `pending`, never `running`
   (an active Job with a successfully-read but empty pod listing is `pending` too).
-  `rcp_ndcg.runners.kubernetes` exports `CACHE` and `DEFAULT_ENGINE_TTL_S`; `rcp_ndcg.runners.script.engine_script`
+  `rcp.runners.kubernetes` exports `CACHE` and `DEFAULT_ENGINE_TTL_S`; `rcp.runners.script.engine_script`
   takes an optional `env` (the runner's per-replica cache and TMPDIR, under the engine's own). `ServeConfig`
   refuses a command whose parallelism flags (`--tensor-parallel-size`/`-tp`, `--data-parallel-size`/`-dp`,
   `--pipeline-parallel-size`/`-pp`, `--prefill-context-parallel-size`/`-pcp`; their product is the world size) disagree
   with `resources.gpus`, or whose `--port` differs from `port`; a non-integer or non-positive parallelism value
   is refused too.
-- **`rcp_ndcg.support.resources`** exports the string rules the config boundary applies: `no_control_characters`,
-  `no_nul_byte`, `looks_like_secret`, `refuse_secret_value` and the `REDACTED` marker; `rcp_ndcg.storage.publish`
+- **`rcp.support.resources`** exports the string rules the config boundary applies: `no_control_characters`,
+  `no_nul_byte`, `looks_like_secret`, `refuse_secret_value` and the `REDACTED` marker; `rcp.storage.publish`
   and `publish_bytes` take an optional `mode` (a run's records pass `0o600`). `RunConfig.recorded()` is the
   written form of a config (secret `env` values and a mirror URI's credentials redacted) while `resolved()` stays
-  the live form. `rcp_ndcg.runners.kubernetes` exports `CONTAINER_SECURITY_CONTEXT`; its
+  the live form. `rcp.runners.kubernetes` exports `CONTAINER_SECURITY_CONTEXT`; its
   `engine_objects(job, job_uid=None)` leaves the owner reference to `submit` (a render has no Job uid yet), and
   the placeholder constant `JOB_UID` is gone.
 - **The recipe schema declares the plugin code and the engine patches**: `serve` gains
   `plugin_architectures` (the plugin's architectures this recipe's engine registers; a patch-only recipe
   leaves it empty, because the patches are keyed by their own modules) and `patches` (the engine patch
   names this recipe opts into, validated against
-  `rcp_ndcg_vllm.patches.PATCH_NAMES`); every engine-start path renders the declared patches into the
-  engine's `RCP_NDCG_VLLM_PATCHES` (the `rcp-ndcg-vllm serve` console, the wave runner and the e2e driver,
+  `rcp_vllm.patches.PATCH_NAMES`); every engine-start path renders the declared patches into the
+  engine's `RCP_NDCG_VLLM_PATCHES` (the `rcp-vllm serve` console, the wave runner and the e2e driver,
   overriding an inherited value; the console logs both values), and the corpus provenance records the value
   the engine ran with, so the process runs exactly what the recipe declares. The plugin package declares its
-  code one home per concept: `rcp_ndcg_vllm.models.ARCHITECTURE_MODULES` (architecture -> modules),
-  `rcp_ndcg_vllm.models.PLUGIN_ENGINE_MODULES`, `rcp_ndcg_vllm.patches.PATCH_MODULES` (name -> module) and
-  `rcp_ndcg_vllm.patches.patches_env_value`; `rcp_ndcg_vllm.recipe` gains `plugin_distribution_name` (the
+  code one home per concept: `rcp_vllm.models.ARCHITECTURE_MODULES` (architecture -> modules),
+  `rcp_vllm.models.PLUGIN_ENGINE_MODULES`, `rcp_vllm.patches.PATCH_MODULES` (name -> module) and
+  `rcp_vllm.patches.patches_env_value`; `rcp_vllm.recipe` gains `plugin_distribution_name` (the
   pip-spec -> distribution-name rule the loader, the console and the fingerprint share).
   `schema/recipe.schema.json` and `schema/family.schema.json` are regenerated.
 - **The behaviour fingerprint is `rcp-fp/4`**: `fingerprint_inputs` now keys
@@ -1291,7 +1282,7 @@ owner pushes, with the move to a Hugging Face organisation).
   engine in `serve.hf_overrides.document_skip_token_ids` (a CONTENT field: it changes the engine's output, so
   it is a fingerprint input and a serve-time override of it is refused), and the recipe loader cross-checks
   the two halves and refuses either declared alone or a rule without the gate. The client then does not
-  slice: it counts the declared kept vectors (`rcp_ndcg.data.postprocess.kept_vector_count`: the sent
+  slice: it counts the declared kept vectors (`rcp.data.postprocess.kept_vector_count`: the sent
   render's ids outside the rule, or a media document's sent head plus its prepared media block) and refuses a
   reply whose per-item count disagrees -- a reply that ignored the rule carries the prompt's count, which
   `usage.prompt_tokens` cannot distinguish, so the check is the declared count (`PoolRequest.kept_counts` on
@@ -1322,7 +1313,7 @@ owner pushes, with the move to a Hugging Face organisation).
   document whose text is whitespace-only (the paper's `text.strip()` rule, jina-reranker-v3) where
   `omit_zero` keeps its exact-prefix rule.
 - **The judge's tokenizer load applies the checkpoint's sidecars**: `TextTokenizer.from_json` takes the
-  optional sidecar bytes (`rcp_ndcg.data.tokenizer.SIDECAR_FILES`: `tokenizer_config.json`,
+  optional sidecar bytes (`rcp.data.tokenizer.SIDECAR_FILES`: `tokenizer_config.json`,
   `added_tokens.json`, `special_tokens_map.json`) and adds their tokens the way `AutoTokenizer` does; the
   tokenizer identity (`TextTokenizer.sha256`, `tokenizer_identity`) is extended with the applied sidecar
   tokens exactly when they change the effective vocabulary, so tokenizers whose sidecars add nothing keep
@@ -1334,7 +1325,7 @@ owner pushes, with the move to a Hugging Face organisation).
   card's `total_pixels`) make the client count a clip under the numbers `serve.mm_processor_kwargs`'s
   `videos_kwargs` pins; the recipe loader refuses a pin in one half only or a mismatch between the halves.
 - **The judgement family carries the document-reading rule and the offline judge's seed** (judge review
-  A1/A2): `rcp_ndcg_core.schemas.Family` gains `title` (how a document's title reaches the judge: the default
+  A1/A2): `rcp_core.schemas.Family` gains `title` (how a document's title reaches the judge: the default
   join, or `separate`), `text_formatting` (the `TEXT_FORMATTING_VERSION` the pass read the documents under)
   and `fake_seed` (the offline judge's draw seed; a fake URL that names none is the route's default 0). Each
   enters the family key and every record id when set, so
@@ -1342,17 +1333,17 @@ owner pushes, with the move to a Hugging Face organisation).
   seeds never share a store; `JudgeConfig.identity()` carries the fake seed too, and naming the default
   `title: join` is normalized out of it as the family normalizes it. The family, judgement-store,
   calibration, judge-report and run schemas are regenerated.
-- **`rcp_ndcg.judging.CostEstimate` gains `requests_min`/`requests_max`**: the request range
+- **`rcp.judging.CostEstimate` gains `requests_min`/`requests_max`**: the request range
   at one attempt per window and when every window retries to `MAX_ATTEMPTS`. `estimate` counts the query text
   the pass sends (the judge's title rule and the dataset's query-side task instruction included), counts each
   planned window at its own size and its own documents (deduped as the pass dedupes them), and the CLI's
   `--estimate` text prints the range.
-- **`rcp_ndcg.judging.RubricSchedule.uncovered_units`**: the units the balanced random phase
+- **`rcp.judging.RubricSchedule.uncovered_units`**: the units the balanced random phase
   cannot show (`max(0, n_units - n_random * w)`); a rubric pass (and its estimate) whose settings leave units
   unseen is refused with the precondition named.
 - **`Prompt.worked_example`**: the JSON object of a prompt's own fenced example, which the
   parser refuses as an answer; `parse_window` gains the `example=` keyword, and
-  `rcp_ndcg.judging.JudgementStore` gains `supersede_records` (an appended `superseded` tombstone retires the
+  `rcp.judging.JudgementStore` gains `supersede_records` (an appended `superseded` tombstone retires the
   later-phase windows of a resumed pass, so the stage file stays append-only for the mirror). The
   `superseded` invalid category joins the judgement schema.
 
@@ -1371,25 +1362,25 @@ owner pushes, with the move to a Hugging Face organisation).
   `result_sink_class`), the public types that appeared on no page are documented (`ChangeMechanism`,
   `ResolvedRevision`, `StoredRankings`), and the accidental exports are gone: `hub_cache_dir`/`hub_offline`
   are private (`_hub_cache_dir`/`_hub_offline`, the hub reader's own helpers) and `REFERENCE_SYSTEMS` is no
-  longer re-exported by `rcp_ndcg.results` (it stays the run pipeline's internal constant).
-- **Both `Family` classes carry their own names**: `rcp_ndcg_core.schemas.Family` is `JudgementFamily` (the
-  judgement instrument family) and `rcp_ndcg_vllm.recipe.Family` is `RecipeFamily` (the shipped recipe
+  longer re-exported by `rcp.results` (it stays the run pipeline's internal constant).
+- **Both `Family` classes carry their own names**: `rcp_core.schemas.Family` is `JudgementFamily` (the
+  judgement instrument family) and `rcp_vllm.recipe.Family` is `RecipeFamily` (the shipped recipe
   family). Every use, the exported schemas and the recipe family schema are regenerated.
-- **Every public name is documented**: `rcp-ndcg docs api --out docs/reference/api` generates one page per
+- **Every public name is documented**: `rcp docs api --out docs/reference/api` generates one page per
   public module (each name with its kind, signature and one-line role) from the pinned snapshot and the
   modules' docstrings; `docs/reference/api/` holds the 23 committed pages, and `tests/contract` fails when a
   pinned name is on no page, when a module has no page, or when the pages drift from the snapshot.
 - **A family's per-size `overrides.serve` may set `dtype`** (the E2 round-4 ctxl pair): the 1b and the 2b
   serve `float32` while their 6b sibling keeps the family's `bfloat16`, because the bf16 attention-kernel
   stacks diverge further than the logit gate on the two small sizes' logits and the reference loads
-  whatever the variant serves.  `rcp_ndcg_vllm.recipe.PER_VARIANT_SERVE_FIELDS` carries the field; a family
+  whatever the variant serves.  `rcp_vllm.recipe.PER_VARIANT_SERVE_FIELDS` carries the field; a family
   that needs another dtype on one size no longer has to split.
-- **The embeddinggemma-2 plugin registers a model architecture**: `rcp_ndcg_vllm.models.ARCHITECTURE_MODULES`
+- **The embeddinggemma-2 plugin registers a model architecture**: `rcp_vllm.models.ARCHITECTURE_MODULES`
   gains `EmbeddingGemma2Model` (the folded vLLM model, upstream's config hook and the folded modules its
-  transformers imports resolve through), and `rcp_ndcg_vllm.models.embedding_gemma2` exports
+  transformers imports resolve through), and `rcp_vllm.models.embedding_gemma2` exports
   `MODEL_ARCHITECTURE`, `MODEL_QUALNAME` and `register_embedding_gemma2`; the recipe declares
   `plugin_architectures: [EmbeddingGemma2Config, EmbeddingGemma2Model]`.  The fold package
-  (`rcp_ndcg_vllm.models.embedding_gemma2.fold`) is a keyed module too (E2 round 5): importing it installs
+  (`rcp_vllm.models.embedding_gemma2.fold`) is a keyed module too (E2 round 5): importing it installs
   the folded modules under their upstream names before any folded module body runs, and it carries the
   folded classes `install_fold` declares it as their `__module__`.
 - **The pooling endpoint declares the query side's reference construction**: `PoolingEndpoint` gains
@@ -1402,7 +1393,7 @@ owner pushes, with the move to a Hugging Face organisation).
   one parse of the whole render and is not re-keyed; the pplx-embed-v2-context recipe declares it. The
   contract snapshots, the exported schemas and the generated API pages record the field and the method
   (regenerate them as below).
-- **A local dataset source's content digest has one home**: `rcp_ndcg.data.revisions` gains
+- **A local dataset source's content digest has one home**: `rcp.data.revisions` gains
   `dataset_content_digest(uri, options=None)` -- the digest of the files a local source's reader reads (a
   file's bytes; a directory's sorted listing of names, sizes and mtimes), empty for a remote source -- and
   `dataset_local_locations(uri, options=None)`, the locations a source's reader reads, listed without reading
@@ -1416,7 +1407,7 @@ owner pushes, with the move to a Hugging Face organisation).
 - **A run's candidates can be a fusion, as a `fuse` step**: `candidates.from: fuse` names the systems to fuse
   (`candidates.fuse.systems`, at least two; a rankings file, or `<file>#<system>` for one system of a file that
   holds several) and the RRF constant (`candidates.fuse.rrf_k`, default 60). The `fuse` step writes the RRF of
-  those systems as the run's candidate pools -- `rcp_ndcg.retrieval.fuse`, the same arithmetic `rcp-ndcg retrieval
+  those systems as the run's candidate pools -- `rcp.retrieval.fuse`, the same arithmetic `rcp retrieval
   fuse` calls, over rankings rather than documents, so the fusion is modality-free -- and the step's record names
   the systems, the constant and the depth. A declared fusion that cannot be performed is a typed error (a
   system's rankings file that is not there, a system that was not retrieved into its file, a multi-system file
@@ -1424,7 +1415,7 @@ owner pushes, with the move to a Hugging Face organisation).
   gains `--rrf-k` (the MCP `run_start` tool takes it too), and `--only` names `fuse`. The contract snapshots, the
   exported `run-config.v1.json` and the generated API pages record the step, the source and the flag (regenerate
   as below).
-- **`rcp-ndcg.eval-score.v1` describes the fields of `eval score --json`**: `EvalScoreResult`'s wrap serializer
+- **`rcp.eval-score.v1` describes the fields of `eval score --json`**: `EvalScoreResult`'s wrap serializer
   returns `dict[str, Any]`, and pydantic took that return type for the serialization-mode schema, so the exported
   schema (and the `eval_score` MCP tool's `outputSchema`) had one property, `schema`, with
   `additionalProperties: true` -- no summary, per_dataset, per_query, protocol, warnings, inputs or out. The
@@ -1433,7 +1424,7 @@ owner pushes, with the move to a Hugging Face organisation).
 - **The `image_processor` description names every family**: `judge-config.v1` and `run-config.v1` carry the
   field's description with all four processor families (`qwen2_vl`, `qwen2_5_vl`, `qwen3_vl`, `gemma4`); the
   exported schemas are regenerated, descriptions only, no shape changes.
-- The contract snapshots, the exported schemas and the generated API pages record every name above; regenerate them with `uv run pytest tests/contract --update-snapshots` and `rcp-ndcg docs api --out docs/reference/api` (review the diff, then add the CHANGELOG entry).
+- The contract snapshots, the exported schemas and the generated API pages record every name above; regenerate them with `uv run pytest tests/contract --update-snapshots` and `rcp docs api --out docs/reference/api` (review the diff, then add the CHANGELOG entry).
 
 - **A run publishes what it does as data** (the run-event stream): `rcp.support.events` defines `RunEvent`
   (`run_id`, `step`, `phase`, `at`, `usage`, `detail`), the four phases `step_started`, `step_finished`,
@@ -1479,9 +1470,11 @@ owner pushes, with the move to a Hugging Face organisation).
   four shipped suites from `rcp/data/suites/<name>.yaml` through one suite reader, and the result is byte-identical
   to the literal `SUITES`. A suite directory or its `suite.yaml` loads by path (`suite:<path>`), and the new
   `schemas/suite.v1.json` is the format. A subset read at a revision other than the suite's is refused, and the
-  refusal names both. The identity of a downstream suite is its repository at the resolved commit. When that
-  `suite.yaml` declares no full commit, the identity also includes the bytes of the file, so an edited suite is
-  another dataset. The four shipped suites are package data, and they keep their identity.
+  refusal names both. The identity of a downstream suite is its validated definition -- its canonical fields --
+  together with its repository at the resolved commit: an edit to `subsets`, `protocol`, `name`, `repo`,
+  `revision` or `gains` is another dataset whether or not the file pins a commit, and a re-serialised or
+  re-commented file of the same fields is the same dataset. The four shipped suites are package data, and
+  they keep their identity: a shipped suite is named by its name, so it carries no definition digest.
 - **A recipe declares the fields only the plugin provides, and the loader refuses what the target cannot honour**
   (the plugin-field surface): `rcp_vllm.recipe.PLUGIN_FIELDS` is the one declaration of the serving fields that the
   stock engine lacks. These fields are the embed chunker's `chunk_length`, `chunk_weighting` and
@@ -5379,7 +5372,7 @@ Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-yo
   because the paper never ran it). `gpt5_hosted` stays a shipped vendor profile.
 
 - **Every explicit SGLang path**: the release serves every role on vLLM
-  v0.31.0. The rerank adapter no longer reads SGLang's (and TEI's) bare list of `{"index", "score"}` rows: that
+  v0.33.0. The rerank adapter no longer reads SGLang's (and TEI's) bare list of `{"index", "score"}` rows: that
   shape is refused by name with a hint to serve the model on vLLM, and a row must carry `relevance_score` (the
   `score` key TEI names the relevance by went with it; TEI's rerank shape was never documented for this role,
   whose served wires are vLLM, Infinity, Cohere and Voyage). The chat adapter no longer maps SGLang's
@@ -5390,7 +5383,7 @@ Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-yo
   `tests/data/_media_reference.py`, its NOTICE rows, `experiments/paper/serve/*.sglang.sh`, the engine-script
   test, and every SGLang passage describing a live path; the exported schemas are regenerated. `REPRODUCIBILITY.md`
   records the paper's judges as SGLang history (the paper's submission code is the record; this release serves
-  them on vLLM v0.31.0).
+  them on vLLM v0.33.0).
 - **The column-heuristics `hf` reader** (`rcp_ndcg.data.io.hf.HfReader`, owner decision 32): the Hub contract
   is mteb's layout, and other data is converted once. Its `document_parts` option and content-addressed
   image persistence move into the Hub reader; the `hf` extra still provides `huggingface_hub`, and
@@ -5599,3 +5592,11 @@ Details are in [REPRODUCIBILITY.md](REPRODUCIBILITY.md#3-re-judge-a-pool-with-yo
   headings and the generated API pages, and records a pinned sentence in an allowlist with its reason, so an
   exception is the record and never a silent filter. A page that goes over the limit fails `pytest tests/docs`
   naming the sentence.
+- **`rcp_core._hashing` is the declared authority for a downstream copy**: a leaf package outside this repository
+  vendors a copy of the canonical-JSON recipe, because it imports no repository code. The owner is
+  `packages/rcp-core/src/rcp_core/_hashing.py`, and it decides every digest; the copy is a copy, and its
+  `tests/fixtures/hashing_vectors.json` holds the same bytes as the owner's
+  `packages/rcp/tests/support/hashing_vectors.json`, so one set of vectors decides both implementations and a
+  divergence fails on either side. The copy's terms: it names this module as the authority in its own changelog,
+  it moves no digest, and it expires at the next major release of `rcp_core` or earlier, when the two
+  implementations collapse into one and the vectors are cut again from the new authority or deleted.
