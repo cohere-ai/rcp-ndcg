@@ -12,7 +12,7 @@
 #
 # In order, continuing past a failed judge (a failed judge is recorded and its neighbours still run):
 #   1. environments  bootstrap.sh envs with a wave list of the ten judges: the client environment
-#                    (rcp + rcp-test + rcp-vllm from the staged wheels) every command runs in
+#                    (cohere-rcp + rcp-test + cohere-rcp-vllm from the staged wheels) every command runs in
 #   2. the plan      the judges packed onto the node's GPUs (RCP_JUDGECHECK_GPUS, else nvidia-smi): a judge's
 #                    slice is the `resources.gpus` its recipe declares, read from the client environment and
 #                    taken first-fit in the order below, so the release checklist's six start first.  A judge
