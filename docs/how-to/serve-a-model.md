@@ -11,12 +11,12 @@ serving models](../reference/recipes.md). Hosted APIs (Cohere, Voyage, Gemini) n
 
 ## 1. The engine host: one wheel on the stock image
 
-The serving recipes and the `rcp-vllm serve` command ship in the `rcp-vllm` distribution. This is
+The serving recipes and the `rcp-vllm serve` command ship in the `cohere-rcp-vllm` distribution. This is
 the lean serving package; its only dependencies are pydantic and PyYAML. Install it with `--no-deps`. This is the one change that the engine environment takes. A `pip freeze` before and after differs by exactly this
 wheel.
 
 ```bash
-python3 -m pip install --no-deps rcp-vllm==<version>
+python3 -m pip install --no-deps cohere-rcp-vllm==<version>
 rcp-vllm serve qwen3-embedding-0.6b --port 8000
 ```
 
@@ -31,7 +31,7 @@ Two options exist when the image does not carry the wheel. Bake it into your ima
 install it inline where the engine command runs:
 
 ```bash
-bash -lc 'python3 -m pip install --no-deps rcp-vllm==<version> && exec rcp-vllm serve <id> --port 8000'
+bash -lc 'python3 -m pip install --no-deps cohere-rcp-vllm==<version> && exec rcp-vllm serve <id> --port 8000'
 ```
 
 The same two forms work in a run config's `serve:` block. Its `command` is yours verbatim ([runs and job
@@ -115,7 +115,7 @@ does to a shipped one. The command refuses a version that this `rcp` does not re
 
 ## 4. The client host: `recipe:` in the retriever config
 
-The client side needs `rcp` with `rcp-vllm` installed alongside it (no extra alias). A role config that names `recipe: <id>` takes its whole client block from the recipe. The block gives the api, tokenizer, budgets, template, media and instruction mode. `base_url` (and the other run-time fields) stays on the config. Any content field set
+The client side needs `cohere-rcp` with `cohere-rcp-vllm` installed alongside it (no extra alias). A role config that names `recipe: <id>` takes its whole client block from the recipe. The block gives the api, tokenizer, budgets, template, media and instruction mode. `base_url` (and the other run-time fields) stays on the config. Any content field set
 explicitly must equal the recipe's. Otherwise the config is refused with an error that names both values.
 
 ```yaml

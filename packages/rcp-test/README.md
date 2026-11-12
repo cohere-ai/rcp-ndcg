@@ -1,6 +1,6 @@
 # rcp-test
 
-The validation tooling for [rcp](https://github.com/cohere-ai/rcp-ndcg) models served with
+The validation tooling for [rcp](https://github.com/cohere-ai/rcp) models served with
 [vLLM](https://docs.vllm.ai): reference cases and the conformance suite (every case through the product's role
 clients, never raw HTTP and never a copy of the client), the equivalence harness, the engine recorder, the
 **verified emulators** replayed from the observation corpora, and the GPU wave runner.
@@ -12,11 +12,11 @@ node's bootstrap installs into the client environment); anywhere else it install
 subdirectory**:
 
 ```bash
-pip install "rcp-test @ git+https://github.com/cohere-ai/rcp-ndcg.git@v0.0.1#subdirectory=packages/rcp-test"
+pip install "rcp-test @ git+https://github.com/cohere-ai/rcp.git@v0.0.1#subdirectory=packages/rcp-test"
 ```
 
 No published package names it, and the release workflow builds only the three published distributions by
-name, so it is never published with them. It depends on `rcp` and `rcp-vllm` at the release's
+name, so it is never published with them. It depends on `cohere-rcp` and `cohere-rcp-vllm` at the release's
 version — never the other way round.
 
 ## What a case is

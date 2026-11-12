@@ -13,22 +13,22 @@ gives the method and its validation.
 
 | Distribution | What it is | README |
 |---|---|---|
-| `rcp` | The pipeline and the command line: storage, data, retrieval, judging, calibration, evaluation, runs | [packages/rcp/README.md](packages/rcp/README.md) |
-| `rcp-core` | The metric: nDCG, the gains, the scoring protocols, the public records, the IRT (item response theory) estimators (numpy + pydantic) | [packages/rcp-core/README.md](packages/rcp-core/README.md) |
-| `rcp-vllm` | The lean serving package: the GPU-validated serving recipes and `rcp-vllm serve <recipe-id>` | [packages/rcp-vllm/README.md](packages/rcp-vllm/README.md) |
+| `cohere-rcp` | The pipeline and the command line: storage, data, retrieval, judging, calibration, evaluation, runs | [packages/rcp/README.md](packages/rcp/README.md) |
+| `cohere-rcp-core` | The metric: nDCG, the gains, the scoring protocols, the public records, the IRT (item response theory) estimators (numpy + pydantic) | [packages/rcp-core/README.md](packages/rcp-core/README.md) |
+| `cohere-rcp-vllm` | The lean serving package: the GPU-validated serving recipes and `rcp-vllm serve <recipe-id>` | [packages/rcp-vllm/README.md](packages/rcp-vllm/README.md) |
 | `rcp-test` | The validation tooling (unpublished, [installed from a git subdirectory](packages/rcp-test/README.md)): reference cases, the conformance suite, the equivalence harness, the recorder, the verified emulators, the wave runner | [packages/rcp-test/README.md](packages/rcp-test/README.md) |
 
 ## Install
 
 ```bash
-pip install rcp                  # the pipeline and the CLI
-pip install "rcp[calibrate]"     # + torch, for the IRT fits
-pip install rcp-vllm             # serving recipes; resolves recipe:<id> beside rcp
+pip install cohere-rcp                  # the pipeline and the CLI
+pip install "cohere-rcp[calibrate]"     # + torch, for the IRT fits
+pip install cohere-rcp-vllm             # serving recipes; resolves recipe:<id> beside rcp
 ```
 
 ## Documentation
 
-The rendered pages are at [the documentation site](https://cohere-ai.github.io/rcp-ndcg/). The site shows
+The rendered pages are at [the documentation site](https://cohere-ai.github.io/rcp/). The site shows
 the concepts, the how-to guides and the command line. It also holds the recipe catalog and the [compatibility and
 versioning policy](docs/reference/versioning.md). The pages are in `docs/`. `mkdocs build --strict` renders them.
 [The quickstart](docs/quickstart.md) is a 30-minute introduction from the install to a scored run.

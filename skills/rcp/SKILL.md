@@ -9,8 +9,8 @@ RCP-nDCG is nDCG with calibrated gains. Each gain is a relevance probability fro
 pool of each query. A rubric of five binary criteria (C1 to C5) anchors the scale. A two-parameter (2PL) item-response model puts
 all queries on one scale. Released datasets contain these gains, so scoring a system on them needs no LLM.
 
-Install (Python 3.12): `pip install "rcp[hf,calibrate]" --extra-index-url https://download.pytorch.org/whl/cpu`, or run it
-without an install: `uvx rcp`. Every command except `mcp serve` takes `--json` and then prints exactly one JSON document on
+Install (Python 3.12): `pip install "cohere-rcp[hf,calibrate]" --extra-index-url https://download.pytorch.org/whl/cpu`, or run it
+without an install: `uvx cohere-rcp`. Every command except `mcp serve` takes `--json` and then prints exactly one JSON document on
 stdout: `{"schema", "command", "ok", "data"|"error", "warnings", "meta"}`. `mcp serve` is a stdio server. `--help` and `--version`
 print plain text. Read `data` and **check `warnings`**. Each `{code, message}` records a condition raised while the command ran:
 invalid windows, uncalibrated documents, an unpinned revision. Recorded cuts are in the text census beside the judgement store. On
@@ -42,15 +42,15 @@ their store with `--judgements <store>` (repeatable). The per-query values stay 
 dataset (exit 12). Score the others with `--system NAME` (repeatable; `systems=[...]` in Python).
 
 **2. Serve an open model and score it (needs a served engine).** On the engine side, use the stock `vllm/vllm-openai` image.
-Install `python3 -m pip install --no-deps rcp-vllm` there. That is the one change that the engine environment takes. Then run
+Install `python3 -m pip install --no-deps cohere-rcp-vllm` there. That is the one change that the engine environment takes. Then run
 `rcp-vllm serve <recipe-id> --port 8000`. Add `--dry-run` to print the engine argv and exit. On the client side, install
-`rcp-vllm` beside `rcp`. Write a retriever (or reranker) config that names `recipe: <id>` and sets `base_url`. The
+`cohere-rcp-vllm` beside `cohere-rcp`. Write a retriever (or reranker) config that names `recipe: <id>` and sets `base_url`. The
 recipe supplies the client block. The run-time fields stay yours: an explicit content field that disagrees with the recipe is
 refused. `rcp retrieval index|search|rerank|fuse` produce and re-score rankings files. `rcp eval score` then reads them.
 `schema show commands --json` lists the flags. `--retriever recipe:<id>` and `--reranker recipe:<id>` are shorthands. Their URL
 comes from `--set ...base_url=...` or a `serve:` engine. Each recipe declares its budgets. The client cuts over-budget content at
 token boundaries, keeps the template anchors and records every cut. The engine never cuts. A missing `rcp_vllm` is a typed
-refusal (exit 10): its hint is `pip install rcp-vllm`. See [recipes and serving models](../../docs/reference/recipes.md) for
+refusal (exit 10): its hint is `pip install cohere-rcp-vllm`. See [recipes and serving models](../../docs/reference/recipes.md) for
 the 24 recipe families and their 44 variants.
 
 **3. Re-judge a pool with an OpenAI-compatible endpoint (calls the judge).** Ask the user for the model tokenizer.
@@ -157,7 +157,7 @@ the local runner. Add a `serve:` section to the run config, one engine per role:
 A served `api: rerank` or `api: openai_embeddings` model without `base_url` needs no URL in the config. A `recipe:<id>` value
 needs no URL either. The job's URLs for it reach the step at runtime. A served judge names the engine's own loopback URL. Any
 other `base_url` is refused. With the recipes, the engine command is `rcp-vllm serve <id>`. The engine image prepares
-`python3 -m pip install --no-deps rcp-vllm`. On SLURM the image needs `container_runtime: apptainer` or `pyxis`. With the
+`python3 -m pip install --no-deps cohere-rcp-vllm`. On SLURM the image needs `container_runtime: apptainer` or `pyxis`. With the
 default `none`, the command runs on the node and refuses `image`. The job runs the steps in job phases. Each phase starts only the
 engines that its steps use. It passes their URLs to the coordinator in `RCP_NDCG_ENGINES`. `run logs` shows both.
 `run resume --runner` submits a failed job again, engines included. It asks only for the windows that its stores lack.

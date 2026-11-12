@@ -39,7 +39,7 @@ tokenizer: Qwen/Qwen3.5-397B-A17B-FP8           # a Hugging Face repository id, 
 ```
 
 On the command line it is `--set judge.tokenizer=...`. The client reads the repository's `tokenizer.json`
-with the `tokenizers` library, without torch. That comes from the `[hf]` extra (`pip install "rcp[hf]"`),
+with the `tokenizers` library, without torch. That comes from the `[hf]` extra (`pip install "cohere-rcp[hf]"`),
 once per process. The shipped configs of self-served judges name their model's repository. The hosted
 `gpt5_hosted` config names none, because OpenAI publishes no tokenizer on the Hub.
 
