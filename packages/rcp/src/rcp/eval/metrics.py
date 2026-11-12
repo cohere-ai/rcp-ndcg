@@ -192,7 +192,14 @@ class _CorpusMetric(Metric):
     """
 
     function: ClassVar[Callable[..., float]]
-    """The ``rcp_core.metric`` function: ``function(qrels, results, k=k)``, one query on each side."""
+    """The ``rcp_core.metric`` function: ``function(qrels, results, k=k)``, one query on each side.
+
+    A subclass declares it through ``staticmethod``. Python 3.14's ``functools.partial`` implements the
+    descriptor protocol, so a bare ``partial`` class attribute is read through the instance as
+    ``partial(function, self)``, and :meth:`score` would pass ``self`` as a third positional argument (every
+    one of the seven raised ``TypeError`` on 3.14); ``staticmethod`` returns the partial unchanged from both an
+    instance and the class.
+    """
 
     def score(
         self,
@@ -222,7 +229,7 @@ class NdcgFloat(_CorpusMetric):
     """
 
     name = "ndcg_float"
-    function = partial(core_metric.ndcg_float)
+    function = staticmethod(partial(core_metric.ndcg_float))
 
 
 class Map(_CorpusMetric):
@@ -238,7 +245,7 @@ class Map(_CorpusMetric):
     """
 
     name = "map"
-    function = partial(core_metric.map)
+    function = staticmethod(partial(core_metric.map))
 
 
 class Recall(_CorpusMetric):
@@ -254,7 +261,7 @@ class Recall(_CorpusMetric):
     """
 
     name = "recall"
-    function = partial(core_metric.recall)
+    function = staticmethod(partial(core_metric.recall))
 
 
 class Precision(_CorpusMetric):
@@ -269,7 +276,7 @@ class Precision(_CorpusMetric):
     """
 
     name = "precision"
-    function = partial(core_metric.precision)
+    function = staticmethod(partial(core_metric.precision))
 
 
 class Success(_CorpusMetric):
@@ -285,7 +292,7 @@ class Success(_CorpusMetric):
     """
 
     name = "success"
-    function = partial(core_metric.success)
+    function = staticmethod(partial(core_metric.success))
 
 
 class Mrr(_CorpusMetric):
@@ -304,7 +311,7 @@ class Mrr(_CorpusMetric):
     """
 
     name = "mrr"
-    function = partial(core_metric.mrr)
+    function = staticmethod(partial(core_metric.mrr))
 
 
 class RecallCap(_CorpusMetric):
@@ -324,7 +331,7 @@ class RecallCap(_CorpusMetric):
     """
 
     name = "recall_cap"
-    function = partial(core_metric.recall_cap)
+    function = staticmethod(partial(core_metric.recall_cap))
 
 
 _SHIPPED: tuple[type[Metric], ...] = (

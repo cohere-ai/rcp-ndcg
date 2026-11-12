@@ -91,6 +91,29 @@ def test_a_shipped_corpus_metric_is_selectable_and_is_its_function_value(
         assert report.value("tied", name, k=2) == pytest.approx(function(TIE_QRELS, TIE_SCORES, k=2)), name
 
 
+def test_a_corpus_metrics_function_does_not_bind_the_instance() -> None:
+    """A corpus metric's ``function`` is a plain function on the class, not a descriptor that binds ``self``.
+
+    Python 3.14's ``functools.partial`` implements the descriptor protocol, so a ``partial`` stored as a class
+    attribute is read through the instance as ``partial(function, self)``: :meth:`_CorpusMetric.score`'s
+    ``self.function({query: labels}, {query: ordered}, k=k)`` then passes three positional arguments to a corpus
+    function that takes two, and every one of the seven raises ``TypeError`` on 3.14 (green on 3.12, which is
+    why the interpreter's change reached ``main``). ``staticmethod`` is the declaration that the attribute is a
+    plain function; this test pins it where 3.12 cannot show the defect.
+    """
+    for name, function in CORPUS_METRICS.items():
+        metric = metric_class(name)()
+        stored = vars(type(metric))["function"]
+        assert isinstance(stored, staticmethod), (
+            f"{name}.function is a bare {type(stored).__name__}: on Python 3.14 an instance access binds self "
+            "as a third positional argument"
+        )
+        # What an instance access goes through and what a class access goes through must be one object: a 3.14
+        # partial returns ``partial(function, self)`` from the first and the partial itself from the second.
+        assert stored.__get__(metric, type(metric)) is stored.__get__(None, type(metric)), "no instance is bound"
+        assert metric.function(TIE_QRELS, TIE_SCORES, k=2) == pytest.approx(function(TIE_QRELS, TIE_SCORES, k=2))
+
+
 def test_a_corpus_metric_keeps_its_own_tie_rule_under_another_protocol(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
