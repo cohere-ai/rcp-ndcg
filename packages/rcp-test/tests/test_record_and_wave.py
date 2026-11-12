@@ -1504,7 +1504,8 @@ def test_the_wave_start_renders_the_recipes_patches_into_the_engine_environment(
     recipe_yaml.write_text(
         recipe_yaml.read_text(encoding="utf-8").replace(
             "  plugin: null\n",
-            "  plugin: rcp-vllm\n  plugin_architectures: [PplxContextualModel]\n  patches: [torch-sdpa-attention]\n",
+            "  plugin: cohere-rcp-vllm\n  plugin_architectures: [PplxContextualModel]\n"
+            "  patches: [torch-sdpa-attention]\n",
         ),
         encoding="utf-8",
     )

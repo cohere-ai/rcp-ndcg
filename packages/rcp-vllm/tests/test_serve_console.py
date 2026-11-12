@@ -674,16 +674,16 @@ def test_the_plugin_declaration_is_mandatory_and_checked() -> None:
 
     base = {"runner": "pooling", "dtype": "bfloat16", "max_model_len": 1024}
     # A plugin with no architectures is the patch carrier (its entry point applies the patches).
-    carrier = ServeConfig(**base, plugin="rcp-vllm")
+    carrier = ServeConfig(**base, plugin="cohere-rcp-vllm")
     assert carrier.plugin_architectures == () and carrier.patches == ()
     with pytest.raises(ValidationError, match="plugin_architectures"):
         ServeConfig(**base, plugin_architectures=("PplxContextualModel",))
     with pytest.raises(ValidationError, match="PplxTypo"):
-        ServeConfig(**base, plugin="rcp-vllm", plugin_architectures=("PplxTypo",))
+        ServeConfig(**base, plugin="cohere-rcp-vllm", plugin_architectures=("PplxTypo",))
     with pytest.raises(ValidationError, match="not-a-patch"):
         ServeConfig(
             **base,
-            plugin="rcp-vllm",
+            plugin="cohere-rcp-vllm",
             plugin_architectures=("PplxContextualModel",),
             patches=("not-a-patch",),
         )
@@ -691,7 +691,7 @@ def test_the_plugin_declaration_is_mandatory_and_checked() -> None:
         ServeConfig(**base, patches=("torch-sdpa-attention",))
     declared = ServeConfig(
         **base,
-        plugin="rcp-vllm",
+        plugin="cohere-rcp-vllm",
         plugin_architectures=("PplxContextualModel",),
         patches=("torch-sdpa-attention",),
     )
@@ -778,12 +778,12 @@ def test_the_plugin_spec_parses_a_ranged_url_or_non_canonical_spec() -> None:
     a ranged, URL or underscore-spelled spec names the same distribution as the bare canonical one."""
     from rcp_vllm.recipe import plugin_distribution_name
 
-    assert plugin_distribution_name("rcp-vllm>=0.0.1") == "rcp-vllm"
-    assert plugin_distribution_name("rcp-vllm~=0.0.1") == "rcp-vllm"
-    assert plugin_distribution_name("rcp_vllm==0.0.1") == "rcp-vllm"
-    assert plugin_distribution_name("rcp-vllm[extra]==0.0.1") == "rcp-vllm"
-    assert plugin_distribution_name("rcp-vllm @ file:///x.whl") == "rcp-vllm"
-    assert plugin_distribution_name("  rcp-vllm  ") == "rcp-vllm"
+    assert plugin_distribution_name("cohere-rcp-vllm>=0.0.1") == "cohere-rcp-vllm"
+    assert plugin_distribution_name("cohere-rcp-vllm~=0.0.1") == "cohere-rcp-vllm"
+    assert plugin_distribution_name("cohere_rcp_vllm==0.0.1") == "cohere-rcp-vllm"
+    assert plugin_distribution_name("cohere-rcp-vllm[extra]==0.0.1") == "cohere-rcp-vllm"
+    assert plugin_distribution_name("cohere-rcp-vllm @ file:///x.whl") == "cohere-rcp-vllm"
+    assert plugin_distribution_name("  cohere-rcp-vllm  ") == "cohere-rcp-vllm"
     with pytest.raises(RecipeError, match="serve.plugin"):
         plugin_distribution_name("https://example.invalid/rcp_vllm-0.0.1-py3-none-any.whl")
 
@@ -796,7 +796,7 @@ def test_a_non_canonical_plugin_spelling_still_gets_the_architecture_check() -> 
 
     base = {"runner": "pooling", "dtype": "bfloat16", "max_model_len": 1024}
     with pytest.raises(ValidationError, match="PplxTypo"):
-        ServeConfig(**base, plugin="rcp_vllm==0.0.1", plugin_architectures=("PplxTypo",))
+        ServeConfig(**base, plugin="cohere_rcp_vllm==0.0.1", plugin_architectures=("PplxTypo",))
 
 
 def test_the_missing_plugin_hint_quotes_the_spec(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -854,7 +854,8 @@ def test_a_real_serve_renders_the_recipes_patches_into_the_engine_environment(
         tmp_path,
         family="patched",
         serve_extra=(
-            "  plugin: rcp-vllm\n  plugin_architectures: [PplxContextualModel]\n  patches: [torch-sdpa-attention]"
+            "  plugin: cohere-rcp-vllm\n  plugin_architectures: [PplxContextualModel]\n"
+            "  patches: [torch-sdpa-attention]"
         ),
     )
     monkeypatch.setattr(serve_module.shutil, "which", lambda _name: "/usr/bin/vllm")

@@ -231,7 +231,7 @@ EXPECTED_SERVE = {
     "trust_remote_code": False,
     "max_model_len": 8448,
     "dtype": "bfloat16",
-    "plugin": "rcp-vllm",
+    "plugin": "cohere-rcp-vllm",
     "patches": [],
     "plugin_architectures": ["TopkEmbedModel"],
     "io_processor_plugin": None,

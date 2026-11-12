@@ -69,11 +69,11 @@ def install_argv(
             (:data:`CONSTRAINTS_URL`).
 
     Returns:
-        ``uvx --from rcp[<extras>]==<version> --with rcp-vllm==<version> --constraints <constraints
+        ``uvx --from cohere-rcp[<extras>]==<version> --with cohere-rcp-vllm==<version> --constraints <constraints
         file> --index <CPU torch> --index-strategy unsafe-best-match rcp ...`` (from the wheelhouse
         instead, with ``--find-links`` and ``--no-index``). The CPU index is searched with PyPI for every
         package (``unsafe-best-match``), so torch resolves to its ``+cpu`` build; the constraints file pins
-        every version to the release's lock. ``rcp-vllm`` (the serving recipes, a separate
+        every version to the release's lock. ``cohere-rcp-vllm`` (the serving recipes, a separate
         distribution) is installed alongside because a run config may reference a recipe.
     """
     if not argv or argv[0] != "rcp":
@@ -87,12 +87,12 @@ def install_argv(
     return (
         "uvx",
         "--from",
-        f"rcp[{','.join(COORDINATOR_EXTRAS)}]=={version}",
+        f"cohere-rcp[{','.join(COORDINATOR_EXTRAS)}]=={version}",
         # The serving recipes: a run config may reference them (``recipe: <id>`` in a ``serve:`` block, the
-        # T4 scenarios do), and ``rcp-vllm`` is a separate distribution, so the coordinator installs
+        # T4 scenarios do), and ``cohere-rcp-vllm`` is a separate distribution, so the coordinator installs
         # it alongside. It depends on pydantic and PyYAML only.
         "--with",
-        f"rcp-vllm=={version}",
+        f"cohere-rcp-vllm=={version}",
         "--constraints",
         constraints or CONSTRAINTS_URL.format(version=version),
         *source,

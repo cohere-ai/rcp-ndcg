@@ -76,7 +76,7 @@ STACK_NAMES = frozenset({"torch", "torchvision", "torchaudio", "triton"})
 against the image's freeze and never installed; the ``nvidia-*`` distributions are the stack too
 (:func:`is_stack`)."""
 
-WORKSPACE_NAMES = frozenset({"rcp", "rcp-core", "rcp-vllm", "rcp-test"})
+WORKSPACE_NAMES = frozenset({"cohere-rcp", "cohere-rcp-core", "cohere-rcp-vllm", "rcp-test"})
 """The project's own distributions: their pins stay verbatim (the staged wheelhouse carries the built
 wheels, so there is no index to hash them against) and must be exact."""
 

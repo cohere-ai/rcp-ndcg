@@ -2046,7 +2046,9 @@ def verification_record(
     tolerance = corpus_tolerance(corpus)
     return {
         "schema": VERIFICATION_SCHEMA,
-        "emulator": f"rcp_test.engines (rcp {version('rcp')})",
+        # The label is the recorded spelling: every committed verification record carries it, so a
+        # rename of the distribution moves no record (the appended record is compared byte for byte).
+        "emulator": f"rcp_test.engines (rcp {version('cohere-rcp')})",
         "engine": {"name": corpus.manifest["engine"]["name"], "version": corpus.manifest["engine"]["version"]},
         "recipe": {
             "id": recipe["id"],

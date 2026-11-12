@@ -1,6 +1,6 @@
-# Publish a release: on a tag v<version>, build the three distributions (rcp, rcp-core, rcp-vllm),
-# check each version against the tag, publish every package to its own PyPI project with trusted publishing (OIDC,
-# no secret), and attach the constraints file to the GitHub release.
+# Publish a release: on a tag v<version>, build the three distributions (cohere-rcp, cohere-rcp-core,
+# cohere-rcp-vllm), check each version against the tag, publish every package to its own PyPI project with
+# trusted publishing (OIDC, no secret), and attach the constraints file to the GitHub release.
 #
 # Each package publishes through its own GitHub environment, because PyPI identifies a pending trusted publisher by
 # owner, repository, workflow file and environment only (not the project name). One-time setup on pypi.org, done:
@@ -9,11 +9,11 @@
 # publisher is registered under the new name), workflow release.yml and the environment from the table; the
 # environments exist in the repository's settings (one protection rule each, set by the owner).
 #
-#   | PyPI project  | GitHub environment |
-#   |---------------|--------------------|
-#   | rcp      | pypi               |
-#   | rcp-core      | pypi-core          |
-#   | rcp-vllm | pypi-vllm          |
+#   | PyPI project     | GitHub environment |
+#   |------------------|--------------------|
+#   | cohere-rcp       | pypi               |
+#   | cohere-rcp-core  | pypi-core          |
+#   | cohere-rcp-vllm  | pypi-vllm          |
 
 name: release
 
@@ -40,21 +40,21 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
-      - name: build rcp-core, rcp and rcp-vllm
+      - name: build cohere-rcp-core, cohere-rcp and cohere-rcp-vllm
         run: |
           # The three published distributions, one --package per invocation (uv refuses a repeated flag),
           # so the unpublished fourth workspace member, rcp-test, is never swept in. No plugin
-          # wheels: the folded models ship inside rcp-vllm (layout-move item 3).
-          uv build --package rcp-core --out-dir dist
-          uv build --package rcp --out-dir dist
-          uv build --package rcp-vllm --out-dir dist
+          # wheels: the folded models ship inside cohere-rcp-vllm (layout-move item 3).
+          uv build --package cohere-rcp-core --out-dir dist
+          uv build --package cohere-rcp --out-dir dist
+          uv build --package cohere-rcp-vllm --out-dir dist
       - name: the versions are the tag's
         run: |
           version="${GITHUB_REF_NAME#v}"
           expected=(
-            "dist/rcp-${version}-py3-none-any.whl" "dist/rcp-${version}.tar.gz"
-            "dist/rcp_core-${version}-py3-none-any.whl" "dist/rcp_core-${version}.tar.gz"
-            "dist/rcp_vllm-${version}-py3-none-any.whl" "dist/rcp_vllm-${version}.tar.gz"
+            "dist/cohere_rcp-${version}-py3-none-any.whl" "dist/cohere_rcp-${version}.tar.gz"
+            "dist/cohere_rcp_core-${version}-py3-none-any.whl" "dist/cohere_rcp_core-${version}.tar.gz"
+            "dist/cohere_rcp_vllm-${version}-py3-none-any.whl" "dist/cohere_rcp_vllm-${version}.tar.gz"
           )
           ls -a dist
           for file in "${expected[@]}"; do test -f "$file" || { echo "missing $file: the tag is not the version"; exit 1; }; done
@@ -78,12 +78,12 @@ jobs:
       # The tag pipeline installs what it built: twine checks metadata only, so a wheel with broken entry
       # points or missing package data would otherwise publish unchecked (CI's wheel-smoke job does not run
       # on tag pushes). Each published distribution installs from its built wheel -- never from the checkout
-      # -- into its own fresh venv and must import and work there. rcp's wheel pins rcp-core
+      # -- into its own fresh venv and must import and work there. cohere-rcp's wheel pins cohere-rcp-core
       # exactly, so the sibling wheel comes from --find-links dist, under the lock's constraints file.
       - name: the core wheel installs alone and computes the metric
         run: |
           uv venv "$RUNNER_TEMP/wheel-core" --python 3.12
-          uv pip install --python "$RUNNER_TEMP/wheel-core/bin/python" dist/rcp_core-*.whl
+          uv pip install --python "$RUNNER_TEMP/wheel-core/bin/python" dist/cohere_rcp_core-*.whl
           "$RUNNER_TEMP/wheel-core/bin/python" - <<'PY'
           import sys
 
@@ -99,7 +99,7 @@ jobs:
       - name: the vllm wheel installs alone, serves and lists every recipe
         run: |
           uv venv "$RUNNER_TEMP/wheel-vllm" --python 3.12
-          uv pip install --python "$RUNNER_TEMP/wheel-vllm/bin/python" dist/rcp_vllm-*.whl
+          uv pip install --python "$RUNNER_TEMP/wheel-vllm/bin/python" dist/cohere_rcp_vllm-*.whl
           "$RUNNER_TEMP/wheel-vllm/bin/python" - <<'PY'
           from rcp_vllm.recipe import iter_recipes
 
@@ -109,43 +109,43 @@ jobs:
           PY
           # Release gate 2 (AGENTS.md): the --no-deps install must leave pip freeze unchanged in the
           # stock image, and must declare nothing the image does not ship.
-          python3 packages/rcp-vllm/tests/models/check_no_deps_install.py dist/rcp_vllm-*.whl
+          python3 packages/rcp-vllm/tests/models/check_no_deps_install.py dist/cohere_rcp_vllm-*.whl
           # Release gate 3 (AGENTS.md): every recipe must dry-run from the installed wheel, so a
           # template.jinja or package-data path that resolves only in the checkout fails here.
           for id in $("$RUNNER_TEMP/wheel-vllm/bin/python" -c \
             'from rcp_vllm.recipe import iter_recipes; print(" ".join(r.id for r in iter_recipes()))'); do
             "$RUNNER_TEMP/wheel-vllm/bin/rcp-vllm" serve "$id" --dry-run >/dev/null
           done
-      - name: the rcp wheel installs (its core pin from dist/) and works
+      - name: the cohere-rcp wheel installs (its core pin from dist/) and works
         run: |
           uv venv "$RUNNER_TEMP/wheel-rcp" --python 3.12
           uv pip install --python "$RUNNER_TEMP/wheel-rcp/bin/python" \
-            dist/rcp-*.whl --find-links dist --constraints requirements-constraints.txt
+            dist/cohere_rcp-*.whl --find-links dist --constraints requirements-constraints.txt
           "$RUNNER_TEMP/wheel-rcp/bin/rcp" --version
           "$RUNNER_TEMP/wheel-rcp/bin/python" - <<'PY'
           from rcp.judging.prompts import load_prompt
 
           prompt = load_prompt("rubric")
           assert prompt.text, "the shipped rubric prompt is empty"
-          print("rcp wheel alone: rubric prompt", len(prompt.text), "chars")
+          print("cohere-rcp wheel alone: rubric prompt", len(prompt.text), "chars")
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: dist-rcp-core
-          path: dist/rcp_core-*
+          name: dist-cohere-rcp-core
+          path: dist/cohere_rcp_core-*
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: dist-rcp
-          path: dist/rcp-*
+          name: dist-cohere-rcp
+          path: dist/cohere_rcp-*
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: dist-rcp-vllm
-          path: dist/rcp_vllm-*
+          name: dist-cohere-rcp-vllm
+          path: dist/cohere_rcp_vllm-*
 
   # One publish job per package, each with its own environment: the PyPI project in it is a pending trusted publisher
   # identified by owner, repository, workflow file and environment only.
-  publish-core:
-    name: publish rcp-core to PyPI
+  publish-cohere-rcp-core:
+    name: publish cohere-rcp-core to PyPI
     needs: build
     runs-on: ubuntu-latest
     environment: pypi-core
@@ -154,16 +154,16 @@ jobs:
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: dist-rcp-core
-          path: dist/rcp-core
+          name: dist-cohere-rcp-core
+          path: dist/cohere-rcp-core
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2 (release/v1)
         with:
-          packages-dir: dist/rcp-core
+          packages-dir: dist/cohere-rcp-core
 
-  # rcp pins rcp-core==<version> exactly, so the core must exist on PyPI first.
-  publish-rcp:
-    name: publish rcp to PyPI
-    needs: publish-core
+  # cohere-rcp pins cohere-rcp-core==<version> exactly, so the core must exist on PyPI first.
+  publish-cohere-rcp:
+    name: publish cohere-rcp to PyPI
+    needs: publish-cohere-rcp-core
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -171,18 +171,18 @@ jobs:
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: dist-rcp
-          path: dist/rcp
+          name: dist-cohere-rcp
+          path: dist/cohere-rcp
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2 (release/v1)
         with:
-          packages-dir: dist/rcp
+          packages-dir: dist/cohere-rcp
 
-  # rcp-vllm names no sibling (decision 18: the lean package pins nothing), but every moment of the
+  # cohere-rcp-vllm names no sibling (decision 18: the lean package pins nothing), but every moment of the
   # rollout must install, so it publishes only after both siblings are on PyPI (PyPI files are immutable; a
-  # published rcp-vllm whose siblings failed would be uninstallable forever).
-  publish-vllm:
-    name: publish rcp-vllm to PyPI
-    needs: [build, publish-core, publish-rcp]
+  # published cohere-rcp-vllm whose siblings failed would be uninstallable forever).
+  publish-cohere-rcp-vllm:
+    name: publish cohere-rcp-vllm to PyPI
+    needs: [build, publish-cohere-rcp-core, publish-cohere-rcp]
     runs-on: ubuntu-latest
     environment: pypi-vllm
     permissions:
@@ -190,15 +190,15 @@ jobs:
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: dist-rcp-vllm
-          path: dist/rcp-vllm
+          name: dist-cohere-rcp-vllm
+          path: dist/cohere-rcp-vllm
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2 (release/v1)
         with:
-          packages-dir: dist/rcp-vllm
+          packages-dir: dist/cohere-rcp-vllm
 
   github-release:
     name: GitHub release with the constraints file
-    needs: [publish-core, publish-rcp, publish-vllm]
+    needs: [publish-cohere-rcp-core, publish-cohere-rcp, publish-cohere-rcp-vllm]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -206,16 +206,16 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: dist-rcp
-          path: dist/rcp
+          name: dist-cohere-rcp
+          path: dist/cohere-rcp
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: dist-rcp-core
-          path: dist/rcp-core
+          name: dist-cohere-rcp-core
+          path: dist/cohere-rcp-core
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          name: dist-rcp-vllm
-          path: dist/rcp-vllm
+          name: dist-cohere-rcp-vllm
+          path: dist/cohere-rcp-vllm
       # The rendered jobs install against the constraints file attached here.
       - run: gh release create "$GITHUB_REF_NAME" requirements-constraints.txt dist/*/* --verify-tag --notes-from-tag
         env:

@@ -275,7 +275,7 @@ def _expected_serve() -> dict[str, Any]:
         "trust_remote_code": False,
         "max_model_len": 4352,
         "dtype": "bfloat16",
-        "plugin": "rcp-vllm",
+        "plugin": "cohere-rcp-vllm",
         "patches": [],
         "plugin_architectures": ["Qwen3_5Model"],
         "io_processor_plugin": None,

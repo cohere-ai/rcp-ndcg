@@ -22,7 +22,7 @@ serve:
   trust_remote_code: false
   max_model_len: 32768
   dtype: bfloat16
-  plugin: rcp-vllm  # the wheel that carries the engine-side patches; this recipe declares none (below)
+  plugin: cohere-rcp-vllm # the wheel that carries the engine-side patches; this recipe declares none (below)
   extra_args: []
   # No engine patch. The pooling hang at exactly max_model_len (GPU-E1: 32768 hangs, 32767 returns at
   # measured on the pre-0.32 image) is fixed upstream by vllm-project/vllm#48039 (commit e6fc81bc78), first released in

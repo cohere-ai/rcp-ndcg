@@ -24,8 +24,8 @@ classifiers = [
 # install it from the workspace or the staged wheelhouse. It depends on the product and the lean serving
 # package at the release's version, and never the other way round: neither published package names this one.
 dependencies = [
-  "rcp==0.0.1",
-  "rcp-vllm==0.0.1",
+  "cohere-rcp==0.0.1",
+  "cohere-rcp-vllm==0.0.1",
   "numpy>=1.26",
   "pydantic>=2.11",
   "PyYAML>=6.0",

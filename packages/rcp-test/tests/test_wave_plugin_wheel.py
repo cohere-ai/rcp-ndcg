@@ -28,7 +28,7 @@ VLLM_CMD = f"{sys.executable} {Path(__file__).resolve().parent / 'stub_engine.py
 
 
 def _plugin_recipe_root(tmp_path: Path) -> Path:
-    """A copy of the fixture recipes with ``serve.plugin: rcp-vllm`` (so the fingerprint keys the
+    """A copy of the fixture recipes with ``serve.plugin: cohere-rcp-vllm`` (so the fingerprint keys the
     plugin modules) and the tokenizer where the copied recipe's relative path finds it."""
     root = tmp_path / "recipes"
     shutil.copytree(RECIPES, root)
@@ -38,7 +38,7 @@ def _plugin_recipe_root(tmp_path: Path) -> Path:
     yaml.write_text(
         yaml.read_text(encoding="utf-8").replace(
             "  plugin: null\n",
-            "  plugin: rcp-vllm\n  plugin_architectures: [PplxContextualModel]\n",
+            "  plugin: cohere-rcp-vllm\n  plugin_architectures: [PplxContextualModel]\n",
         ),
         encoding="utf-8",
     )
@@ -133,7 +133,7 @@ def test_a_wave_without_a_plugin_wheel_records_the_fingerprint_hashes_unchanged(
     corpus = Path(row["steps"]["observation_corpus"]["corpus_dir"])
     manifest = json.loads((corpus / "manifest.json").read_text(encoding="utf-8"))
     assert "unavailable" in manifest["model"]["plugin"]["wheel_sha256"]
-    assert manifest["model"]["plugin"]["name"] == "rcp-vllm"
+    assert manifest["model"]["plugin"]["name"] == "cohere-rcp-vllm"
     assert plugin_module_hashes(load_recipe(root / "fixture-embed"))  # the fingerprint keys these modules
     # The skip is visible in the step document: a plugin corpus recorded without a wheel says so.
     assert "not cross-checked" in str(row["steps"]["observation_corpus"]["plugin_wheel"])

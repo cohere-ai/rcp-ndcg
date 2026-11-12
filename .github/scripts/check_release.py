@@ -7,8 +7,8 @@ can never pass the node gates with a check the tag would fail (g-rcjobs-5).  It 
 * every workspace manifest declares the version (the release builds three; a stale ``rcp-test``
   leaves ``uv.lock`` and the stated rule disagreeing);
 * ``CITATION.cff``'s ``version:`` is the version;
-* ``rcp`` pins ``rcp-core==<version>`` exactly, in every dependency scope;
-* ``rcp-vllm`` names no workspace sibling at all (decision 18; owner decision 15 settled the tag
+* ``cohere-rcp`` pins ``cohere-rcp-core==<version>`` exactly, in every dependency scope;
+* ``cohere-rcp-vllm`` names no workspace sibling at all (decision 18; owner decision 15 settled the tag
   pipeline on the documented rule: the lean package pins no sibling, matching what ``rc_build.sh``
   already enforced);
 * each ``--wave`` document's recorded RC commit is the tag's commit (decision 16 / g-rcjobs-7: the
@@ -42,10 +42,10 @@ MANIFESTS = (
 )
 """The four workspace members; all four carry the release version (AGENTS.md: versions move together)."""
 
-WORKSPACE_SIBLINGS = {"rcp", "rcp-core", "rcp-test"}
-"""Every distribution of this workspace except ``rcp-vllm`` itself."""
+WORKSPACE_SIBLINGS = {"cohere-rcp", "cohere-rcp-core", "rcp-test"}
+"""Every distribution of this workspace except ``cohere-rcp-vllm`` itself."""
 
-# name, optional [extras], then the specifier: "rcp[calibrate]==0.0.1" -> ("rcp", "==0.0.1")
+# name, optional [extras], then the specifier: "cohere-rcp[calibrate]==0.0.1" -> ("cohere-rcp", "==0.0.1")
 _REQUIREMENT_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:\[[^\]]*\])?\s*(.*)$")
 
 
@@ -96,7 +96,7 @@ def check_citation(root: Path, version: str) -> None:
 
 
 def check_pins(root: Path, version: str) -> None:
-    """The sibling pins: ``rcp`` pins its core exactly; ``rcp-vllm`` names no sibling at all.
+    """The sibling pins: ``cohere-rcp`` pins its core exactly; ``cohere-rcp-vllm`` names no sibling at all.
 
     One rule for both pipelines (owner decision 15, g-rcjobs-5(d)): the documented rule governs -- the
     lean package pins no sibling -- so the tag pipeline refuses the lockstep pin exactly as ``rc_build.sh``
@@ -104,19 +104,22 @@ def check_pins(root: Path, version: str) -> None:
     """
     core_manifest = root / "packages/rcp/pyproject.toml"
     if not core_manifest.is_file():
-        raise SystemExit(f"{core_manifest} is not in this tree: it must pin rcp-core=={version}")
+        raise SystemExit(f"{core_manifest} is not in this tree: it must pin cohere-rcp-core=={version}")
     project = tomllib.loads(core_manifest.read_text(encoding="utf-8"))["project"]
     runtime = list(project.get("dependencies", []))
     declared = _declared(project)
     expected = f"=={version}"
-    if not _pins_of(runtime, "rcp-core"):
+    if not _pins_of(runtime, "cohere-rcp-core"):
         raise SystemExit(
-            f"packages/rcp/pyproject.toml does not declare rcp-core: it must pin rcp-core{expected} exactly"
+            f"packages/rcp/pyproject.toml does not declare cohere-rcp-core: it must pin "
+            f"cohere-rcp-core{expected} exactly"
         )
-    pins = _pins_of(declared, "rcp-core")
+    pins = _pins_of(declared, "cohere-rcp-core")
     if any(pin != expected for pin in pins):
-        raise SystemExit(f"rcp-core must be pinned {expected} exactly in packages/rcp/pyproject.toml; found {pins}")
-    print(f"packages/rcp/pyproject.toml pins rcp-core{expected}")
+        raise SystemExit(
+            f"cohere-rcp-core must be pinned {expected} exactly in packages/rcp/pyproject.toml; found {pins}"
+        )
+    print(f"packages/rcp/pyproject.toml pins cohere-rcp-core{expected}")
 
     vllm_manifest = root / "packages/rcp-vllm/pyproject.toml"
     if not vllm_manifest.is_file():
@@ -132,7 +135,7 @@ def check_pins(root: Path, version: str) -> None:
     if siblings:
         raise SystemExit(
             "packages/rcp-vllm/pyproject.toml must name no sibling package (decision 18: no lockstep "
-            f"version pin between rcp and rcp-vllm), found {siblings}"
+            f"version pin between cohere-rcp and cohere-rcp-vllm), found {siblings}"
         )
     print("packages/rcp-vllm/pyproject.toml names no sibling package")
 

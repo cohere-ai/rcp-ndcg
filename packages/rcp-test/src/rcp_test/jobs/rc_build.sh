@@ -21,7 +21,7 @@
 #   <RC_NAME>/wheelhouse/                  the release wheels + every locked dependency (the CPU torch build)
 #   <RC_NAME>/requirements-constraints.txt the lock's export, the install's constraints file
 #   <RC_NAME>/recipes/                     the recipe family directories (each with family.yaml and its
-#                                          variants), from the rcp-vllm wheel's package data
+#                                          variants), from the cohere-rcp-vllm wheel's package data
 #                                          (layout-move item 3: the recipes ship inside the wheel)
 #   <RC_NAME>/wave-lists/<wave>.txt        the wave lists (one recipe id per line)
 #   <RC_NAME>/pairs/                       the stage-2 pairs files, from packages/rcp-test/pairs/ (one home)
@@ -35,7 +35,7 @@ set -euo pipefail
 # The published distributions, in release order (release.yml builds exactly these, one --package per
 # invocation; the fourth workspace member rcp-test is unpublished and is never built -- GPU-E1:
 # an --all-packages build staged its wheel and the dist/ check then refused the extra file).
-PUBLISHED_PACKAGES=("rcp-core" "rcp" "rcp-vllm")
+PUBLISHED_PACKAGES=("cohere-rcp-core" "cohere-rcp" "cohere-rcp-vllm")
 HARNESS_PACKAGE="rcp-test"
 
 build_published() { # build_published OUT_DIR: the three published distributions, by name, as release.yml
@@ -74,7 +74,7 @@ stage_pairs() {
   fi
 }
 
-# stage_recipes SRC STAGE [WHEEL]: the recipes the node runs are the BUILT rcp-vllm wheel's package
+# stage_recipes SRC STAGE [WHEEL]: the recipes the node runs are the BUILT cohere-rcp-vllm wheel's package
 # data (layout-move item 3: the recipes ship inside the wheel).  The whole rcp_vllm/recipes/ directory
 # is extracted from the wheel -- never a per-recipe file list and never the pre-move source path -- so a
 # recipe file missing from the wheel fails this build, not a wave that silently runs an older recipe set.
@@ -83,12 +83,12 @@ stage_pairs() {
 stage_recipes() {
   local src="$1" stage="$2" wheel="${3:-}" candidate scratch
   if [[ -z "$wheel" ]]; then
-    for candidate in "$src"/dist/rcp_vllm-*.whl; do
+    for candidate in "$src"/dist/cohere_rcp_vllm-*.whl; do
       [[ -f "$candidate" ]] && { wheel="$candidate"; break; }
     done
   fi
   [[ -n "$wheel" && -f "$wheel" ]] || {
-    echo "rc_build: no rcp_vllm wheel in $src/dist (stage_recipes)" >&2
+    echo "rc_build: no cohere_rcp_vllm wheel in $src/dist (stage_recipes)" >&2
     return 1
   }
   scratch="$stage/.wheel-recipes"
@@ -228,9 +228,9 @@ build_harness "$WORK/harness"
 
 echo "rc_build: checking the versions and the pins"
 expected=(
-  "dist/rcp-${VERSION}-py3-none-any.whl" "dist/rcp-${VERSION}.tar.gz"
-  "dist/rcp_core-${VERSION}-py3-none-any.whl" "dist/rcp_core-${VERSION}.tar.gz"
-  "dist/rcp_vllm-${VERSION}-py3-none-any.whl" "dist/rcp_vllm-${VERSION}.tar.gz"
+  "dist/cohere_rcp-${VERSION}-py3-none-any.whl" "dist/cohere_rcp-${VERSION}.tar.gz"
+  "dist/cohere_rcp_core-${VERSION}-py3-none-any.whl" "dist/cohere_rcp_core-${VERSION}.tar.gz"
+  "dist/cohere_rcp_vllm-${VERSION}-py3-none-any.whl" "dist/cohere_rcp_vllm-${VERSION}.tar.gz"
 )
 for file in "${expected[@]}"; do
   [[ -f "$file" ]] || { echo "rc_build: missing $file: the checkout's version is not $VERSION" >&2; exit 1; }
@@ -254,7 +254,7 @@ uvx twine check dist/*
 # The staged tree beside the wheels: the recipes (family directories) from the built wheel's package
 # data, the wave lists from packages/rcp-test/wave-lists, the pairs from packages/rcp-test/pairs, the reference
 # cases from packages/rcp-test/cases, and the EXTRA_DIRS entries (layout-move item 3: no separate plugin
-# wheels -- the folded models ship inside rcp-vllm).  Staged BEFORE the wheelhouse: the family locks
+# wheels -- the folded models ship inside cohere-rcp-vllm).  Staged BEFORE the wheelhouse: the family locks
 # are read from the staged recipes, so an empty stage would silently download no reference wheels (the
 # rc0 wave0 bootstrap failure).
 stage_tree "$SRC" "stage/$RC_NAME" || exit 1
@@ -278,7 +278,7 @@ uv pip install --python "$WORK/dl/bin/python" pip >/dev/null
 "$WORK/dl/bin/python" -m pip download --quiet \
   -r stage/"$RC_NAME"/requirements-constraints.txt \
   -c stage/"$RC_NAME"/requirements-constraints.txt \
-  "rcp-vllm[test]==${VERSION}" "rcp[hf]==${VERSION}" \
+  "cohere-rcp-vllm[test]==${VERSION}" "cohere-rcp[hf]==${VERSION}" \
   --dest stage/"$RC_NAME"/wheelhouse \
   --find-links stage/"$RC_NAME"/wheelhouse \
   --only-binary :all: \
@@ -360,7 +360,7 @@ PYEOF
   done
 fi
 
-# The jina-reranker-v3 lock pins the not-yet-on-PyPI rcp==<version> without a hash: pip's hash mode
+# The jina-reranker-v3 lock pins the not-yet-on-PyPI cohere-rcp==<version> without a hash: pip's hash mode
 # refuses it on the node.  The STAGED lock gets the staged wheel's hash (the committed lock stays generic;
 # the staged lock is what the node installs and keys the family's environment identity on).
 python3 - "$SRC" "stage/$RC_NAME" "$VERSION" <<'PYEOF'
@@ -370,20 +370,20 @@ import re
 import sys
 
 src, stage, version = sys.argv[1:4]
-wheel = next(iter(pathlib.Path(stage, "wheelhouse").glob(f"rcp-{version}-*.whl")), None)
+wheel = next(iter(pathlib.Path(stage, "wheelhouse").glob(f"cohere_rcp-{version}-*.whl")), None)
 if wheel is None:
-    raise SystemExit("rc_build: no staged rcp wheel to hash for the reference locks")
+    raise SystemExit("rc_build: no staged cohere_rcp wheel to hash for the reference locks")
 digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
-pattern = re.compile(rf"^rcp=={re.escape(version)}\s*$", re.M)
+pattern = re.compile(rf"^cohere-rcp=={re.escape(version)}\s*$", re.M)
 patched = 0
 for lock in pathlib.Path(stage, "recipes").glob("*/reference.lock"):
     text = lock.read_text(encoding="utf-8")
     if pattern.search(text):
         lock.write_text(
-            pattern.sub(f"rcp=={version} \\\n    --hash=sha256:{digest}", text), encoding="utf-8"
+            pattern.sub(f"cohere-rcp=={version} \\\n    --hash=sha256:{digest}", text), encoding="utf-8"
         )
         patched += 1
-print(f"rc_build: hashed the local rcp pin in {patched} staged reference lock(s)")
+print(f"rc_build: hashed the local cohere-rcp pin in {patched} staged reference lock(s)")
 PYEOF
 
 # A fresh-venv install from the wheelhouse alone: the candidate installs and answers (release smoke).
@@ -394,12 +394,12 @@ uv venv "$WORK/smoke" --python 3.12
 uv pip install --python "$WORK/smoke/bin/python" --no-index \
   --find-links stage/"$RC_NAME"/wheelhouse \
   --constraints stage/"$RC_NAME"/requirements-constraints.txt \
-  "rcp==${VERSION}"
+  "cohere-rcp==${VERSION}"
 "$WORK/smoke/bin/rcp" --version
 "$WORK/smoke/bin/rcp" --help >/dev/null
 echo "rc_build: core wheel smoke (installs alone and computes the metric)"
 uv venv "$WORK/smoke-core" --python 3.12
-uv pip install --python "$WORK/smoke-core/bin/python" stage/"$RC_NAME"/dist/rcp_core-*.whl
+uv pip install --python "$WORK/smoke-core/bin/python" stage/"$RC_NAME"/dist/cohere_rcp_core-*.whl
 "$WORK/smoke-core/bin/python" - <<'PYEOF'
 from rcp_core import PROTOCOLS, gain, ndcg, score_query
 
@@ -412,7 +412,7 @@ print("rcp_core wheel alone:", ndcg(scores, gains, k=10))
 PYEOF
 echo "rc_build: vllm wheel smoke (installs alone, lists every recipe, dry-runs serve)"
 uv venv "$WORK/smoke-vllm" --python 3.12
-uv pip install --python "$WORK/smoke-vllm/bin/python" stage/"$RC_NAME"/dist/rcp_vllm-*.whl
+uv pip install --python "$WORK/smoke-vllm/bin/python" stage/"$RC_NAME"/dist/cohere_rcp_vllm-*.whl
 "$WORK/smoke-vllm/bin/python" - <<'PYEOF'
 from rcp_vllm.recipe import iter_recipes
 

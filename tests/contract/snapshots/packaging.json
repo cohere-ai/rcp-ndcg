@@ -15,7 +15,7 @@
     "rcp_core": []
   },
   "projects": {
-    "rcp": {
+    "cohere-rcp": {
       "entry_points": {
         "rcp.readers": [
           "beir",
@@ -47,11 +47,11 @@
         "rcp": "rcp.cli.main:main"
       }
     },
-    "rcp-core": {
+    "cohere-rcp-core": {
       "entry_points": {},
       "scripts": {}
     },
-    "rcp-vllm": {
+    "cohere-rcp-vllm": {
       "entry_points": {
         "vllm.general_plugins": [
           "rcp-vllm"

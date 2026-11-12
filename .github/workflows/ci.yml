@@ -161,7 +161,7 @@ jobs:
       - run: uv venv "$RUNNER_TEMP/vllm-pkg" --python 3.12
       - run: >-
           uv pip install --python "$RUNNER_TEMP/vllm-pkg/bin/python"
-          -e rcp-core -e rcp -e 'rcp-vllm[test]'
+          -e cohere-rcp-core -e cohere-rcp -e 'cohere-rcp-vllm[test]'
       - run: '"$RUNNER_TEMP/vllm-pkg/bin/python" -m pytest packages/rcp-vllm/tests --ignore=packages/rcp-vllm/tests/models -q'
 
   wheel-smoke:
@@ -180,13 +180,13 @@ jobs:
       # under the lock's constraints file so the resolution is the release's, not PyPI's latest.
       - name: build the three published distributions
         run: |
-          uv build --package rcp-core --out-dir dist
-          uv build --package rcp --out-dir dist
-          uv build --package rcp-vllm --out-dir dist
+          uv build --package cohere-rcp-core --out-dir dist
+          uv build --package cohere-rcp --out-dir dist
+          uv build --package cohere-rcp-vllm --out-dir dist
       - name: the core wheel installs alone and computes the metric
         run: |
           uv venv "$RUNNER_TEMP/wheel-core" --python 3.12
-          uv pip install --python "$RUNNER_TEMP/wheel-core/bin/python" dist/rcp_core-*.whl
+          uv pip install --python "$RUNNER_TEMP/wheel-core/bin/python" dist/cohere_rcp_core-*.whl
           "$RUNNER_TEMP/wheel-core/bin/python" - <<'PY'
           import sys
 
@@ -202,7 +202,7 @@ jobs:
       - name: the vllm wheel installs alone, serves and lists every recipe
         run: |
           uv venv "$RUNNER_TEMP/wheel-vllm" --python 3.12
-          uv pip install --python "$RUNNER_TEMP/wheel-vllm/bin/python" dist/rcp_vllm-*.whl
+          uv pip install --python "$RUNNER_TEMP/wheel-vllm/bin/python" dist/cohere_rcp_vllm-*.whl
           "$RUNNER_TEMP/wheel-vllm/bin/python" - <<'PY'
           from rcp_vllm.recipe import iter_recipes
 
@@ -212,7 +212,7 @@ jobs:
           PY
           # Release gate 2 (AGENTS.md): the --no-deps install must leave pip freeze unchanged in the
           # stock image, and must declare nothing the image does not ship.
-          python3 packages/rcp-vllm/tests/models/check_no_deps_install.py dist/rcp_vllm-*.whl
+          python3 packages/rcp-vllm/tests/models/check_no_deps_install.py dist/cohere_rcp_vllm-*.whl
           # Release gate 3 (AGENTS.md): every recipe must dry-run from the installed wheel, so a
           # template.jinja or package-data path that resolves only in the checkout fails here.
           for id in $("$RUNNER_TEMP/wheel-vllm/bin/python" -c \
@@ -223,7 +223,7 @@ jobs:
         run: |
           uv venv "$RUNNER_TEMP/wheel-rcp" --python 3.12
           uv pip install --python "$RUNNER_TEMP/wheel-rcp/bin/python" \
-            dist/rcp-*.whl --find-links dist --constraints requirements-constraints.txt
+            dist/cohere_rcp-*.whl --find-links dist --constraints requirements-constraints.txt
           "$RUNNER_TEMP/wheel-rcp/bin/rcp" --version
           "$RUNNER_TEMP/wheel-rcp/bin/python" - <<'PY'
           from rcp.judging.prompts import load_prompt

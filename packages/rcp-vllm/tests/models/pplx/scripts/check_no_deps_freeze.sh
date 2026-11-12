@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # The --no-deps freeze check the GPU wave runs before any engine starts: installing the
-# rcp-vllm wheel into a venv over the engine environment must change `pip freeze` by
+# cohere-rcp-vllm wheel into a venv over the engine environment must change `pip freeze` by
 # exactly this one distribution — the engine environment stays untouched except for the
 # serving package itself (its folded model plugins ship inside it).
 #
 # Usage: check_no_deps_freeze.sh <wheel> [venv-python]
-#   <wheel>       the rcp_vllm-*.whl built by `uv build rcp-vllm`
+#   <wheel>       the cohere_rcp_vllm-*.whl built by `uv build cohere-rcp-vllm`
 #   [venv-python] the python to build the venv from; default `python3` (on the node: the
 #                 engine image's own python, via a --system-site-packages venv so the
 #                 engine environment itself is never touched)
@@ -29,7 +29,7 @@ ADDED=$(printf '%s\n' "$CHANGED" | grep -c '^>' || true)
 
 echo "$CHANGED"
 if [ "$ADDED" -ne 1 ] || ! printf '%s\n' "$CHANGED" | grep '^>' | grep -q 'rcp-vllm'; then
-  echo "FAIL: installing $WHEEL did not add exactly the rcp-vllm distribution:" >&2
+  echo "FAIL: installing $WHEEL did not add exactly the cohere-rcp-vllm distribution:" >&2
   echo "$CHANGED" >&2
   exit 1
 fi

@@ -141,7 +141,7 @@ def test_own_torch_needs_an_exact_stack_pin() -> None:
 
 def test_a_workspace_range_is_refused() -> None:
     with pytest.raises(HarnessError, match="workspace pin"):
-        rl.build_lock("rcp>=0.0.1\n", FREEZE, family="demo", image="vllm/vllm-openai:v0.31.0")
+        rl.build_lock("cohere-rcp>=0.0.1\n", FREEZE, family="demo", image="vllm/vllm-openai:v0.31.0")
 
 
 def test_compile_requirements_resolves_offline_from_a_wheelhouse(tmp_path: Path) -> None:

@@ -31,7 +31,7 @@ def test_the_release_workflow_never_builds_or_publishes_the_test_package() -> No
     # The guard that keeps a future workspace member from being swept into the release build: the
     # three published packages are built by name, never with --all-packages.
     assert "--all-packages" not in text
-    for package in ("rcp", "rcp-core", "rcp-vllm"):
+    for package in ("cohere-rcp", "cohere-rcp-core", "cohere-rcp-vllm"):
         assert package in text, f"the release must keep building {package}"
 
 
@@ -75,7 +75,7 @@ def test_the_lock_installs_it_into_the_dev_environment() -> None:
     assert entry is not None and entry["version"] == version, "uv.lock pins the workspace member's version"
     assert entry.get("source", {}).get("editable", "").endswith("rcp-test"), entry.get("source")
     dependency_names = {item["name"] for item in entry.get("dependencies", [])}
-    assert {"rcp", "rcp-vllm"} <= dependency_names
+    assert {"cohere-rcp", "cohere-rcp-vllm"} <= dependency_names
 
 
 def test_the_package_depends_on_the_product_and_the_harness_at_the_release_version() -> None:
@@ -83,8 +83,8 @@ def test_the_package_depends_on_the_product_and_the_harness_at_the_release_versi
     version = data["project"]["version"]
     assert data["project"]["name"] == "rcp-test"
     assert data["project"]["dependencies"] == [
-        f"rcp=={version}",
-        f"rcp-vllm=={version}",
+        f"cohere-rcp=={version}",
+        f"cohere-rcp-vllm=={version}",
         "numpy>=1.26",
         "pydantic>=2.11",
         "PyYAML>=6.0",

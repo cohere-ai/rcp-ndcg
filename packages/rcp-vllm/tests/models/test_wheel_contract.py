@@ -1,6 +1,6 @@
 """The lean wheel's contract: pure ``py3-none-any``, its declared dependencies, its entry point and its recipes.
 
-The binding rule (layout-move item 2): ``pip install --no-deps rcp-vllm`` must work in the stock vLLM
+The binding rule (layout-move item 2): ``pip install --no-deps cohere-rcp-vllm`` must work in the stock vLLM
 image -- which already ships the only two declared dependencies (pydantic, PyYAML) -- and ``pip freeze`` must
 then differ by exactly this one wheel. The check is simulated here against whatever interpreter runs the tests,
 in ``tmp_path`` only: the package tree is COPIED into ``tmp_path`` and the wheel is built there, because
@@ -23,7 +23,7 @@ import pytest
 
 PACKAGE_DIR = Path(__file__).resolve().parents[2]
 #: The wheel name carries the version, so the test globs it: a bump must not break this test.
-WHEEL_NAME = "rcp_vllm-*-py3-none-any.whl"
+WHEEL_NAME = "cohere_rcp_vllm-*-py3-none-any.whl"
 N_FAMILIES = 24
 N_RECIPES = 44  # the variants across the families (decision 34; the ten judges are eight of the families)
 

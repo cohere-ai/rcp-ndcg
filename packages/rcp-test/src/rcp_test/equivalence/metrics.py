@@ -80,7 +80,7 @@ def _score_one(command: str, rankings_dir: str | Path, subset: str, system: str)
     except FileNotFoundError as error:
         raise HarnessError(
             f"the rcp command is not installed ({command}); it is a dependency of this package — "
-            "reinstall with: pip install rcp-vllm"
+            "reinstall with: pip install cohere-rcp-vllm"
         ) from error
     except subprocess.CalledProcessError as error:
         raise HarnessError(f"rcp eval score failed for {subset}/{system}: {error.stderr[:_BODY_SNIPPET]}") from error

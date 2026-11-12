@@ -1520,6 +1520,15 @@ owner pushes, with the move to a Hugging Face organisation).
 
 ### Changed — the rename
 
+- **The published distributions take the `cohere-` prefix**: PyPI's `rcp` project is a third-party package, so
+  the three published distributions are `cohere-rcp`, `cohere-rcp-core` and `cohere-rcp-vllm` -- `pip install
+  cohere-rcp` -- and `cohere-rcp` pins `cohere-rcp-core==<version>`. The import packages (`rcp`, `rcp_core`,
+  `rcp_vllm`, `rcp_test`), the `rcp` and `rcp-vllm` consoles, the `rcp.*` entry-point groups and the unpublished
+  `rcp-test` keep their names, and the recipes declare `serve.plugin: cohere-rcp-vllm`. **The behaviour
+  fingerprint does not move**: `rcp_test.fingerprint._PLUGIN_DISTRIBUTION_ALIASES` maps the new distribution
+  spelling onto the recorded one, so the ledger's 44 fingerprint cells and the 49 goldens' fingerprints are
+  unchanged (a golden's resolved `recipe.serve.plugin` follows the tree, as every resolved field does), and no
+  corpus or wave is re-recorded. `tests/contract/snapshots/packaging.json` records the new project names.
 - **The core distribution is `rcp-core` and its package is `rcp_core`**: the `rcp-ndcg-core` distribution and
   the `rcp_ndcg_core` package are renamed, the `rcp-ndcg` pin moves to `rcp-core==<version>`, and there is no
   compatibility shim — the old names are gone. The historical entries below keep the old names.

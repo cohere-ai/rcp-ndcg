@@ -12,10 +12,10 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "rcp",
-    "rcp-core",
+    "cohere-rcp",
+    "cohere-rcp-core",
+    "cohere-rcp-vllm",
     "rcp-test",
-    "rcp-vllm",
 ]
 
 [manifest.dependency-groups]
@@ -582,6 +582,164 @@ sdist = { url = "https://files.pythonhosted.org/packages/27/fb/576f067976d320f5f
 wheels = [
     { url = "https://files.pythonhosted.org/packages/88/39/799be3f2f0f38cc727ee3b4f1445fe6d5e4133064ec2e4115069418a5bb6/cloudpickle-3.1.2-py3-none-any.whl", hash = "sha256:9acb47f6afd73f60dc1df93bb801b472f05ff42fa6c84167d25cb206be1fbf4a", size = 22228, upload-time = "2025-11-03T09:25:25.534Z" },
 ]
+
+[[package]]
+name = "cohere-rcp"
+version = "0.0.1"
+source = { editable = "packages/rcp" }
+dependencies = [
+    { name = "bm25s" },
+    { name = "click" },
+    { name = "cohere-rcp-core" },
+    { name = "fsspec" },
+    { name = "gcsfs" },
+    { name = "httpx" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "pillow" },
+    { name = "pyarrow" },
+    { name = "pydantic" },
+    { name = "pystemmer" },
+    { name = "python-dotenv" },
+    { name = "pyyaml" },
+    { name = "scipy" },
+    { name = "tqdm" },
+]
+
+[package.optional-dependencies]
+azure = [
+    { name = "adlfs" },
+]
+calibrate = [
+    { name = "torch" },
+]
+data = [
+    { name = "huggingface-hub" },
+    { name = "pypdfium2" },
+]
+dev = [
+    { name = "basedpyright" },
+    { name = "huggingface-hub" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-xdist" },
+    { name = "ruff" },
+    { name = "shellcheck-py" },
+    { name = "tokenizers" },
+    { name = "torch" },
+]
+docs = [
+    { name = "mkdocs" },
+    { name = "mkdocs-material" },
+    { name = "pymdown-extensions" },
+]
+hf = [
+    { name = "huggingface-hub" },
+    { name = "tokenizers" },
+]
+http = [
+    { name = "aiohttp" },
+]
+mteb = [
+    { name = "datasets" },
+    { name = "mteb" },
+]
+s3 = [
+    { name = "s3fs" },
+]
+vllm = [
+    { name = "cohere-rcp-vllm" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "adlfs", marker = "extra == 'azure'", specifier = ">=2024.7.0" },
+    { name = "aiohttp", marker = "extra == 'http'", specifier = ">=3.10" },
+    { name = "basedpyright", marker = "extra == 'dev'", specifier = ">=1.18" },
+    { name = "bm25s", specifier = "==0.2.13" },
+    { name = "click", specifier = ">=8.1" },
+    { name = "cohere-rcp", extras = ["calibrate", "hf"], marker = "extra == 'dev'", editable = "packages/rcp" },
+    { name = "cohere-rcp-core", editable = "packages/rcp-core" },
+    { name = "cohere-rcp-vllm", marker = "extra == 'vllm'", editable = "packages/rcp-vllm" },
+    { name = "datasets", marker = "extra == 'mteb'", specifier = ">=4.1" },
+    { name = "fsspec", specifier = ">=2025.3.0" },
+    { name = "gcsfs", specifier = ">=2025.3.0" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "huggingface-hub", marker = "extra == 'data'", specifier = ">=0.34" },
+    { name = "huggingface-hub", marker = "extra == 'hf'", specifier = ">=0.34" },
+    { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6" },
+    { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5" },
+    { name = "mteb", marker = "extra == 'mteb'", specifier = ">=2.10.5" },
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pandas", specifier = ">=2.2" },
+    { name = "pillow", specifier = ">=10.0" },
+    { name = "pyarrow", specifier = ">=15.0" },
+    { name = "pydantic", specifier = ">=2.11" },
+    { name = "pymdown-extensions", marker = "extra == 'docs'", specifier = ">=10" },
+    { name = "pypdfium2", marker = "extra == 'data'", specifier = ">=4.30" },
+    { name = "pystemmer", specifier = ">=2.2" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24" },
+    { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.5" },
+    { name = "python-dotenv", specifier = ">=1.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
+    { name = "s3fs", marker = "extra == 's3'", specifier = ">=2025.3.0" },
+    { name = "scipy", specifier = ">=1.15" },
+    { name = "shellcheck-py", marker = "extra == 'dev'", specifier = ">=0.10" },
+    { name = "tokenizers", marker = "extra == 'hf'", specifier = ">=0.21" },
+    { name = "torch", marker = "extra == 'calibrate'", specifier = ">=2.0" },
+    { name = "tqdm", specifier = ">=4.67" },
+]
+provides-extras = ["s3", "azure", "hf", "http", "mteb", "calibrate", "data", "vllm", "dev", "docs"]
+
+[[package]]
+name = "cohere-rcp-core"
+version = "0.0.1"
+source = { editable = "packages/rcp-core" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pydantic" },
+]
+
+[package.optional-dependencies]
+irt = [
+    { name = "scipy" },
+    { name = "torch" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pydantic", specifier = ">=2.11" },
+    { name = "scipy", marker = "extra == 'irt'", specifier = ">=1.11" },
+    { name = "torch", marker = "extra == 'irt'", specifier = ">=2.0" },
+]
+provides-extras = ["irt"]
+
+[[package]]
+name = "cohere-rcp-vllm"
+version = "0.0.1"
+source = { editable = "packages/rcp-vllm" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "pyyaml" },
+]
+
+[package.optional-dependencies]
+test = [
+    { name = "jinja2" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "jinja2", marker = "extra == 'test'", specifier = ">=3.1" },
+    { name = "pydantic", specifier = ">=2.11" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+]
+provides-extras = ["test"]
 
 [[package]]
 name = "colorama"
@@ -2703,149 +2861,15 @@ wheels = [
 ]
 
 [[package]]
-name = "rcp"
-version = "0.0.1"
-source = { editable = "packages/rcp" }
-dependencies = [
-    { name = "bm25s" },
-    { name = "click" },
-    { name = "fsspec" },
-    { name = "gcsfs" },
-    { name = "httpx" },
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "pillow" },
-    { name = "pyarrow" },
-    { name = "pydantic" },
-    { name = "pystemmer" },
-    { name = "python-dotenv" },
-    { name = "pyyaml" },
-    { name = "rcp-core" },
-    { name = "scipy" },
-    { name = "tqdm" },
-]
-
-[package.optional-dependencies]
-azure = [
-    { name = "adlfs" },
-]
-calibrate = [
-    { name = "torch" },
-]
-data = [
-    { name = "huggingface-hub" },
-    { name = "pypdfium2" },
-]
-dev = [
-    { name = "basedpyright" },
-    { name = "huggingface-hub" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-xdist" },
-    { name = "ruff" },
-    { name = "shellcheck-py" },
-    { name = "tokenizers" },
-    { name = "torch" },
-]
-docs = [
-    { name = "mkdocs" },
-    { name = "mkdocs-material" },
-    { name = "pymdown-extensions" },
-]
-hf = [
-    { name = "huggingface-hub" },
-    { name = "tokenizers" },
-]
-http = [
-    { name = "aiohttp" },
-]
-mteb = [
-    { name = "datasets" },
-    { name = "mteb" },
-]
-s3 = [
-    { name = "s3fs" },
-]
-vllm = [
-    { name = "rcp-vllm" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "adlfs", marker = "extra == 'azure'", specifier = ">=2024.7.0" },
-    { name = "aiohttp", marker = "extra == 'http'", specifier = ">=3.10" },
-    { name = "basedpyright", marker = "extra == 'dev'", specifier = ">=1.18" },
-    { name = "bm25s", specifier = "==0.2.13" },
-    { name = "click", specifier = ">=8.1" },
-    { name = "datasets", marker = "extra == 'mteb'", specifier = ">=4.1" },
-    { name = "fsspec", specifier = ">=2025.3.0" },
-    { name = "gcsfs", specifier = ">=2025.3.0" },
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "huggingface-hub", marker = "extra == 'data'", specifier = ">=0.34" },
-    { name = "huggingface-hub", marker = "extra == 'hf'", specifier = ">=0.34" },
-    { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6" },
-    { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5" },
-    { name = "mteb", marker = "extra == 'mteb'", specifier = ">=2.10.5" },
-    { name = "numpy", specifier = ">=1.26" },
-    { name = "pandas", specifier = ">=2.2" },
-    { name = "pillow", specifier = ">=10.0" },
-    { name = "pyarrow", specifier = ">=15.0" },
-    { name = "pydantic", specifier = ">=2.11" },
-    { name = "pymdown-extensions", marker = "extra == 'docs'", specifier = ">=10" },
-    { name = "pypdfium2", marker = "extra == 'data'", specifier = ">=4.30" },
-    { name = "pystemmer", specifier = ">=2.2" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24" },
-    { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.5" },
-    { name = "python-dotenv", specifier = ">=1.0" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rcp", extras = ["calibrate", "hf"], marker = "extra == 'dev'", editable = "packages/rcp" },
-    { name = "rcp-core", editable = "packages/rcp-core" },
-    { name = "rcp-vllm", marker = "extra == 'vllm'", editable = "packages/rcp-vllm" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
-    { name = "s3fs", marker = "extra == 's3'", specifier = ">=2025.3.0" },
-    { name = "scipy", specifier = ">=1.15" },
-    { name = "shellcheck-py", marker = "extra == 'dev'", specifier = ">=0.10" },
-    { name = "tokenizers", marker = "extra == 'hf'", specifier = ">=0.21" },
-    { name = "torch", marker = "extra == 'calibrate'", specifier = ">=2.0" },
-    { name = "tqdm", specifier = ">=4.67" },
-]
-provides-extras = ["s3", "azure", "hf", "http", "mteb", "calibrate", "data", "vllm", "dev", "docs"]
-
-[[package]]
-name = "rcp-core"
-version = "0.0.1"
-source = { editable = "packages/rcp-core" }
-dependencies = [
-    { name = "numpy" },
-    { name = "pydantic" },
-]
-
-[package.optional-dependencies]
-irt = [
-    { name = "scipy" },
-    { name = "torch" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "numpy", specifier = ">=1.26" },
-    { name = "pydantic", specifier = ">=2.11" },
-    { name = "scipy", marker = "extra == 'irt'", specifier = ">=1.11" },
-    { name = "torch", marker = "extra == 'irt'", specifier = ">=2.0" },
-]
-provides-extras = ["irt"]
-
-[[package]]
 name = "rcp-test"
 version = "0.0.1"
 source = { editable = "packages/rcp-test" }
 dependencies = [
+    { name = "cohere-rcp" },
+    { name = "cohere-rcp-vllm" },
     { name = "numpy" },
     { name = "pydantic" },
     { name = "pyyaml" },
-    { name = "rcp" },
-    { name = "rcp-vllm" },
 ]
 
 [package.optional-dependencies]
@@ -2855,33 +2879,9 @@ test = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cohere-rcp", editable = "packages/rcp" },
+    { name = "cohere-rcp-vllm", editable = "packages/rcp-vllm" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "pydantic", specifier = ">=2.11" },
-    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "rcp", editable = "packages/rcp" },
-    { name = "rcp-vllm", editable = "packages/rcp-vllm" },
-]
-provides-extras = ["test"]
-
-[[package]]
-name = "rcp-vllm"
-version = "0.0.1"
-source = { editable = "packages/rcp-vllm" }
-dependencies = [
-    { name = "pydantic" },
-    { name = "pyyaml" },
-]
-
-[package.optional-dependencies]
-test = [
-    { name = "jinja2" },
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "jinja2", marker = "extra == 'test'", specifier = ">=3.1" },
     { name = "pydantic", specifier = ">=2.11" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pyyaml", specifier = ">=6.0" },

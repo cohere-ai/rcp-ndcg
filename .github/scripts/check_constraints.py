@@ -38,7 +38,7 @@ EXPORT_ARGV = (
     "--no-emit-workspace",
     "--no-dev",
     "--package",
-    "rcp",
+    "cohere-rcp",
     "--extra",
     "calibrate",
     "--extra",

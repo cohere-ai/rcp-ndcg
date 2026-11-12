@@ -111,8 +111,10 @@ _PLUGIN_PACKAGE_ALIASES: tuple[str, ...] = ("rcp_vllm",)
 its new spelling here (one line) and no fingerprint moves; the canonical form is what the committed
 corpora recorded."""
 
-_PLUGIN_DISTRIBUTION_ALIASES: tuple[str, ...] = ("rcp-vllm",)
-"""Every current spelling of the distribution name, mapped onto :data:`_CANONICAL_PLUGIN_DISTRIBUTION`."""
+_PLUGIN_DISTRIBUTION_ALIASES: tuple[str, ...] = ("cohere-rcp-vllm", "rcp-vllm")
+"""Every current spelling of the distribution name, mapped onto :data:`_CANONICAL_PLUGIN_DISTRIBUTION`, the
+longest first: a module's source is swept by plain replacement, so the prefixed spelling has to map before the
+bare one it contains."""
 
 _CANONICAL_PRODUCT_PACKAGE = "rcp_ndcg"
 """The product package's recorded spelling. A keyed plugin module's docstrings name the product's own

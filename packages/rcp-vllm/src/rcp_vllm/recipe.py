@@ -131,16 +131,22 @@ _PINNED_VLLM_REF = "v0.33.0"
 ``vllm/vllm-openai:v0.33.0``); a field that exists only past the tag is refused, because the engine's
 argparse/``TypeAdapter`` rejects it at CLI parse."""
 
+_SHIPPED_PLUGIN_DISTRIBUTION = "cohere-rcp-vllm"
+"""The distribution name this wheel publishes under: what a recipe's ``serve.plugin`` names today, and the
+name the engine environment's installed metadata carries.  The wheel's recorded spelling (``rcp-vllm``) is
+:data:`rcp_test.fingerprint._PLUGIN_DISTRIBUTION_ALIASES`'s business, so the recorded evidence keys the same
+fingerprint; a recipe written against this tree names the published one."""
+
 PLUGIN_FIELDS: Mapping[str, str] = {
     # The serve fields the stock engine at _PINNED_VLLM_REF does not carry, and the plugin distribution that
     # honours each one, keyed by the recipe path. The embed chunker's three knobs widen
     # ``PoolerConfig`` and the rerank route's ``relevant_spans`` replaces the scoring request and response
     # models -- all of it is the product's own plugin, never an engine feature, so a recipe that declares one
     # names the plugin (``serve.plugin``) and the environment that loads it carries the plugin.
-    "serve.pooler_config.chunk_length": "rcp-vllm",
-    "serve.pooler_config.chunk_weighting": "rcp-vllm",
-    "serve.pooler_config.normalize_aggregated_embeddings": "rcp-vllm",
-    "relevant_spans": "rcp-vllm",
+    "serve.pooler_config.chunk_length": _SHIPPED_PLUGIN_DISTRIBUTION,
+    "serve.pooler_config.chunk_weighting": _SHIPPED_PLUGIN_DISTRIBUTION,
+    "serve.pooler_config.normalize_aggregated_embeddings": _SHIPPED_PLUGIN_DISTRIBUTION,
+    "relevant_spans": _SHIPPED_PLUGIN_DISTRIBUTION,
 }
 """The fields a plugin provides and the pinned engine does not, keyed by the recipe path and valued by the
 plugin distribution (PEP 503 name) that honours each one -- the one declaration the loader reads.
@@ -563,7 +569,9 @@ class ServeConfig(BaseModel):
                 "there is no plugin whose architecture they name"
             )
         unknown_architectures = sorted(set(self.plugin_architectures) - set(ARCHITECTURE_MODULES))
-        shipped_plugin = self.plugin is not None and plugin_distribution_name(self.plugin) == "rcp-vllm"
+        shipped_plugin = (
+            self.plugin is not None and plugin_distribution_name(self.plugin) == _SHIPPED_PLUGIN_DISTRIBUTION
+        )
         if shipped_plugin and unknown_architectures:
             raise ValueError(
                 f"plugin_architectures names {unknown_architectures}, which rcp_vllm.models."

@@ -1,13 +1,13 @@
 """``recipe: <id>``: a role config that names a shipped serving recipe takes its client block from it.
 
-One home for the mapping form (docs-firstcontact Q1). The shipped recipes live in ``rcp-vllm``'s package
+One home for the mapping form (docs-firstcontact Q1). The shipped recipes live in ``cohere-rcp-vllm``'s package
 data (``rcp_vllm.recipe``); this module imports that package **lazily** (the layering charter's exemption:
-rcp may read rcp-vllm's recipe data, rcp-vllm never imports rcp). When it is absent, the
+rcp may read cohere-rcp-vllm's recipe data, cohere-rcp-vllm never imports rcp). When it is absent, the
 refusal is a typed :class:`~rcp.errors.ConfigError` with the exact install line (docs-site OQ-6).
 
 The recipe **file format is the versioned contract** between the two packages (owner decision 18): every
 recipe carries ``schema_version``, and this module refuses a recipe whose version it cannot read — the check
-runs before the merge, so a newer rcp-vllm and an older rcp fail with a versioned message instead of
+runs before the merge, so a newer cohere-rcp-vllm and an older cohere-rcp fail with a versioned message instead of
 a schema surprise (there is no lockstep version pin between the packages; core and rcp keep theirs).
 
 The merge (Q1), over the recipe's plain ``client`` block:
@@ -25,7 +25,7 @@ The ``recipe`` pointer itself is replaced by the recipe's **identity**: the ship
 whose files differ never share a run identity and the config's own spelling of the path is not part of it.
 
 ``recipe:`` names a shipped variant id, or **a file of the operator's own**: ``recipe:./my-family``,
-``recipe:../my-family/family.yaml`` or ``recipe:/abs/path`` load a family directory through rcp-vllm's own
+``recipe:../my-family/family.yaml`` or ``recipe:/abs/path`` load a family directory through cohere-rcp-vllm's own
 loader (the same schema, families included), marked unshipped with ``status: unverified``.  The
 ``schema_version`` check below applies to both unchanged.
 
@@ -100,17 +100,17 @@ def _vllm_recipe_module():
         from rcp_vllm import recipe as vllm_recipe  # noqa: PLC0415 -- lazy by the charter's exemption
     except ModuleNotFoundError as error:
         raise ConfigError(
-            f"recipe: ... needs the serving recipes of rcp-vllm ({error})",
+            f"recipe: ... needs the serving recipes of cohere-rcp-vllm ({error})",
             hint=(
                 f"install it alongside rcp: {_INSTALL_LINE} (or, in an engine image that carries its own vLLM, "
-                "pip install rcp-vllm; it depends on pydantic and PyYAML only)"
+                "pip install cohere-rcp-vllm; it depends on pydantic and PyYAML only)"
             ),
         ) from error
     return vllm_recipe
 
 
 def available_recipe_ids() -> frozenset[str]:
-    """The ids of every shipped recipe (the variant ids of ``rcp-vllm``'s family directories).
+    """The ids of every shipped recipe (the variant ids of ``cohere-rcp-vllm``'s family directories).
 
     Loads each family and collects its variant ids; a family that fails to load is skipped (its error
     surfaces when someone resolves one of its recipes), so one broken family must not hide the rest of
@@ -147,10 +147,10 @@ def _load(recipe_id: str):
     """The recipe ``recipe_id``: a shipped variant id, or a path of the operator's own.
 
     A shipped id resolves under the package's recipes root; a path form loads the family directory (or
-    ``family.yaml``) through rcp-vllm's own loader, which marks it unshipped and unverified and gives it
+    ``family.yaml``) through cohere-rcp-vllm's own loader, which marks it unshipped and unverified and gives it
     the content-hash identity :func:`expand_role_recipe` puts in the config.  Either way the recipe's
     ``schema_version`` must be one this rcp reads (:data:`RECIPE_SCHEMA_VERSIONS`): the recipe file format
-    is the versioned contract between rcp and rcp-vllm (decision 18) -- there is no lockstep version
+    is the versioned contract between cohere-rcp and cohere-rcp-vllm (decision 18) -- there is no lockstep version
     pin between the two packages, so the check is here, at the read.  RecipeFamily ids are refused by the resolver
     itself (they are never served, decision 34).
     """
@@ -178,7 +178,7 @@ def _load(recipe_id: str):
         known = ", ".join(sorted(RECIPE_SCHEMA_VERSIONS))
         raise ConfigError(
             f"recipe: {recipe_id}: schema_version {version!r} is not one this rcp reads ({known})",
-            hint="the recipe file format is the versioned contract between rcp and rcp-vllm "
+            hint="the recipe file format is the versioned contract between cohere-rcp and cohere-rcp-vllm "
             "(decision 18): upgrade rcp, or ship recipes of a schema version it reads",
         )
     return loaded
@@ -206,7 +206,7 @@ def recipe_source(value: str) -> str | None:
     Inputs: a string a role config or CLI option was given.  Outputs: ``value`` itself when it is a shipped
     recipe variant id, ``recipe:<id-or-path>``'s payload (stripped) when it carries the ``recipe:`` form, and
     ``None`` when it names no recipe -- a shipped config's name, a file path, ``fake``, or an empty
-    ``recipe:``.  With rcp-vllm absent, no id can name a recipe, so the answer is ``None`` (the
+    ``recipe:``.  With cohere-rcp-vllm absent, no id can name a recipe, so the answer is ``None`` (the
     resolver's own install-line refusal stays where a recipe is actually read).
     """
     if value.startswith("recipe:"):
@@ -291,8 +291,8 @@ def expand_role_recipe(data: dict[str, Any], *, classes: dict[str, type]) -> dic
     tokenizer (``<model>@<revision>``): a config's ``tokenizer`` is accepted only when it names the same
     content (a local copy of the same ``tokenizer.json``), and refused naming both otherwise.
     A mapping without a ``recipe`` key, or whose ``recipe`` is ``None``, passes through unchanged.  Raises
-    :class:`~rcp.errors.ConfigError`: unknown recipe id (the shipped ids named), a path rcp-vllm's
-    loader refuses, rcp-vllm absent (the install line), an unreadable recipe ``schema_version``
+    :class:`~rcp.errors.ConfigError`: unknown recipe id (the shipped ids named), a path cohere-rcp-vllm's
+    loader refuses, cohere-rcp-vllm absent (the install line), an unreadable recipe ``schema_version``
     (:data:`RECIPE_SCHEMA_VERSIONS`), a recipe whose role the config does not take (the recipe, its role and
     the roles ``classes`` names are all in the message), a CONTENT field that disagrees with the recipe, or an
     MRL selection outside the recipe's declared set.
@@ -426,7 +426,7 @@ def shorthand_config(value: str) -> dict[str, Any]:
     ``--set`` overrides (``key=value``, dotted) are applied to it by the caller (e.g. ``--set base_url=...``).
 
     Inputs: the ``--retriever``/``--reranker`` value.  Outputs: the mapping form's dict.  Raises
-    :class:`~rcp.errors.ConfigError` for an empty id (an id is ``rcp-vllm``'s to validate; a path
+    :class:`~rcp.errors.ConfigError` for an empty id (an id is ``cohere-rcp-vllm``'s to validate; a path
     form -- ``./dir``, ``/abs/dir`` -- is resolved by :func:`expand_role_recipe`).
     """
     recipe_id = value.split(":", 1)[1].strip()

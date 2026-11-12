@@ -100,7 +100,7 @@ def test_wheel_is_pure_python(built_wheel: Path) -> None:
     check = load_check_module()
     tag = check.assert_pure_python(built_wheel)
     assert tag == "py3-none-any"
-    assert "rcp_vllm" in built_wheel.name
+    assert "cohere_rcp_vllm" in built_wheel.name
 
 
 def test_no_deps_install_changes_freeze_by_exactly_the_wheel(built_wheel: Path, tmp_path: Path) -> None:
@@ -110,7 +110,7 @@ def test_no_deps_install_changes_freeze_by_exactly_the_wheel(built_wheel: Path, 
     so the comparison is on the canonical distribution name."""
     check = load_check_module()
     requirement = check.check_install(built_wheel, tmp_path / "venv")
-    assert check._canonical_name(requirement) == "rcp-vllm"
+    assert check._canonical_name(requirement) == "cohere-rcp-vllm"
 
 
 def test_check_script_standalone_exit_zero(built_wheel: Path) -> None:
