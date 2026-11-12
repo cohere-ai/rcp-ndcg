@@ -64,7 +64,7 @@
       "type": "object"
     }
   },
-  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/reparse-report.v1.json",
+  "$id": "https://github.com/cohere-ai/rcp/blob/main/schemas/reparse-report.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "What ``judge reparse`` wrote: the new store, its parse version and the per-stage counts.",
   "properties": {

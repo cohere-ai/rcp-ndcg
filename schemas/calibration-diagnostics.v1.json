@@ -377,7 +377,7 @@
       "type": "object"
     }
   },
-  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/calibration-diagnostics.v1.json",
+  "$id": "https://github.com/cohere-ai/rcp/blob/main/schemas/calibration-diagnostics.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "``diagnostics.json``: what a calibration's fit reports about itself\n(``rcp.calibration-diagnostics.v1``).",

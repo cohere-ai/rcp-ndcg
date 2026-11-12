@@ -1536,6 +1536,10 @@ owner pushes, with the move to a Hugging Face organisation).
   cohere-rcp-vllm`. `pip install rcp` is the third-party project, so the old spelling would have sent a reader
   to the wrong package. `rcp.errors._INSTALL_MARKER` matches `cohere-rcp[` only, so a foreign `ImportError`
   that quotes the old spelling is no longer read as one of the product's own hints.
+- **The exported schemas' `$id` names `cohere-ai/rcp`**: `rcp.schemas.SCHEMA_ID_BASE` is
+  `https://github.com/cohere-ai/rcp/blob/main/schemas`, so the 49 committed `schemas/*.json` files carry it. The
+  `$id` is an identifier that names the committed copy, not a URL to fetch, and **no tag moved**: every file's
+  `x-rcp-schema` (`rcp.<name>.v1`) is unchanged, so no artifact a reader records changes.
 
 ### Changed — the rename
 

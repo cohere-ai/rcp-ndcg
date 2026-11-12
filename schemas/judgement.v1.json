@@ -67,7 +67,7 @@
       "type": "object"
     }
   },
-  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/judgement.v1.json",
+  "$id": "https://github.com/cohere-ai/rcp/blob/main/schemas/judgement.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "One judge call's parsed observation (schema ``rcp.judgement.v1``).\n\nA valid rubric judgement carries a non-empty criteria mapping, 0 or 1 per verdict, on every placement;\nthat the keys are exactly the family's ``C1..C<num_criteria>`` is checked at fit time\n(rcp_core.irt.fit_calibration, which refuses a missing or unknown criterion), not by this\nrecord. A valid tournament judgement carries a score on every placement (and the judge's stated\n``ranking``). An answer that could not be parsed is recorded with ``valid=False``, the reason and its\ncategory, never dropped and never read as a vote.",

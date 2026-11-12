@@ -34,7 +34,7 @@ from rcp_core.schemas import schema_id as _schema_id
 
 from rcp.errors import UsageError
 
-SCHEMA_ID_BASE = "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas"
+SCHEMA_ID_BASE = "https://github.com/cohere-ai/rcp/blob/main/schemas"
 JSON_SCHEMA_DIALECT = "https://json-schema.org/draft/2020-12/schema"
 VERSION = "v1"
 

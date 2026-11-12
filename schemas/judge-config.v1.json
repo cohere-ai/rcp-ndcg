@@ -1,5 +1,5 @@
 {
-  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/judge-config.v1.json",
+  "$id": "https://github.com/cohere-ai/rcp/blob/main/schemas/judge-config.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "One judge: an OpenAI-compatible Endpoint with sampling settings.\n\nThe endpoint fields (``api``, ``model``, ``revision``, ``api_key_env``, ``headers_env``, ``concurrency``,\nthe timeouts, retries and ``wait_on_outage_s``) are Endpoint's;\n``revision`` is recorded in the judgement family, so two checkpoints served under one name never pool.",

@@ -13,7 +13,7 @@ from tests._jsonschema import problems
 
 
 def test_every_schema_carries_its_id_and_url() -> None:
-    assert schemas.SCHEMA_ID_BASE.endswith("/rcp-ndcg/blob/main/schemas")
+    assert schemas.SCHEMA_ID_BASE.endswith("/rcp/blob/main/schemas")
     for entry in schemas.entries():
         schema = schemas.show(entry.name)
 

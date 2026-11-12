@@ -424,7 +424,7 @@
       "type": "string"
     }
   },
-  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/run-start.v1.json",
+  "$id": "https://github.com/cohere-ai/rcp/blob/main/schemas/run-start.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "What ``run start`` or ``run resume`` did: ran the run, handed it to a runner, planned it or estimated it.",
   "properties": {

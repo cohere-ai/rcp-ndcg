@@ -105,7 +105,7 @@
       "type": "object"
     }
   },
-  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/command-index.v1.json",
+  "$id": "https://github.com/cohere-ai/rcp/blob/main/schemas/command-index.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "Every leaf command, keyed by path (``\"data inspect\"``): its help, flags and output schema.",
   "properties": {

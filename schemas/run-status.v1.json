@@ -197,7 +197,7 @@
       "type": "string"
     }
   },
-  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/run-status.v1.json",
+  "$id": "https://github.com/cohere-ai/rcp/blob/main/schemas/run-status.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "Where a run stands: its status, every step, its judge requests, and its jobs when a runner holds it.",
   "properties": {

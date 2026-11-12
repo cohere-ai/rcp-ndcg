@@ -68,7 +68,7 @@
       "type": "object"
     }
   },
-  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/extension-record.v1.json",
+  "$id": "https://github.com/cohere-ai/rcp/blob/main/schemas/extension-record.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "One document added to a calibration: one line of a calibration's ``extensions.jsonl``\n(``rcp.extension-record.v1``).",

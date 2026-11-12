@@ -18,7 +18,7 @@
       "type": "object"
     }
   },
-  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/embedding-store.v1.json",
+  "$id": "https://github.com/cohere-ai/rcp/blob/main/schemas/embedding-store.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "A full-width embedding store's record: what is stored and the provenance of the vectors.",
   "properties": {

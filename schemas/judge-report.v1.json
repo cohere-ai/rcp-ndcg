@@ -145,7 +145,7 @@
       "type": "object"
     }
   },
-  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/judge-report.v1.json",
+  "$id": "https://github.com/cohere-ai/rcp/blob/main/schemas/judge-report.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "What a judging command did (``judged``) or would take (``estimate``).",
   "properties": {

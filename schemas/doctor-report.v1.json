@@ -30,7 +30,7 @@
       "type": "object"
     }
   },
-  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/doctor-report.v1.json",
+  "$id": "https://github.com/cohere-ai/rcp/blob/main/schemas/doctor-report.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "The environment, check by check; ``ok`` is false when any check failed.",
   "properties": {

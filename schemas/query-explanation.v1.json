@@ -194,7 +194,7 @@
       "type": "object"
     }
   },
-  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/query-explanation.v1.json",
+  "$id": "https://github.com/cohere-ai/rcp/blob/main/schemas/query-explanation.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "A QueryExplanation, with the texts it is about when asked for (--include-text).",
   "properties": {

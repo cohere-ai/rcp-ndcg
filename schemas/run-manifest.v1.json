@@ -746,7 +746,7 @@
       "type": "object"
     }
   },
-  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/run-manifest.v1.json",
+  "$id": "https://github.com/cohere-ai/rcp/blob/main/schemas/run-manifest.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "Everything known about one run.",

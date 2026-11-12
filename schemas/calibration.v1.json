@@ -206,7 +206,7 @@
       "type": "object"
     }
   },
-  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/calibration.v1.json",
+  "$id": "https://github.com/cohere-ai/rcp/blob/main/schemas/calibration.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "``items.json``, the file of a calibration directory that names its layout (``rcp.calibration.v1``).",

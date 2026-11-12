@@ -395,7 +395,7 @@
       "type": "object"
     }
   },
-  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/result-record.v1.json",
+  "$id": "https://github.com/cohere-ai/rcp/blob/main/schemas/result-record.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "One exported row: a system's value for a dataset, metric and cutoff (``rcp.result-record.v1``).",

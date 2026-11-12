@@ -382,7 +382,7 @@
       "type": "object"
     }
   },
-  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/eval-score.v1.json",
+  "$id": "https://github.com/cohere-ai/rcp/blob/main/schemas/eval-score.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "What ``eval score`` prints: the report's summary, per-dataset means and warnings, where the full report was\nwritten, and the per-query values when asked for (``--per-query``). ``--fields`` keeps only the named fields;\na field that is left out is absent, not null.",
   "properties": {

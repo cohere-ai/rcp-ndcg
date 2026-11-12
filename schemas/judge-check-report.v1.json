@@ -92,7 +92,7 @@
       "type": "object"
     }
   },
-  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/judge-check-report.v1.json",
+  "$id": "https://github.com/cohere-ai/rcp/blob/main/schemas/judge-check-report.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "The probe's result: one JudgeCheck per stage, and ``ok`` when every one passed.",
   "properties": {

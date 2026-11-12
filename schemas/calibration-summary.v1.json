@@ -937,7 +937,7 @@
       "type": "object"
     }
   },
-  "$id": "https://github.com/cohere-ai/rcp-ndcg/blob/main/schemas/calibration-summary.v1.json",
+  "$id": "https://github.com/cohere-ai/rcp/blob/main/schemas/calibration-summary.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "A calibration at a glance: its mode, items, what it covers and how reliable it is.",
   "properties": {
