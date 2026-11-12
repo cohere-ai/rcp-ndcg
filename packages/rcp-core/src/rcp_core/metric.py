@@ -312,6 +312,18 @@ def _evaluated_queries(qrels: _PerQuery, results: _PerQuery, *, metric: str) -> 
     return evaluated
 
 
+def _scored_queries(qrels: _PerQuery, results: _PerQuery, k: int, *, metric: str) -> list[str]:
+    """The four refusals every corpus metric shares, then the ``evaluated`` queries.
+
+    One home for the order of the checks, so the metrics that average over ``evaluated`` cannot disagree about
+    which input is refused first.
+    """
+    _validate_k(k)
+    _validate_qrels(qrels)
+    _validate_run(results)
+    return _evaluated_queries(qrels, results, metric=metric)
+
+
 def _require_matching_query_ids(qrels: _PerQuery, results: _PerQuery, *, metric: str) -> None:
     """Refuse a run whose query ids are not the qrels', naming the ids on each side.
 
@@ -360,10 +372,7 @@ def ndcg_float(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float:
         ValueError: ``k`` is not positive, a grade is not finite or is negative, a score is not finite, or no
             query is evaluated (an empty qrels, or a run that shares no query id with it).
     """
-    _validate_k(k)
-    _validate_qrels(qrels)
-    _validate_run(results)
-    evaluated = _evaluated_queries(qrels, results, metric="ndcg_float")
+    evaluated = _scored_queries(qrels, results, k, metric="ndcg_float")
     return sum(_ndcg_float_query(qrels[query_id], results[query_id], k) for query_id in evaluated) / len(evaluated)
 
 
@@ -410,14 +419,115 @@ def per_query_ndcg(
     return values
 
 
+def map(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float:
+    """MAP@k averaged over the evaluated queries: the mean of the precisions at every relevant rank.
+
+    Equal scores are ordered by document id, descending, and a document is relevant when its qrel grade is above
+    0. The per-query denominator is ``|R_q|``, the number of positives in the query's whole qrels, never capped at
+    ``k``: MAP@k is therefore below 1.0 when the query has more positives than ``k``.
+
+    Args:
+        qrels: ``{query_id: {doc_id: grade}}``; every grade is finite and at least 0, and only the sign is read.
+        results: ``{query_id: {doc_id: score}}``, higher is better, every score finite.
+        k: Cutoff, at least 1.
+
+    Returns:
+        The mean of ``(1 / |R_q|) * sum_{r=1..k} hits(r) / r`` over the ``evaluated`` queries, in ``[0, 1]``. A
+        query with no relevant document scores 0.0 and stays in the mean.
+
+    Raises:
+        ValueError: ``k`` is not positive, a grade is not finite or is negative, a score is not finite, or no
+            query is evaluated (an empty qrels, or a run that shares no query id with it).
+    """
+    evaluated = _scored_queries(qrels, results, k, metric="map")
+    total = 0.0
+    for query_id in evaluated:
+        grades = qrels[query_id]
+        positives = len(_positive_docs(grades))
+        if not positives:  # no relevant document: the query scores 0.0 and stays in the mean
+            continue
+        hits = 0
+        precision_at_hits = 0.0
+        for rank, doc_id in enumerate(rank_by_score(results[query_id], ties="doc_id_desc")[:k], start=1):
+            if grades.get(doc_id, 0.0) > 0:
+                hits += 1
+                precision_at_hits += hits / rank
+        total += precision_at_hits / positives
+    return total / len(evaluated)
+
+
+def recall(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float:
+    """Recall@k averaged over the evaluated queries: the share of the query's positives inside the top k.
+
+    Equal scores are ordered by document id, descending, and a document is relevant when its qrel grade is above
+    0. The denominator is ``|R_q|``, the number of positives in the query's whole qrels, so a run shorter than
+    the positives cannot reach 1.0.
+
+    Args:
+        qrels: ``{query_id: {doc_id: grade}}``; every grade is finite and at least 0, and only the sign is read.
+        results: ``{query_id: {doc_id: score}}``, higher is better, every score finite.
+        k: Cutoff, at least 1.
+
+    Returns:
+        The mean of ``|{d in top_k : rel(q, d)}| / |R_q|`` over the ``evaluated`` queries, in ``[0, 1]``. A query
+        with no relevant document scores 0.0 and stays in the mean.
+
+    Raises:
+        ValueError: ``k`` is not positive, a grade is not finite or is negative, a score is not finite, or no
+            query is evaluated (an empty qrels, or a run that shares no query id with it).
+    """
+    evaluated = _scored_queries(qrels, results, k, metric="recall")
+    total = 0.0
+    for query_id in evaluated:
+        grades = qrels[query_id]
+        positives = len(_positive_docs(grades))
+        if not positives:  # no relevant document: the query scores 0.0 and stays in the mean
+            continue
+        ranking = rank_by_score(results[query_id], ties="doc_id_desc")[:k]
+        total += sum(1 for doc_id in ranking if grades.get(doc_id, 0.0) > 0) / positives
+    return total / len(evaluated)
+
+
+def precision(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float:
+    """P@k averaged over the evaluated queries.
+
+    Equal scores are ordered by document id, descending, and the denominator is the requested ``k``, so a ranking
+    shorter than ``k`` cannot reach 1.0. That is the ``pytrec_eval`` ``P_cut`` definition and the number the
+    legacy runs report.
+
+    Args:
+        qrels: ``{query_id: {doc_id: grade}}``; every grade is finite and at least 0, and only the sign is read.
+        results: ``{query_id: {doc_id: score}}``, higher is better, every score finite.
+        k: Cutoff, at least 1. It is the denominator, not the ranking's length.
+
+    Returns:
+        The mean of ``|{d in top_k : rel(q, d)}| / k`` over the ``evaluated`` queries, in ``[0, 1]``. A query with
+        no relevant document scores 0.0 and stays in the mean.
+
+    Raises:
+        ValueError: ``k`` is not positive, a grade is not finite or is negative, a score is not finite, or no
+            query is evaluated (an empty qrels, or a run that shares no query id with it).
+    """
+    evaluated = _scored_queries(qrels, results, k, metric="precision")
+    total = 0.0
+    for query_id in evaluated:
+        grades = qrels[query_id]
+        ranking = rank_by_score(results[query_id], ties="doc_id_desc")[:k]
+        total += sum(1 for doc_id in ranking if grades.get(doc_id, 0.0) > 0) / k
+    return total / len(evaluated)
+
+
 __all__ = [
     "TieRule",
     "dcg",
     "discount",
     "ideal_dcg",
+    "map",
     "ndcg",
     "ndcg_float",
     "per_query_ndcg",
+    "precision",
     "rank_by_score",
+    "recall",
     "tie_groups",
 ]
