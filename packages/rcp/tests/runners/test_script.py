@@ -33,7 +33,7 @@ def test_in_a_stock_image_the_release_installs_itself_with_uvx() -> None:
         f"{CONSTRAINTS_URL.format(version=__version__)} --index {TORCH_CPU_INDEX} --index-strategy unsafe-best-match "
         "rcp --help"
     )
-    assert CONSTRAINTS_URL.startswith("https://github.com/cohere-ai/rcp-ndcg/releases/download/v")
+    assert CONSTRAINTS_URL.startswith("https://github.com/cohere-ai/rcp/releases/download/v")
     assert install_argv(("python3", "-V")) == ("python3", "-V")  # only the package's own command is installed
 
 
@@ -130,7 +130,7 @@ def test_an_install_source_replaces_the_release_urls_in_the_uvx_command() -> Non
     )
     https = " ".join(install_argv(("rcp", "--help"), wheelhouse="https://storage.example/wheels"))
     assert "--find-links https://storage.example/wheels --no-index" in https
-    assert "--constraints https://github.com/cohere-ai/rcp-ndcg/releases/download/v" in https  # the release URL stays
+    assert "--constraints https://github.com/cohere-ai/rcp/releases/download/v" in https  # the release URL stays
 
 
 def test_a_wheelhouse_reaches_the_rendered_scripts_of_the_runners_that_install(tmp_path) -> None:

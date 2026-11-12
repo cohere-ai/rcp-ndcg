@@ -46,7 +46,7 @@ COORDINATOR_IMAGE = "ghcr.io/astral-sh/uv:python3.12-trixie-slim"
 #: PyTorch's index of CPU-only wheels: the coordinator calibrates on CPU and needs no CUDA libraries.
 TORCH_CPU_INDEX = "https://download.pytorch.org/whl/cpu"
 #: The constraints file of a release (``uv export`` of its lock), attached to the GitHub release of its tag.
-CONSTRAINTS_URL = "https://github.com/cohere-ai/rcp-ndcg/releases/download/v{version}/requirements-constraints.txt"
+CONSTRAINTS_URL = "https://github.com/cohere-ai/rcp/releases/download/v{version}/requirements-constraints.txt"
 #: The extras a coordinator installs: the calibration fit, Hub datasets, and the S3 and Azure mirrors (gs:// is core).
 COORDINATOR_EXTRAS = ("calibrate", "hf", "s3", "azure")
 
