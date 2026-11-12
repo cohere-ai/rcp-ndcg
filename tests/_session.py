@@ -200,6 +200,32 @@ TEST_TIMEOUT_S = float(os.environ.get("RCP_NDCG_TEST_TIMEOUT", "60"))
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "no_timeout: opt this test out of the per-test timeout")
+    config.addinivalue_line(
+        "markers",
+        "timeout_s(seconds): the seconds this one test may run (default: the tree's TEST_TIMEOUT_S)",
+    )
+
+
+def budget_s(item: pytest.Item) -> float:
+    """The seconds ``item`` may run: the tree's :data:`TEST_TIMEOUT_S`, or the test's own ``timeout_s`` mark.
+
+    The mark is bounded and local: it moves one test's timer and no other, and it takes exactly one positive
+    number of seconds, so a typo cannot silently disable the guard for the test it was meant to size. A test
+    whose work is a second process (a runner's job, a CLI under a subprocess) sizes its own bound with it
+    instead of opting out with ``no_timeout``, where a real hang would never fail.
+
+    Raises:
+        pytest.UsageError: the mark takes something other than one positive number of seconds.
+    """
+    mark = item.get_closest_marker("timeout_s")
+    if mark is None:
+        return TEST_TIMEOUT_S
+    if len(mark.args) != 1 or mark.kwargs or isinstance(mark.args[0], bool):
+        raise pytest.UsageError(f"timeout_s takes one number of seconds, got {mark.args!r} {mark.kwargs!r}")
+    seconds = float(mark.args[0])
+    if not seconds > 0:
+        raise pytest.UsageError(f"timeout_s takes a positive number of seconds, got {mark.args[0]!r}")
+    return seconds
 
 
 def _timeboxed(item: pytest.Item) -> Callable[[], None] | None:
@@ -208,16 +234,18 @@ def _timeboxed(item: pytest.Item) -> Callable[[], None] | None:
 
     The timer runs on the main thread (pytest's, and each xdist worker's), so a pure-Python hang -- the
     case that actually happens -- is caught; a test that manages its own alarm opts out with the
-    ``no_timeout`` marker.
+    ``no_timeout`` marker, and one whose work is a subprocess sizes its bound with ``timeout_s``
+    (:func:`budget_s`).
     """
-    if TEST_TIMEOUT_S <= 0 or item.get_closest_marker("no_timeout") is not None or not hasattr(signal, "setitimer"):
+    budget = budget_s(item)
+    if budget <= 0 or item.get_closest_marker("no_timeout") is not None or not hasattr(signal, "setitimer"):
         return None
 
     def _on_timeout(signum: int, frame: Any) -> None:
-        raise TimeoutError(f"the test exceeded its {TEST_TIMEOUT_S:g}s per-test timeout (a hang fails fast)")
+        raise TimeoutError(f"the test exceeded its {budget:g}s per-test timeout (a hang fails fast)")
 
     previous_handler = signal.signal(signal.SIGALRM, _on_timeout)
-    previous_timer = signal.setitimer(signal.ITIMER_REAL, TEST_TIMEOUT_S)
+    previous_timer = signal.setitimer(signal.ITIMER_REAL, budget)
 
     def disarm() -> None:
         signal.setitimer(signal.ITIMER_REAL, 0)
@@ -506,6 +534,7 @@ __all__ = [
     "_hub_is_offline_and_empty",
     "_no_dns",
     "_tests_leave_the_checkout_clean",
+    "budget_s",
     "data",
     "finished",
     "pytest_addoption",

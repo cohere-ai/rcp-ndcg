@@ -54,8 +54,14 @@ def test_estimate_plan_run_and_resume(data: Path, tmp_path: Path) -> None:
     ]
 
 
+@pytest.mark.timeout_s(180)
 def test_a_local_configs_own_options_are_honoured(data: Path, tmp_path: Path) -> None:
-    """`runner: {name: local, options: {log_dir: ...}}` ran in-process, dropping the log directory."""
+    """`runner: {name: local, options: {log_dir: ...}}` ran in-process, dropping the log directory.
+
+    The runner's job is a second ``rcp`` process (it imports the CLI and, through the judging path, torch) and
+    the run follows it to the end: the test's wall time is two interpreters', not one in-process call's, so it
+    sizes its own bound instead of the tree's 60s (``tests/_session.py``'s ``timeout_s`` mark).
+    """
     logs = tmp_path / "local-logs"
     config = tmp_path / "run.yaml"
     config.write_text(
