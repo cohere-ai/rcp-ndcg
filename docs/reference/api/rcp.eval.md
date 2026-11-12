@@ -110,7 +110,7 @@ class EvalReport(pydantic.main.BaseModel)
 constant
 
 ```text
-METRICS = ['rcp_ndcg', 'qrel_ndcg', 'count_ndcg']
+METRICS = ['rcp_ndcg', 'qrel_ndcg', 'count_ndcg', 'ndcg_float', 'map', 'recall', 'precision', 'success', 'mrr', 'recall_cap']
 ```
 
 ## `METRICS_GROUP`
@@ -381,7 +381,7 @@ per_criterion(theta: float, items: Any) -> list[CriterionContribution]
 
 ## `registered_metrics`
 
-function — The metric names: the shipped three first, then the installed plugins, sorted.
+function — The metric names: the shipped ten first, then the installed plugins, sorted.
 
 ```text
 registered_metrics() -> tuple[str, ...]

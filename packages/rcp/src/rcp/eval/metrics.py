@@ -1,11 +1,24 @@
-"""The metric seam: the ``rcp.metrics`` entry-point group, the shipped nDCGs and the plugin contract.
+"""The metric seam: the ``rcp.metrics`` entry-point group, the shipped metrics and the plugin contract.
 
-The three nDCGs the package ships (``rcp_ndcg``, ``qrel_ndcg``, ``count_ndcg``) are the registry's first members,
-registered at import, so selecting one behaves exactly as it did before the seam. Another metric is one class
-in a package that publishes it under the group::
+The seam scores **one query**. :meth:`Metric.score` receives one query's ``{doc_id: score}``, that query's qrels
+and the dataset's protocol, and returns the query's value; :func:`rcp.eval.evaluate` averages those values over
+the dataset's labelled queries, so a corpus value is that mean. A metric belongs here when its value is one
+query's; the denominator is the dataset's labelled queries, and a labelled query the run does not rank is scored
+``0.0`` (the report warns ``UNRANKED_QUERIES``).
+
+The ten metrics the package ships are the registry's first members, registered at import, so selecting one
+behaves exactly as it did before the seam:
+
+* the three nDCGs -- ``rcp_ndcg``, ``qrel_ndcg``, ``count_ndcg`` -- are scored by
+  :func:`rcp_core.protocol.score_query`, so the protocol's tie rule reaches them;
+* the seven corpus metrics of :mod:`rcp_core.metric` -- ``ndcg_float``, ``map``, ``recall``, ``precision``,
+  ``success``, ``mrr``, ``recall_cap`` -- are scored by their own function, so each keeps the one tie rule it
+  publishes and the protocol's tie rule does not reach it.
+
+Another metric is one class in a package that publishes it under the group::
 
     [project.entry-points."rcp.metrics"]
-    map = "my_package.metrics:MeanAveragePrecision"
+    toy_metric = "my_package.metrics:MeanAveragePrecision"
 
 The class subclasses :class:`Metric`, sets ``name`` and ``k_required``, and implements
 :meth:`Metric.score`. It is scored **per query** with the dataset's qrels, the protocol (so the tie rule and the
@@ -14,9 +27,21 @@ pool restriction stay :mod:`rcp_core`'s) and the judged pool; it returns a value
 that does is scored at every requested ``k``; one that does not is scored once, at ``k=0`` ("no cutoff").
 
 The lookup is :mod:`rcp.support.entrypoints`'s one policy: a name provided by more than one installed
-distribution is refused, naming the providers. The shipped three are entries of the group too (synthesised here,
+distribution is refused, naming the providers. The shipped ten are entries of the group too (synthesised here,
 because they ship inside this package), so a plugin that publishes ``rcp_ndcg`` is refused by the same policy rather
 than silently replacing the built-in.
+
+Three metrics of :mod:`rcp_core.metric` are **not** members of this registry, because the seam has no input for
+them. They are public there and reachable by import, and no ``--metric`` names them:
+
+* :func:`rcp_core.metric.hole` reads the corpus-wide annotated set (the union of every qrel's document ids),
+  which one query's labels do not carry;
+* :func:`rcp_core.metric.paired_accuracy` reads ``pair_groups``, the two queries of each group, which
+  :func:`rcp.eval.evaluate` does not take;
+* :func:`rcp_core.metric.coverage` reads ``{item_id: chosen_probability}``, neither a qrels nor a ranking.
+
+:func:`rcp_core.metric.per_query_ndcg` is not a fourth: it is the batch form of ``ndcg_float`` -- one list of
+per-query values per dataset, and those values are the rows ``ndcg_float`` produces.
 
 A caller reads this module through :mod:`rcp.eval`, which re-exports :data:`METRICS`, :data:`METRICS_GROUP`,
 :class:`Metric`, :func:`metric_class` and :func:`registered_metrics`. It is not a module of its own in
@@ -26,11 +51,13 @@ A caller reads this module through :mod:`rcp.eval`, which re-exports :data:`METR
 from __future__ import annotations
 
 import abc
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
+from functools import partial
 from importlib.metadata import EntryPoint, entry_points
 from typing import ClassVar
 
-from rcp_core.protocol import MetricName, Protocol, score_query
+from rcp_core import metric as core_metric
+from rcp_core.protocol import MetricName, Protocol, candidate_docs, score_query
 
 from rcp.errors import ConfigError
 from rcp.support.entrypoints import load_entry_point, provider_of, registered_names
@@ -38,8 +65,20 @@ from rcp.support.entrypoints import load_entry_point, provider_of, registered_na
 METRICS_GROUP = "rcp.metrics"
 """The entry-point group a metric plugin publishes its class under."""
 
-METRICS: tuple[MetricName, ...] = ("rcp_ndcg", "qrel_ndcg", "count_ndcg")
-"""The shipped metrics, and the registry's first members (``rcp.eval.METRICS``)."""
+METRICS: tuple[str, ...] = (
+    "rcp_ndcg",
+    "qrel_ndcg",
+    "count_ndcg",
+    "ndcg_float",
+    "map",
+    "recall",
+    "precision",
+    "success",
+    "mrr",
+    "recall_cap",
+)
+"""The shipped metrics, and the registry's first members (``rcp.eval.METRICS``): the three nDCGs, then the
+seven corpus metrics of :mod:`rcp_core.metric` whose value is one query's."""
 
 
 class Metric(abc.ABC):
@@ -137,11 +176,163 @@ class CountNdcg(_ShippedNdcg):
     metric = "count_ndcg"
 
 
-_SHIPPED: tuple[type[Metric], ...] = (RcpNdcg, QrelNdcg, CountNdcg)
+class _CorpusMetric(Metric):
+    """One corpus metric of :mod:`rcp_core.metric`, scored on one query.
+
+    The arithmetic is the corpus function's, called on a one-query corpus, so a metric has one body and the seam
+    cannot disagree with :mod:`rcp_core.metric` about a query. ``protocol`` supplies the entering documents
+    (:func:`rcp_core.protocol.candidate_docs`: the pool restriction and the exclusions); the order among them is
+    the metric's own tie rule, never the protocol's.
+
+    The mean is over the dataset's labelled queries: a labelled query the run does not rank is scored ``0.0``,
+    where the standalone function's own denominator is the queries the run carries. A query is never undefined
+    for these metrics -- one with no relevant document scores ``0.0`` and stays in the mean.
+    """
+
+    function: ClassVar[Callable[..., float]]
+    """The ``rcp_core.metric`` function: ``function(qrels, results, k=k)``, one query on each side."""
+
+    def score(
+        self,
+        query: str,
+        ranking: Mapping[str, float],
+        labels: Mapping[str, float],
+        *,
+        protocol: Protocol,
+        k: int,
+        candidates: Sequence[str] | None = None,
+        excluded: Collection[str] = (),
+    ) -> float | None:
+        entering = candidate_docs(protocol, ranking, candidates=candidates, excluded=excluded, query_id=query)
+        ordered = {doc_id: ranking[doc_id] for doc_id in entering}
+        return self.function({query: labels}, {query: ordered}, k=k)
+
+
+class NdcgFloat(_CorpusMetric):
+    """``ndcg_float``: nDCG@k over continuous qrels, averaged over the evaluated queries.
+
+    Equal scores are credited the mean gain of their equal-score class (``group_mean``), the gain is the float
+    qrel itself -- finite and at least 0 -- and the ideal DCG is the query's whole float-qrel set. A query with
+    no positive qrel scores 0.0 and stays in the mean.
+
+    Raises:
+        ValueError: ``k`` is not positive, a grade is not finite or is negative, or a score is not finite.
+    """
+
+    name = "ndcg_float"
+    function = partial(core_metric.ndcg_float)
+
+
+class Map(_CorpusMetric):
+    """``map``: MAP@k, averaged over the evaluated queries.
+
+    Equal scores are ordered by document id, descending (``doc_id_desc``), and a document is relevant when its
+    qrel grade is above 0. The per-query denominator is ``|R_q|``, the positives in the query's whole qrels,
+    never capped at ``k``: MAP@k is below 1.0 when the query has more positives than ``k``. A query with no
+    relevant document scores 0.0 and stays in the mean.
+
+    Raises:
+        ValueError: ``k`` is not positive, a grade is not finite or is negative, or a score is not finite.
+    """
+
+    name = "map"
+    function = partial(core_metric.map)
+
+
+class Recall(_CorpusMetric):
+    """``recall``: Recall@k, averaged over the evaluated queries.
+
+    Equal scores are ordered by document id, descending (``doc_id_desc``), and a document is relevant when its
+    qrel grade is above 0. The denominator is ``|R_q|``, the positives in the query's whole qrels, so a run
+    shorter than the positives cannot reach 1.0. A query with no relevant document scores 0.0 and stays in the
+    mean.
+
+    Raises:
+        ValueError: ``k`` is not positive, a grade is not finite or is negative, or a score is not finite.
+    """
+
+    name = "recall"
+    function = partial(core_metric.recall)
+
+
+class Precision(_CorpusMetric):
+    """``precision``: P@k, averaged over the evaluated queries.
+
+    Equal scores are ordered by document id, descending (``doc_id_desc``), and the denominator is the requested
+    ``k``, not the ranking's length, so a ranking shorter than ``k`` cannot reach 1.0 (the ``pytrec_eval``
+    ``P_cut`` definition). A query with no relevant document scores 0.0 and stays in the mean.
+
+    Raises:
+        ValueError: ``k`` is not positive, a grade is not finite or is negative, or a score is not finite.
+    """
+
+    name = "precision"
+    function = partial(core_metric.precision)
+
+
+class Success(_CorpusMetric):
+    """``success``: success@k, averaged over the evaluated queries.
+
+    Equal scores are ordered by document id, descending (``doc_id_desc``), and a query scores 1.0 when any
+    document in its top k has a qrel grade above 0. The per-query value is binary, so no partial credit can hide
+    a wrong tie order: the rule matters only when a tie straddles the cutoff. A query with no relevant document
+    scores 0.0 and stays in the mean.
+
+    Raises:
+        ValueError: ``k`` is not positive, a grade is not finite or is negative, or a score is not finite.
+    """
+
+    name = "success"
+    function = partial(core_metric.success)
+
+
+class Mrr(_CorpusMetric):
+    """``mrr``: MRR@k, the mean of ``1 / rank`` of the first relevant document.
+
+    Equal scores keep the run's insertion order (``input_order``), and a document is relevant when its qrel
+    grade is above 0. This is the metric the tie rule moves first: a tie at the top moves the first hit from
+    rank 1 to rank 2. A hit is found or it is not, so a ``k`` deeper than the run changes nothing.
+
+    Raises:
+        ValueError: ``k`` is not positive, a grade is not finite or is negative, or a score is not finite.
+    """
+
+    name = "mrr"
+    function = partial(core_metric.mrr)
+
+
+class RecallCap(_CorpusMetric):
+    """``recall_cap``: R_cap@k, the depth-capped recall of BEIR's ``custom_metrics``.
+
+    Equal scores keep the run's insertion order (``input_order``), and the denominator is the smaller of the
+    positive count and ``k``: a run of ``k`` documents cannot retrieve more than ``k`` positives, so the value
+    stays at 1.0 when the query has more positives than ``k`` -- the one difference from :class:`Recall`. A
+    query with no relevant document has no denominator, scores 0.0 and stays in the mean.
+
+    Raises:
+        ValueError: ``k`` is not positive, a grade is not finite or is negative, or a score is not finite.
+    """
+
+    name = "recall_cap"
+    function = partial(core_metric.recall_cap)
+
+
+_SHIPPED: tuple[type[Metric], ...] = (
+    RcpNdcg,
+    QrelNdcg,
+    CountNdcg,
+    NdcgFloat,
+    Map,
+    Recall,
+    Precision,
+    Success,
+    Mrr,
+    RecallCap,
+)
 
 
 def _shipped_entries() -> tuple[EntryPoint, ...]:
-    """The shipped three as entries of the group, so one lookup covers built-ins and plugins alike."""
+    """The shipped ten as entries of the group, so one lookup covers built-ins and plugins alike."""
     return tuple(
         EntryPoint(name=metric.name, value=f"{metric.__module__}:{metric.__qualname__}", group=METRICS_GROUP)
         for metric in _SHIPPED
@@ -149,12 +340,12 @@ def _shipped_entries() -> tuple[EntryPoint, ...]:
 
 
 def _entries() -> tuple[EntryPoint, ...]:
-    """The group's entries: the shipped three, then the installed plugins."""
+    """The group's entries: the shipped ten, then the installed plugins."""
     return (*_shipped_entries(), *entry_points(group=METRICS_GROUP))
 
 
 def registered_metrics() -> tuple[str, ...]:
-    """The metric names: the shipped three first, then the installed plugins, sorted.
+    """The metric names: the shipped ten first, then the installed plugins, sorted.
 
     A plugin's name that a shipped metric already holds is left out of this listing, so every name appears
     once: choosing that name is refused by :func:`metric_class`'s duplicate-name policy instead.

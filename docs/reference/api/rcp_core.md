@@ -437,6 +437,14 @@ function — The Count-nDCG gain of one document: its share of passed rubric cri
 count_gain(passes: Sequence[int], placements: int) -> float
 ```
 
+## `coverage`
+
+function — The share of answered items whose chosen probability reaches ``threshold``.
+
+```text
+coverage(chosen: Mapping[str, float], *, threshold: float = 0.9) -> float
+```
+
 ## `dcg`
 
 function — ``DCG@k = sum_{r=1..k} gain(r) / log2(r + 1)`` of gains already in rank order (best first).
@@ -453,12 +461,52 @@ function — The RCP gain ``g(theta) = sum_c gamma_c * P(C_c | theta) / sum_c ga
 gain(theta: float | ArrayLike, items: Any) -> float | NDArray[np.float64]
 ```
 
+## `hole`
+
+function — hole@k over the ``all-qrels`` denominator: the share of the top k that the qrels never annotated.
+
+```text
+hole(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float
+```
+
+## `map`
+
+function — MAP@k averaged over the evaluated queries: the mean of the precisions at every relevant rank.
+
+```text
+map(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float
+```
+
+## `mrr`
+
+function — MRR@k over the ``all-qrels`` denominator: the mean of ``1 / rank`` of the first relevant document.
+
+```text
+mrr(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float
+```
+
 ## `ndcg`
 
 function — nDCG@k with linear gains.
 
 ```text
 ndcg(scores: Mapping[str, float] | Sequence[str], gains: Mapping[str, float], *, k: int = 10, ties: TieRule = 'group_mean', ideal: Iterable[float] | None = None) -> float
+```
+
+## `ndcg_float`
+
+function — nDCG@k over continuous qrels, averaged over the evaluated queries.
+
+```text
+ndcg_float(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float
+```
+
+## `paired_accuracy`
+
+function — The share of two-query groups in which each query scores its own positive above the other's.
+
+```text
+paired_accuracy(qrels: _PerQuery, results: _PerQuery, pair_groups: Mapping[str, str]) -> float
 ```
 
 ## `pass_probabilities`
@@ -469,6 +517,22 @@ function — Per-criterion pass probabilities at a calibrated ability.
 pass_probabilities(theta: float | ArrayLike, items: Any) -> NDArray[np.float64]
 ```
 
+## `per_query_ndcg`
+
+function — Every dataset's per-query nDCG@k, as ``{dataset: [value, ...]}``; this function never takes a mean.
+
+```text
+per_query_ndcg(qrels: Mapping[str, _PerQuery], results: Mapping[str, _PerQuery], *, k: int = 10) -> dict[str, list[float]]
+```
+
+## `precision`
+
+function — P@k averaged over the evaluated queries.
+
+```text
+precision(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float
+```
+
 ## `qrel_gain`
 
 function — The gain of a human grade.
@@ -477,10 +541,34 @@ function — The gain of a human grade.
 qrel_gain(grade: float, scheme: Literal['linear', 'exponential'] = 'linear') -> float
 ```
 
+## `recall`
+
+function — Recall@k averaged over the evaluated queries: the share of the query's positives inside the top k.
+
+```text
+recall(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float
+```
+
+## `recall_cap`
+
+function — R_cap@k over the ``all-qrels`` denominator: the depth-capped recall of BEIR's ``custom_metrics``.
+
+```text
+recall_cap(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float
+```
+
 ## `score_query`
 
 function — One query's nDCG@k under a protocol.
 
 ```text
 score_query(scores: Mapping[str, float], gains: Mapping[str, float], *, protocol: str | Protocol, k: int = 10, metric: MetricName = 'rcp_ndcg', candidates: Sequence[str] | None = None, excluded: Collection[str] = [], query_id: str | None = None) -> float
+```
+
+## `success`
+
+function — success@k averaged over the evaluated queries: the share of queries with a hit anywhere in their top k.
+
+```text
+success(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float
 ```

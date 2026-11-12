@@ -2,8 +2,10 @@
 
 They are the seam's test doubles: one metric that takes a cutoff (MAP), one that ignores it (MRR), one whose
 value is undefined (NaN), one that breaks the return contract (a string), and one that takes a shipped
-metric's name (the duplicate-name policy refuses it). ``install_metrics`` points the registry's
-``entry_points`` at the entries a test passes, the way ``packages/rcp/tests/results/_sinks.py`` does for sinks.
+metric's name (the duplicate-name policy refuses it). Their names are plainly not metrics -- ``toy_metric``,
+``toy_metric_no_cutoff`` -- because a name a shipped metric holds is refused, so a double cannot borrow one.
+``install_metrics`` points the registry's ``entry_points`` at the entries a test passes, the way
+``packages/rcp/tests/results/_sinks.py`` does for sinks.
 """
 
 from __future__ import annotations
@@ -40,7 +42,7 @@ def _ranking(
 class MeanAveragePrecision(Metric):
     """MAP@k over the protocol's ranking, binary relevance from the qrel grades."""
 
-    name = "map"
+    name = "toy_metric"
     k_required = True
 
     def score(
@@ -69,7 +71,7 @@ class MeanAveragePrecision(Metric):
 class MeanReciprocalRank(Metric):
     """MRR: the reciprocal rank of the first relevant document; it takes no cutoff."""
 
-    name = "mrr"
+    name = "toy_metric_no_cutoff"
     k_required = False
 
     def score(

@@ -9955,7 +9955,14 @@
         "value": [
           "rcp_ndcg",
           "qrel_ndcg",
-          "count_ndcg"
+          "count_ndcg",
+          "ndcg_float",
+          "map",
+          "recall",
+          "precision",
+          "success",
+          "mrr",
+          "recall_cap"
         ]
       },
       "METRICS_GROUP": {
@@ -25054,6 +25061,27 @@
           }
         ]
       },
+      "coverage": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Mapping[str, float]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "chosen"
+          },
+          {
+            "annotation": "float",
+            "default": 0.9,
+            "kind": "keyword_only",
+            "name": "threshold"
+          },
+          {
+            "returns": "float"
+          }
+        ]
+      },
       "dcg": {
         "defined_in": "rcp_core.metric",
         "kind": "function",
@@ -25096,6 +25124,87 @@
           }
         ]
       },
+      "hole": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "qrels"
+          },
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "results"
+          },
+          {
+            "annotation": "int",
+            "default": 10,
+            "kind": "keyword_only",
+            "name": "k"
+          },
+          {
+            "returns": "float"
+          }
+        ]
+      },
+      "map": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "qrels"
+          },
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "results"
+          },
+          {
+            "annotation": "int",
+            "default": 10,
+            "kind": "keyword_only",
+            "name": "k"
+          },
+          {
+            "returns": "float"
+          }
+        ]
+      },
+      "mrr": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "qrels"
+          },
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "results"
+          },
+          {
+            "annotation": "int",
+            "default": 10,
+            "kind": "keyword_only",
+            "name": "k"
+          },
+          {
+            "returns": "float"
+          }
+        ]
+      },
       "ndcg": {
         "defined_in": "rcp_core.metric",
         "kind": "function",
@@ -25135,6 +25244,60 @@
           }
         ]
       },
+      "ndcg_float": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "qrels"
+          },
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "results"
+          },
+          {
+            "annotation": "int",
+            "default": 10,
+            "kind": "keyword_only",
+            "name": "k"
+          },
+          {
+            "returns": "float"
+          }
+        ]
+      },
+      "paired_accuracy": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "qrels"
+          },
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "results"
+          },
+          {
+            "annotation": "Mapping[str, str]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "pair_groups"
+          },
+          {
+            "returns": "float"
+          }
+        ]
+      },
       "pass_probabilities": {
         "defined_in": "rcp_core.gain",
         "kind": "function",
@@ -25156,6 +25319,60 @@
           }
         ]
       },
+      "per_query_ndcg": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Mapping[str, _PerQuery]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "qrels"
+          },
+          {
+            "annotation": "Mapping[str, _PerQuery]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "results"
+          },
+          {
+            "annotation": "int",
+            "default": 10,
+            "kind": "keyword_only",
+            "name": "k"
+          },
+          {
+            "returns": "dict[str, list[float]]"
+          }
+        ]
+      },
+      "precision": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "qrels"
+          },
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "results"
+          },
+          {
+            "annotation": "int",
+            "default": 10,
+            "kind": "keyword_only",
+            "name": "k"
+          },
+          {
+            "returns": "float"
+          }
+        ]
+      },
       "qrel_gain": {
         "defined_in": "rcp_core.gain",
         "kind": "function",
@@ -25171,6 +25388,60 @@
             "default": "linear",
             "kind": "positional_or_keyword",
             "name": "scheme"
+          },
+          {
+            "returns": "float"
+          }
+        ]
+      },
+      "recall": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "qrels"
+          },
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "results"
+          },
+          {
+            "annotation": "int",
+            "default": 10,
+            "kind": "keyword_only",
+            "name": "k"
+          },
+          {
+            "returns": "float"
+          }
+        ]
+      },
+      "recall_cap": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "qrels"
+          },
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "results"
+          },
+          {
+            "annotation": "int",
+            "default": 10,
+            "kind": "keyword_only",
+            "name": "k"
           },
           {
             "returns": "float"
@@ -25228,6 +25499,33 @@
             "default": null,
             "kind": "keyword_only",
             "name": "query_id"
+          },
+          {
+            "returns": "float"
+          }
+        ]
+      },
+      "success": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "qrels"
+          },
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "results"
+          },
+          {
+            "annotation": "int",
+            "default": 10,
+            "kind": "keyword_only",
+            "name": "k"
           },
           {
             "returns": "float"
@@ -26060,6 +26358,27 @@
           "input_order"
         ]
       },
+      "coverage": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Mapping[str, float]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "chosen"
+          },
+          {
+            "annotation": "float",
+            "default": 0.9,
+            "kind": "keyword_only",
+            "name": "threshold"
+          },
+          {
+            "returns": "float"
+          }
+        ]
+      },
       "dcg": {
         "defined_in": "rcp_core.metric",
         "kind": "function",
@@ -26096,6 +26415,33 @@
           }
         ]
       },
+      "hole": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "qrels"
+          },
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "results"
+          },
+          {
+            "annotation": "int",
+            "default": 10,
+            "kind": "keyword_only",
+            "name": "k"
+          },
+          {
+            "returns": "float"
+          }
+        ]
+      },
       "ideal_dcg": {
         "defined_in": "rcp_core.metric",
         "kind": "function",
@@ -26110,6 +26456,60 @@
             "annotation": "int",
             "default": "<required>",
             "kind": "positional_or_keyword",
+            "name": "k"
+          },
+          {
+            "returns": "float"
+          }
+        ]
+      },
+      "map": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "qrels"
+          },
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "results"
+          },
+          {
+            "annotation": "int",
+            "default": 10,
+            "kind": "keyword_only",
+            "name": "k"
+          },
+          {
+            "returns": "float"
+          }
+        ]
+      },
+      "mrr": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "qrels"
+          },
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "results"
+          },
+          {
+            "annotation": "int",
+            "default": 10,
+            "kind": "keyword_only",
             "name": "k"
           },
           {
@@ -26156,6 +26556,114 @@
           }
         ]
       },
+      "ndcg_float": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "qrels"
+          },
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "results"
+          },
+          {
+            "annotation": "int",
+            "default": 10,
+            "kind": "keyword_only",
+            "name": "k"
+          },
+          {
+            "returns": "float"
+          }
+        ]
+      },
+      "paired_accuracy": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "qrels"
+          },
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "results"
+          },
+          {
+            "annotation": "Mapping[str, str]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "pair_groups"
+          },
+          {
+            "returns": "float"
+          }
+        ]
+      },
+      "per_query_ndcg": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Mapping[str, _PerQuery]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "qrels"
+          },
+          {
+            "annotation": "Mapping[str, _PerQuery]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "results"
+          },
+          {
+            "annotation": "int",
+            "default": 10,
+            "kind": "keyword_only",
+            "name": "k"
+          },
+          {
+            "returns": "dict[str, list[float]]"
+          }
+        ]
+      },
+      "precision": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "qrels"
+          },
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "results"
+          },
+          {
+            "annotation": "int",
+            "default": 10,
+            "kind": "keyword_only",
+            "name": "k"
+          },
+          {
+            "returns": "float"
+          }
+        ]
+      },
       "rank_by_score": {
         "defined_in": "rcp_core.metric",
         "kind": "function",
@@ -26174,6 +26682,87 @@
           },
           {
             "returns": "list[str]"
+          }
+        ]
+      },
+      "recall": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "qrels"
+          },
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "results"
+          },
+          {
+            "annotation": "int",
+            "default": 10,
+            "kind": "keyword_only",
+            "name": "k"
+          },
+          {
+            "returns": "float"
+          }
+        ]
+      },
+      "recall_cap": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "qrels"
+          },
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "results"
+          },
+          {
+            "annotation": "int",
+            "default": 10,
+            "kind": "keyword_only",
+            "name": "k"
+          },
+          {
+            "returns": "float"
+          }
+        ]
+      },
+      "success": {
+        "defined_in": "rcp_core.metric",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "qrels"
+          },
+          {
+            "annotation": "_PerQuery",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "results"
+          },
+          {
+            "annotation": "int",
+            "default": 10,
+            "kind": "keyword_only",
+            "name": "k"
+          },
+          {
+            "returns": "float"
           }
         ]
       },

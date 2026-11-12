@@ -1,8 +1,8 @@
 """Evaluation: score rankings, compare systems, explain a query.
 
-* :func:`evaluate` -- RCP-nDCG, qrel-nDCG and Count-nDCG (or a registered plugin's metric) of
-  :class:`~rcp.data.Rankings` under a scoring protocol, as an :class:`EvalReport` (per query, per dataset,
-  summary with bootstrap intervals).
+* :func:`evaluate` -- the shipped metrics (RCP-nDCG, qrel-nDCG, Count-nDCG and the seven corpus metrics of
+  :mod:`rcp_core.metric` that score one query), or a registered plugin's, of :class:`~rcp.data.Rankings` under a
+  scoring protocol, as an :class:`EvalReport` (per query, per dataset, summary with bootstrap intervals).
 * :func:`compare` -- system pairs: delta (B minus A), paired t-test, query-clustered bootstrap interval, and the
   queries where RCP-nDCG and qrel-nDCG disagree, as a :class:`Comparison`.
 * :func:`sensitivity` -- the share of system pairs a metric separates.
@@ -10,7 +10,7 @@
   probabilities, and the selection/ordering split of the gaps, as a :class:`QueryExplanation`.
 
 All metric arithmetic is :mod:`rcp_core`'s. A metric the package does not ship is one class published under
-the ``rcp.metrics`` entry-point group (:mod:`rcp.eval.metrics`, :class:`Metric`); the shipped three are the
+the ``rcp.metrics`` entry-point group (:mod:`rcp.eval.metrics`, :class:`Metric`); the shipped ten are the
 registry's first members. The MTEB tasks of the public suites are in :mod:`rcp.eval.mteb` (extra ``mteb``).
 """
 

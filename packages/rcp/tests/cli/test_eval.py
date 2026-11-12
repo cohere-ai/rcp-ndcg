@@ -12,6 +12,7 @@ from click.testing import CliRunner
 
 from rcp.cli.eval import eval_group
 from rcp.data import SUITES, Rankings
+from rcp.eval import registered_metrics
 
 VIDORE_REPO = SUITES["vidore"].repo
 SHA = "4" * 40
@@ -612,20 +613,20 @@ def test_eval_score_help_lists_the_registered_metric_plugins(monkeypatch: pytest
     """``--metric``'s help is computed when it is printed, so an installed plugin is listed by name."""
     from tests._helpers._metrics import install_metrics, metric_entry
 
-    install_metrics(monkeypatch, metric_entry("map", "tests._helpers._metrics:MeanAveragePrecision"))
+    install_metrics(monkeypatch, metric_entry("toy_metric", "tests._helpers._metrics:MeanAveragePrecision"))
 
     result = CliRunner().invoke(eval_group, ["score", "--help"])
 
     assert result.exit_code == 0, result.output
     assert "--metric" in result.output
-    assert "Registered: rcp_ndcg, qrel_ndcg, count_ndcg, map." in " ".join(result.output.split())
+    assert f"Registered: {', '.join(registered_metrics())}." in " ".join(result.output.split())
 
 
 def test_metric_scores_a_plugin_alongside_the_shipped_metrics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """``--metric map`` adds the plugin to ``--metrics`` and its value is in the summary."""
+    """``--metric toy_metric`` adds the plugin to ``--metrics`` and its value is in the summary."""
     from tests._helpers._metrics import install_metrics, metric_entry
 
-    install_metrics(monkeypatch, metric_entry("map", "tests._helpers._metrics:MeanAveragePrecision"))
+    install_metrics(monkeypatch, metric_entry("toy_metric", "tests._helpers._metrics:MeanAveragePrecision"))
     path = tmp_path / "rows.jsonl"
     row = {"query_id": "q1", "query": "q", "doc_ids": ["a", "b", "c"], "docs": ["A", "B", "C"],
            "qrels": {"a": 1.0, "b": 0.0, "c": 1.0}}  # fmt: skip
@@ -635,12 +636,32 @@ def test_metric_scores_a_plugin_alongside_the_shipped_metrics(tmp_path: Path, mo
 
     document = _invoke(
         "score", "--rankings", str(rankings), "--dataset", f"jsonl:{path}",
-        "--metrics", "qrel_ndcg", "--metric", "map", "--k", "2",
+        "--metrics", "qrel_ndcg", "--metric", "toy_metric", "--k", "2",
     )  # fmt: skip
 
     assert document["exit_code"] == 0, document
-    assert set(document["data"]["metrics"]) == {"qrel_ndcg", "map"}
-    assert _summary(document, "map", 2, "mine") == pytest.approx(1.0)
+    assert set(document["data"]["metrics"]) == {"qrel_ndcg", "toy_metric"}
+    assert _summary(document, "toy_metric", 2, "mine") == pytest.approx(1.0)
+
+
+def test_metric_scores_a_shipped_corpus_metric_by_name(tmp_path: Path) -> None:
+    """``--metric map`` is one of the shipped names, with no plugin installed: MAP@1 divides by the query's two
+    positives, not by ``k`` (the plugin double above divides by ``min(|R|, k)``), so the value is 0.5."""
+    path = tmp_path / "rows.jsonl"
+    row = {"query_id": "q1", "query": "q", "doc_ids": ["a", "b", "c"], "docs": ["A", "B", "C"],
+           "qrels": {"a": 1.0, "b": 0.0, "c": 1.0}}  # fmt: skip
+    path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+    rankings = tmp_path / "run.jsonl"
+    Rankings.from_scores({"q1": {"a": 3.0, "c": 2.0, "b": 1.0}}, system="mine").save(rankings)
+
+    document = _invoke(
+        "score", "--rankings", str(rankings), "--dataset", f"jsonl:{path}",
+        "--metrics", "qrel_ndcg", "--metric", "map", "--k", "1",
+    )  # fmt: skip
+
+    assert document["exit_code"] == 0, document
+    assert document["data"]["metrics"] == ["qrel_ndcg", "map"]
+    assert _summary(document, "map", 1, "mine") == pytest.approx(0.5), "one hit of two positives"
 
 
 def test_a_metric_given_twice_is_scored_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -667,10 +688,10 @@ def test_a_metric_given_twice_is_scored_once(tmp_path: Path, monkeypatch: pytest
 
 def test_compare_reaches_a_metric_a_plugin_scored(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """``compare --metric`` names any metric the report holds, a plugin's included: ``compare()`` already takes
-    a name, so a report scored ``--metric map`` must compare on the command line too."""
+    a name, so a report scored ``--metric toy_metric`` must compare on the command line too."""
     from tests._helpers._metrics import install_metrics, metric_entry
 
-    install_metrics(monkeypatch, metric_entry("map", "tests._helpers._metrics:MeanAveragePrecision"))
+    install_metrics(monkeypatch, metric_entry("toy_metric", "tests._helpers._metrics:MeanAveragePrecision"))
     path = tmp_path / "rows.jsonl"
     row = {"query_id": "q1", "query": "q", "doc_ids": ["a", "b", "c"], "docs": ["A", "B", "C"],
            "qrels": {"a": 1.0, "b": 0.0, "c": 1.0}}  # fmt: skip
@@ -685,14 +706,14 @@ def test_compare_reaches_a_metric_a_plugin_scored(tmp_path: Path, monkeypatch: p
     report = tmp_path / "report.json"
     scored = _invoke(
         "score", "--rankings", str(rankings), "--dataset", f"jsonl:{path}",
-        "--metrics", "qrel_ndcg", "--metric", "map", "--k", "2", "--out", str(report),
+        "--metrics", "qrel_ndcg", "--metric", "toy_metric", "--k", "2", "--out", str(report),
     )  # fmt: skip
     assert scored["exit_code"] == 0, scored
 
-    compared = _invoke("compare", "--report", str(report), "--metric", "map", "--bootstrap", "10")
+    compared = _invoke("compare", "--report", str(report), "--metric", "toy_metric", "--bootstrap", "10")
 
     assert compared["exit_code"] == 0, compared
-    assert compared["data"]["metric"] == "map"
+    assert compared["data"]["metric"] == "toy_metric"
 
     # A name the report does not hold is a typed DATA error naming what it has, never a silent empty table.
     unknown = _invoke("compare", "--report", str(report), "--metric", "nope")

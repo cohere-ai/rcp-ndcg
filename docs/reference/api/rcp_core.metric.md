@@ -13,6 +13,14 @@ literal_alias — How documents with equal scores are ordered when a score mappi
 TieRule = 'doc_id_desc' | 'group_mean' | 'input_order'
 ```
 
+## `coverage`
+
+function — The share of answered items whose chosen probability reaches ``threshold``.
+
+```text
+coverage(chosen: Mapping[str, float], *, threshold: float = 0.9) -> float
+```
+
 ## `dcg`
 
 function — ``DCG@k = sum_{r=1..k} gain(r) / log2(r + 1)`` of gains already in rank order (best first).
@@ -29,12 +37,36 @@ function — The nDCG position discount ``1 / log2(rank + 1)``; ``rank`` counts 
 discount(rank: int) -> float
 ```
 
+## `hole`
+
+function — hole@k over the ``all-qrels`` denominator: the share of the top k that the qrels never annotated.
+
+```text
+hole(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float
+```
+
 ## `ideal_dcg`
 
 function — The DCG@k of ``gains`` sorted best first: the normaliser of :func:`ndcg`.
 
 ```text
 ideal_dcg(gains: Iterable[float], k: int) -> float
+```
+
+## `map`
+
+function — MAP@k averaged over the evaluated queries: the mean of the precisions at every relevant rank.
+
+```text
+map(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float
+```
+
+## `mrr`
+
+function — MRR@k over the ``all-qrels`` denominator: the mean of ``1 / rank`` of the first relevant document.
+
+```text
+mrr(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float
 ```
 
 ## `ndcg`
@@ -45,12 +77,68 @@ function — nDCG@k with linear gains.
 ndcg(scores: Mapping[str, float] | Sequence[str], gains: Mapping[str, float], *, k: int = 10, ties: TieRule = 'group_mean', ideal: Iterable[float] | None = None) -> float
 ```
 
+## `ndcg_float`
+
+function — nDCG@k over continuous qrels, averaged over the evaluated queries.
+
+```text
+ndcg_float(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float
+```
+
+## `paired_accuracy`
+
+function — The share of two-query groups in which each query scores its own positive above the other's.
+
+```text
+paired_accuracy(qrels: _PerQuery, results: _PerQuery, pair_groups: Mapping[str, str]) -> float
+```
+
+## `per_query_ndcg`
+
+function — Every dataset's per-query nDCG@k, as ``{dataset: [value, ...]}``; this function never takes a mean.
+
+```text
+per_query_ndcg(qrels: Mapping[str, _PerQuery], results: Mapping[str, _PerQuery], *, k: int = 10) -> dict[str, list[float]]
+```
+
+## `precision`
+
+function — P@k averaged over the evaluated queries.
+
+```text
+precision(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float
+```
+
 ## `rank_by_score`
 
 function — Order document ids by decreasing score with a deterministic tie-break.
 
 ```text
 rank_by_score(scores: Mapping[str, float], *, ties: Literal['doc_id_desc', 'input_order'] = 'doc_id_desc') -> list[str]
+```
+
+## `recall`
+
+function — Recall@k averaged over the evaluated queries: the share of the query's positives inside the top k.
+
+```text
+recall(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float
+```
+
+## `recall_cap`
+
+function — R_cap@k over the ``all-qrels`` denominator: the depth-capped recall of BEIR's ``custom_metrics``.
+
+```text
+recall_cap(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float
+```
+
+## `success`
+
+function — success@k averaged over the evaluated queries: the share of queries with a hit anywhere in their top k.
+
+```text
+success(qrels: _PerQuery, results: _PerQuery, *, k: int = 10) -> float
 ```
 
 ## `tie_groups`

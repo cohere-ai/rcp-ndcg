@@ -24,6 +24,37 @@ incompatibly, independently of the package version. `rcp-ndcg.<name>.v1` is the 
 every reader still accepts it. All four distributions carry the tag version; `cohere-rcp` pins
 `cohere-rcp-core==<version>`; `cohere-rcp-vllm` pins no sibling; `rcp-test` is never published.
 
+## Unreleased
+
+### Public surface
+
+`rcp_core.metric` supplies eleven metrics for the evaluation programme. Each metric publishes one tie rule. A
+caller cannot select the tie rule.
+
+| Metric | Tie rule |
+|---|---|
+| `ndcg_float` | `group_mean`. Each document of an equal-score class gets the mean gain of the class. |
+| `per_query_ndcg` | `group_mean`. It uses the rule of `ndcg_float`, and it gives one value per query. |
+| `map` | `doc_id_desc`. The document with the higher id comes first. |
+| `recall` | `doc_id_desc`. |
+| `precision` | `doc_id_desc`. |
+| `success` | `doc_id_desc`. |
+| `mrr` | `input_order`. Equal scores keep the insertion order of the run. |
+| `recall_cap` | `input_order`. |
+| `hole` | `input_order`. |
+| `paired_accuracy` | None. The metric forms no ranking. The comparison is strict (`>`). |
+| `coverage` | None. The metric forms no ranking. The comparison includes the threshold (`>=`). |
+
+Every metric refuses an undefined denominator. The metric raises `ValueError` and does not return `0.0`. The
+same rule covers an empty qrels, no query in both the qrels and the run, and no pair for `paired_accuracy`.
+
+`rcp.eval` registers the seven metrics whose value belongs to one query: `ndcg_float`, `map`, `recall`,
+`precision`, `success`, `mrr` and `recall_cap`. Select one with `rcp eval score --metric NAME` or with
+`evaluate(metrics=[...])`. An unknown name raises an error that lists the registered metrics.
+
+`hole`, `paired_accuracy` and `coverage` need an input that the metric seam does not supply. They are public in
+`rcp_core.metric` only, and no metric name selects them.
+
 ## 0.0.1 — 2026-11-11
 
 The engine pin is vLLM v0.33.0 throughout this release. An entry that names an older release names the code a

@@ -360,7 +360,7 @@ def test_bad_arguments_are_config_errors() -> None:
         ({"suite": "nanobeir", "dataset": _dataset()}, "not both"),
         ({}, "suite= or dataset="),
         ({"dataset": _dataset(), "k": 0}, "positive"),
-        ({"dataset": _dataset(), "metrics": ["mrr"]}, "unknown metrics"),
+        ({"dataset": _dataset(), "metrics": ["toy_metric"]}, "unknown metrics"),
         ({"dataset": _dataset(), "protocol": "msmarco"}, "unknown protocol"),
     ):
         with pytest.raises(ConfigError, match=match):

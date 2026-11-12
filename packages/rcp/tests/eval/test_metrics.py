@@ -1,8 +1,12 @@
-"""The metric seam: the ``rcp.metrics`` group, the shipped three and the k rule.
+"""The metric seam: the ``rcp.metrics`` group, the shipped ten and the k rule.
 
-The shipped three stay the registry's first members and are scored through it, so a plugin and a built-in
+The shipped ten stay the registry's first members and are scored through it, so a plugin and a built-in
 resolve through one lookup and one duplicate-name policy. A plugin is scored on the dataset's qrels: at every
 requested cutoff when its ``k_required`` is true, once (at ``k=0``, "no cutoff") when it is false.
+
+The seven corpus metrics are selectable by name too, and each one's value is its ``rcp_core.metric`` function's,
+scored under the metric's own published tie rule rather than the protocol's. The three that need an input the
+seam does not carry are not names here.
 
 The last test pins the four shipped suites' reports byte for byte against the base tree's output
 (``fixtures/suite_reports/``), so the seam cannot move a number.
@@ -14,6 +18,7 @@ import json
 from pathlib import Path
 
 import pytest
+from rcp_core import metric as core_metric
 
 from rcp.data import Dataset, Rankings
 from rcp.errors import ConfigError, DataError
@@ -23,6 +28,27 @@ from tests._helpers._metrics import MeanAveragePrecision, install_metrics, metri
 FIXTURE = Path(__file__).resolve().parents[4] / "tests" / "_helpers" / "fixtures" / "paper_protocol_queries.json"
 GOLDEN = Path(__file__).parent / "fixtures" / "suite_reports"
 SUITES = ("nanobeir", "bright", "vidore", "trecdl")
+
+#: The seven corpus metrics of :mod:`rcp_core.metric` the seam scores: name -> the function it calls.
+CORPUS_METRICS = {
+    "ndcg_float": core_metric.ndcg_float,
+    "map": core_metric.map,
+    "recall": core_metric.recall,
+    "precision": core_metric.precision,
+    "success": core_metric.success,
+    "mrr": core_metric.mrr,
+    "recall_cap": core_metric.recall_cap,
+}
+
+#: The three the seam cannot score: each needs an input one query's labels and ranking do not carry.
+NOT_SEAM_METRICS = ("hole", "paired_accuracy", "coverage")
+
+#: The specification's corpus: ``q1``'s tie straddles ``k=2`` and ``q2``'s tie sits at the top.
+TIE_QRELS = {"q1": {"a": 2.0, "b": 1.0, "c": 0.0, "d": 1.0, "e": 0.0}, "q2": {"b": 1.0, "c": 1.0, "d": 0.0}}
+TIE_SCORES = {
+    "q1": {"a": 0.9, "b": 0.5, "c": 0.5, "d": 0.4, "e": 0.2},
+    "q2": {"a": 0.8, "b": 0.8, "c": 0.6, "d": 0.4, "e": 0.2},
+}
 
 
 def _fixture() -> tuple[Dataset, Rankings]:
@@ -41,50 +67,124 @@ def _fixture() -> tuple[Dataset, Rankings]:
     return dataset, rankings
 
 
-def test_the_shipped_three_start_the_registry(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_shipped_ten_start_the_registry(monkeypatch: pytest.MonkeyPatch) -> None:
     install_metrics(monkeypatch)
 
-    assert METRICS == ("rcp_ndcg", "qrel_ndcg", "count_ndcg")
+    assert METRICS == ("rcp_ndcg", "qrel_ndcg", "count_ndcg", *CORPUS_METRICS)
     assert registered_metrics() == METRICS, "the shipped tuple is the registry's start"
     for name in METRICS:
         assert issubclass(metric_class(name), Metric)
 
 
-def test_a_plugin_registers_and_scores_a_fixture(monkeypatch: pytest.MonkeyPatch) -> None:
-    install_metrics(monkeypatch, metric_entry("map", "tests._helpers._metrics:MeanAveragePrecision"))
-    dataset, rankings = _fixture()
+def test_a_shipped_corpus_metric_is_selectable_and_is_its_function_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each of the seven is a name in the registry, and its value is ``rcp_core.metric``'s own: one body."""
+    install_metrics(monkeypatch)
+    dataset = Dataset(name="toy", qrels=TIE_QRELS)
+    rankings = Rankings.from_scores(TIE_SCORES, system="tied")
 
-    assert registered_metrics() == (*METRICS, "map")
-    assert metric_class("map") is MeanAveragePrecision
+    report = evaluate(rankings, dataset=dataset, metrics=list(CORPUS_METRICS), k=[2], bootstrap=0)
+
+    assert report.metrics == list(CORPUS_METRICS)
+    for name, function in CORPUS_METRICS.items():
+        assert report.value("tied", name, k=2) == pytest.approx(function(TIE_QRELS, TIE_SCORES, k=2)), name
+
+
+def test_a_corpus_metric_keeps_its_own_tie_rule_under_another_protocol(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The protocol cannot choose a corpus metric's tie rule: ``map`` orders a tie by document id (0.4166...)
+    and ``mrr`` keeps the run's order (0.5), while the protocol's own rule is ``group_mean``."""
+    install_metrics(monkeypatch)
+    dataset = Dataset(name="toy", qrels=TIE_QRELS)
+    rankings = Rankings.from_scores(TIE_SCORES, system="tied")
+
+    report = evaluate(rankings, dataset=dataset, metrics=["map", "mrr"], protocol="plain", k=[1, 2], bootstrap=0)
+
+    assert report.protocol.ties == "group_mean", "the protocol's rule is the one neither metric may take"
+    assert report.value("tied", "map", k=2) == pytest.approx(0.41666666666666663)
+    assert report.value("tied", "map", k=2) != pytest.approx(0.5833333333333333), "that is the stable order"
+    assert report.value("tied", "mrr", k=1) == pytest.approx(0.5), "q2's tie keeps a before b: the hit is second"
+    assert report.value("tied", "mrr", k=1) != pytest.approx(1.0), "that is the document-id order"
+
+
+def test_a_labelled_query_the_run_does_not_rank_is_scored_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The seam's denominator is the dataset's labelled queries: an unranked one is 0.0 and the report warns,
+    where the standalone function divides by the queries the run carries."""
+    install_metrics(monkeypatch)
+    dataset = Dataset(name="toy", qrels=TIE_QRELS)
+    rankings = Rankings.from_scores({"q1": TIE_SCORES["q1"]}, system="partial")
 
     report = evaluate(rankings, dataset=dataset, metrics=["map"], k=[2], bootstrap=0)
 
-    assert report.metrics == ["map"] and report.gains_source == "none"
-    assert report.value("oracle", "map", k=2) == pytest.approx(1.0), "both relevant documents at the top"
-    assert report.value("late", "map", k=2) == pytest.approx(0.25), "(1/2) / min(2 relevant, k=2)"
+    ranked = core_metric.map({"q1": TIE_QRELS["q1"]}, {"q1": TIE_SCORES["q1"]}, k=2)
+    assert report.value("partial", "map", k=2) == pytest.approx(ranked / 2), "q1's value, then q2's 0.0"
+    assert ranked / 2 != pytest.approx(core_metric.map(TIE_QRELS, TIE_SCORES, k=2)), "the function's own mean"
+    assert [warning.code for warning in report.warnings] == ["UNRANKED_QUERIES"], "the report says it scored 0"
+    assert report.value("partial", "map", k=2) is not None, "an unranked labelled query is a 0.0, not a dropped row"
+
+
+def test_the_metrics_that_need_more_than_a_query_are_not_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``hole``, ``paired_accuracy`` and ``coverage`` are public in ``rcp_core.metric`` and not selectable here."""
+    install_metrics(monkeypatch)
+    dataset = Dataset(name="toy", qrels=TIE_QRELS)
+    rankings = Rankings.from_scores(TIE_SCORES, system="tied")
+
+    for name in NOT_SEAM_METRICS:
+        assert name not in registered_metrics()
+        assert callable(getattr(core_metric, name)), "public where it lives"
+        with pytest.raises(ConfigError, match="unknown metrics") as caught:
+            evaluate(rankings, dataset=dataset, metrics=[name], k=[2], bootstrap=0)
+        assert "ndcg_float" in str(caught.value), "the refusal names the registered set"
+
+
+def test_an_unknown_metric_class_names_the_registered_set() -> None:
+    """``metric_class`` is the lookup both ``evaluate`` and the CLI go through: a typo names every metric."""
+    with pytest.raises(ConfigError, match="unknown metric") as caught:
+        metric_class("mapp")
+
+    message = str(caught.value)
+    for name in METRICS:
+        assert name in message, f"{name} is registered, so the refusal lists it"
+
+
+def test_a_plugin_registers_and_scores_a_fixture(monkeypatch: pytest.MonkeyPatch) -> None:
+    install_metrics(monkeypatch, metric_entry("toy_metric", "tests._helpers._metrics:MeanAveragePrecision"))
+    dataset, rankings = _fixture()
+
+    assert registered_metrics() == (*METRICS, "toy_metric")
+    assert metric_class("toy_metric") is MeanAveragePrecision
+
+    report = evaluate(rankings, dataset=dataset, metrics=["toy_metric"], k=[2], bootstrap=0)
+
+    assert report.metrics == ["toy_metric"] and report.gains_source == "none"
+    assert report.value("oracle", "toy_metric", k=2) == pytest.approx(1.0), "both relevant documents at the top"
+    assert report.value("late", "toy_metric", k=2) == pytest.approx(0.25), "(1/2) / min(2 relevant, k=2)"
 
 
 def test_a_plugin_that_takes_a_cutoff_is_scored_at_every_requested_one(monkeypatch: pytest.MonkeyPatch) -> None:
-    install_metrics(monkeypatch, metric_entry("map", "tests._helpers._metrics:MeanAveragePrecision"))
+    install_metrics(monkeypatch, metric_entry("toy_metric", "tests._helpers._metrics:MeanAveragePrecision"))
     dataset, rankings = _fixture()
 
-    report = evaluate(rankings, dataset=dataset, metrics=["map"], k=[1, 2], bootstrap=0)
+    report = evaluate(rankings, dataset=dataset, metrics=["toy_metric"], k=[1, 2], bootstrap=0)
 
-    assert {(row.metric, row.k) for row in report.per_query} == {("map", 1), ("map", 2)}
-    assert report.value("oracle", "map", k=1) == pytest.approx(1.0)
-    assert report.value("late", "map", k=1) == pytest.approx(0.0), "the only slot holds a miss"
+    assert {(row.metric, row.k) for row in report.per_query} == {("toy_metric", 1), ("toy_metric", 2)}
+    assert report.value("oracle", "toy_metric", k=1) == pytest.approx(1.0)
+    assert report.value("late", "toy_metric", k=1) == pytest.approx(0.0), "the only slot holds a miss"
 
 
 def test_a_plugin_that_ignores_the_cutoff_is_scored_once(monkeypatch: pytest.MonkeyPatch) -> None:
-    install_metrics(monkeypatch, metric_entry("mrr", "tests._helpers._metrics:MeanReciprocalRank"))
+    install_metrics(monkeypatch, metric_entry("toy_metric_no_cutoff", "tests._helpers._metrics:MeanReciprocalRank"))
     dataset, rankings = _fixture()
 
-    report = evaluate(rankings, dataset=dataset, metrics=["mrr"], k=[1, 2], bootstrap=0)
+    report = evaluate(rankings, dataset=dataset, metrics=["toy_metric_no_cutoff"], k=[1, 2], bootstrap=0)
 
     assert {row.k for row in report.per_query} == {0}, "one row, and k=0 says the metric takes no cutoff"
-    assert {(row.metric, row.k) for row in report.summary} == {("mrr", 0)}, "one summary row per system"
-    assert report.value("oracle", "mrr") == pytest.approx(1.0)
-    assert report.value("late", "mrr") == pytest.approx(0.5), "the first relevant document is second"
+    one_row = {("toy_metric_no_cutoff", 0)}
+    assert {(row.metric, row.k) for row in report.summary} == one_row, "one summary row per system"
+    assert report.value("oracle", "toy_metric_no_cutoff") == pytest.approx(1.0)
+    assert report.value("late", "toy_metric_no_cutoff") == pytest.approx(0.5), "the first relevant document is second"
 
 
 def test_the_shipped_metrics_are_scored_through_the_registry(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -111,17 +211,18 @@ def test_a_plugin_whose_name_disagrees_with_its_entry_point_is_refused(monkeypat
     with pytest.raises(ConfigError, match="must agree") as caught:
         metric_class("misnamed")
 
-    assert "'misnamed'" in str(caught.value) and "'map'" in str(caught.value), "both names are in the message"
+    message = str(caught.value)
+    assert "'misnamed'" in message and "'toy_metric'" in message, "both names are in the message"
 
 
 def test_an_unknown_metric_names_the_registered_ones(monkeypatch: pytest.MonkeyPatch) -> None:
-    install_metrics(monkeypatch, metric_entry("map", "tests._helpers._metrics:MeanAveragePrecision"))
+    install_metrics(monkeypatch, metric_entry("toy_metric", "tests._helpers._metrics:MeanAveragePrecision"))
     dataset, rankings = _fixture()
 
     with pytest.raises(ConfigError, match="unknown metrics") as caught:
         evaluate(rankings, dataset=dataset, metrics=["nope"], bootstrap=0)
 
-    assert "map" in str(caught.value), "the installed plugins are listed, so a typo is fixable"
+    assert "toy_metric" in str(caught.value), "the installed plugins are listed, so a typo is fixable"
 
 
 def test_an_entry_point_that_is_not_a_metric_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -183,14 +284,14 @@ def test_a_plugin_that_returns_a_non_number_is_a_data_error(monkeypatch: pytest.
 
 def test_a_plugin_value_that_is_undefined_does_not_warn_about_qrels(monkeypatch: pytest.MonkeyPatch) -> None:
     """A plugin returns ``None`` for an undefined query; the qrel-nDCG warning must not claim it."""
-    install_metrics(monkeypatch, metric_entry("map", "tests._helpers._metrics:MeanAveragePrecision"))
+    install_metrics(monkeypatch, metric_entry("toy_metric", "tests._helpers._metrics:MeanAveragePrecision"))
     dataset = Dataset(name="toy", qrels={"q0": {"a": 0.0, "b": 0.0}}, candidates={"q0": ["a", "b"]})
     rankings = Rankings.from_scores({"q0": {"a": 1.0, "b": 0.0}}, system="s")
 
-    report = evaluate(rankings, dataset=dataset, metrics=["map"], k=[1], bootstrap=0)
+    report = evaluate(rankings, dataset=dataset, metrics=["toy_metric"], k=[1], bootstrap=0)
 
     assert report.warnings == []
-    assert report.value("s", "map") is None, "no relevant document: the value is undefined, not 0"
+    assert report.value("s", "toy_metric") is None, "no relevant document: the value is undefined, not 0"
 
 
 def test_a_plugin_value_of_nan_is_undefined_not_a_value(monkeypatch: pytest.MonkeyPatch) -> None:

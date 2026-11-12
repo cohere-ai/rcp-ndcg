@@ -280,9 +280,10 @@ def evaluate(
         protocol: A :data:`~rcp_core.protocol.PROTOCOLS` name or a :class:`~rcp_core.protocol.Protocol`;
             defaults to the dataset's (a suite's) protocol, else ``"plain"``.
         k: One cutoff or several.
-        metrics: Which metrics to compute: the shipped ``"rcp_ndcg"``, ``"qrel_ndcg"``, ``"count_ndcg"``, or the name
-            of an installed ``rcp.metrics`` plugin. A plugin is scored on the dataset's qrels, at every cutoff
-            when its ``k_required`` is true and once (at ``k=0``) when it is false.
+        metrics: Which metrics to compute: a name in :data:`~rcp.eval.METRICS` (the three nDCGs and the seven
+            corpus metrics of :mod:`rcp_core.metric`), or the name of an installed ``rcp.metrics`` plugin. Each
+            is scored on the dataset's qrels, at every cutoff when its ``k_required`` is true and once (at
+            ``k=0``) when it is false.
         count_gains: The Count-nDCG gains (:func:`rcp_core.count_gain` per document), required for
             ``"count_ndcg"``. Keys are the gains': ``{query_id: {doc_id: gain}}``, or ``"<subset>/<query_id>"``
             for a suite -- and must be when subsets share query ids.
