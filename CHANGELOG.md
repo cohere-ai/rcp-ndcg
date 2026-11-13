@@ -78,6 +78,12 @@ same commit that satisfies them: `pillow` 12.3.0 → 13.0.0 (`>=13.0.0`), `aioht
 `setuptools` is a downgrade: the release's ceiling is below the version the lock carried, so the ceiling is
 declared with the move — a bare upgrade takes 84.x, which the release forbids. Exactly four packages move.
 
+`transformers` moves 5.17.0 → 5.20.2: the highest release under the release's `<5.21.0` cap, and the version the
+`v0.33.0` reference image carries (`packages/rcp-vllm/reference-image-v0.33.0.versions.txt`). Its own
+requirements move nothing else — `tokenizers` stays 0.23.2, `safetensors` 0.8.0 and `huggingface-hub` 1.32.0,
+the last of which the release's `>=1.31.0` floor admits and whose `huggingface_hub.utils.httpx` re-export the
+release relies on. One package moves.
+
 ## 0.0.1 — 2026-11-11
 
 The engine pin is vLLM v0.33.0 throughout this release. An entry that names an older release names the code a
