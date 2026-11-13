@@ -57,9 +57,10 @@ def _engine_python(executable: str | None) -> str | None:
     """The interpreter the engine executable's shebang names, or ``None`` when it cannot be read.
 
     ``vllm`` is normally a console script whose first line is ``#!<python>`` (optionally through
-    ``/usr/bin/env``); that interpreter is the environment the engine imports its plugin from.  A binary,
-    an unreadable file, an unresolvable ``env`` argument or a missing interpreter gives ``None``: the
-    caller then checks the console's own environment, the documented one-interpreter install.
+    ``/usr/bin/env``, whose own options and ``NAME=value`` assignments are skipped before the program);
+    that interpreter is the environment the engine imports its plugin from.  A binary, an unreadable file,
+    an unresolvable ``env`` argument or a missing interpreter gives ``None``: the caller then checks the
+    console's own environment, the documented one-interpreter install.
     """
     if executable is None:
         return None
@@ -74,9 +75,14 @@ def _engine_python(executable: str | None) -> str | None:
     if not words:
         return None
     if os.path.basename(words[0]) == "env":
-        if len(words) < 2:
+        # ``env`` takes its own arguments before the program: ``-S <words...>`` (the console-script form that
+        # splits the rest itself), the other short/long options, and ``NAME=value`` assignments. The program
+        # is the first word that is none of those -- reading ``-S`` as the program resolved nothing, and the
+        # check then judged the console's environment instead of the engine's.
+        program = next((word for word in words[1:] if not word.startswith("-") and "=" not in word), None)
+        if program is None:
             return None
-        resolved = shutil.which(words[1])
+        resolved = shutil.which(program)
         return resolved if resolved is not None and os.path.exists(resolved) else None
     return words[0] if os.path.exists(words[0]) else None
 

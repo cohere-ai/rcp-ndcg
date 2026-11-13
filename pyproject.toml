@@ -2,6 +2,26 @@
 # their own manifests (packages/rcp/pyproject.toml and the project directories beside it); tools/
 # layout_move.py keeps this split and the member list current.
 
+[tool.uv]
+# The windows the shipped engine release (`vllm` `v0.33.0`, the tag the serving image is built from) declares for
+# the packages this lock carries. The record they are read from is `tests/contract/dependency-anchor.toml`, and its
+# contract test fails when the lock leaves one. A window the lock does not yet satisfy is declared in the commit
+# that moves its package to a satisfying version, never ahead of it: a declaration the lock violates is a to-do,
+# not a guard, and a commit whose own `uv lock --check` fails is not green.
+constraint-dependencies = [
+  "torch==2.14.0",
+  "transformers>=5.16.1,<5.21.0",
+  "huggingface-hub>=1.31.0",
+  "tokenizers>=0.23.2",
+  "safetensors>=0.6.2",
+  "filelock>=3.20.3",
+  "pydantic>=2.12.0",
+  "pillow>=13.0.0",
+  "aiohttp>=3.14.4",
+  "certifi>=2026.10.19",
+  "setuptools>=78.1.1,<81.0.0",
+]
+
 [tool.uv.workspace]
 members = ["packages/*"]
 

@@ -773,6 +773,31 @@ def test_the_plugin_check_falls_back_to_this_interpreter_without_a_shebang(
         run_console(["serve", "harrier-oss-v1-27b"])
 
 
+def test_the_engine_interpreter_is_the_word_after_envs_own_options(tmp_path: Path) -> None:
+    """``#!/usr/bin/env -S <python> -u`` is the console-script form ``env`` splits into words itself. The
+    interpreter is the first word after ``env``'s options: reading ``-S`` as the program made ``which``
+    answer ``None``, so the plugin check fell back to the console's interpreter and judged the console's
+    environment while the engine imports from its own."""
+    import shutil
+    import sys
+
+    import rcp_vllm.serve as serve_module
+
+    def script(name: str, shebang: str) -> str:
+        path = tmp_path / name
+        path.write_text(f"#!{shebang}\n", encoding="utf-8")
+        path.chmod(0o755)
+        return str(path)
+
+    assert serve_module._engine_python(script("env-s", f"/usr/bin/env -S {sys.executable} -u")) == shutil.which(
+        sys.executable
+    )
+    assert serve_module._engine_python(script("env-plain", f"/usr/bin/env {sys.executable}")) == shutil.which(
+        sys.executable
+    )
+    assert serve_module._engine_python(script("direct", sys.executable)) == shutil.which(sys.executable)
+
+
 def test_the_plugin_spec_parses_a_ranged_url_or_non_canonical_spec() -> None:
     """A ``serve.plugin`` is a pip spec: the name is the leading requirement name, PEP 503-normalised, and
     a ranged, URL or underscore-spelled spec names the same distribution as the bare canonical one."""

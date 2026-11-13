@@ -180,7 +180,8 @@ class EvalReport(BaseModel):
 
     @property
     def systems(self) -> list[str]:
-        """The systems, in the order of the rankings."""
+        """The systems, in the order of the summary rows (the rankings' order for a report ``evaluate`` built;
+        a report loaded from JSON has no rankings, so the order is the file's)."""
         return list(dict.fromkeys(row.system for row in self.summary))
 
     def value(self, system: str, metric: str = "rcp_ndcg", k: int | None = None) -> float | None:

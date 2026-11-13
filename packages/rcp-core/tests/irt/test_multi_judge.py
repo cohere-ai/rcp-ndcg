@@ -170,6 +170,18 @@ class TestJudgeOverlap:
         with pytest.raises(ValueError, match="needs >= 2 tagged judges"):
             cal.check_judge_overlap(min_shared=1)
 
+    def test_the_threshold_and_its_refusal_are_on_the_public_surface(self) -> None:
+        """``MIN_SHARED_ITEMS`` is the shipped default (``check_judge_overlap``'s, and the number the pooled
+        fit's docstring names) and ``JudgeOverlapError`` is the refusal it raises, so both are public: listed
+        by the module that defines them and re-exported by ``rcp_core.irt``, which is what the generated API
+        page renders."""
+        import rcp_core.irt as irt
+        import rcp_core.irt._calibration as calibration
+
+        assert {"JudgeOverlapError", "MIN_SHARED_ITEMS"} <= set(calibration.__all__)
+        assert {"JudgeOverlapError", "MIN_SHARED_ITEMS"} <= set(irt.__all__)
+        assert irt.MIN_SHARED_ITEMS == 1
+
 
 class TestFitCalibrationJudges:
     ROWS = [

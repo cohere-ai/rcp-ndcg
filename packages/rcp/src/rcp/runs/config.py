@@ -210,17 +210,26 @@ class CandidatesConfig(BaseModel):
                 f"candidates.fuse is the fusion a from: fuse run's candidates come from, and this run is from: "
                 f"{self.source}: set candidates.from: fuse, or drop candidates.fuse"
             )
-        if self.source == "fuse":
-            unused = sorted(
-                name
-                for name, value in (("rankings", self.rankings), ("system", self.system), ("retrieval", self.retrieval))
-                if value is not None
+        # What this source reads, of the fields that name an input of another source. A set-but-unread field is
+        # not harmless: a job ships it as a host input nothing reads (and is refused over it when it does not
+        # share the host's files), and it enters every judging, evaluate and rerank identity -- so editing a path
+        # nothing reads re-keys those steps. ``depth`` is source-independent and not named here.
+        reads = {
+            "dataset": (),
+            "rankings": ("rankings", "system"),
+            "retrieval": ("retrieval",),
+            "fuse": (),
+        }[self.source]
+        unused = sorted(
+            name
+            for name, value in (("rankings", self.rankings), ("system", self.system), ("retrieval", self.retrieval))
+            if value is not None and name not in reads
+        )
+        if unused:
+            raise ValueError(
+                f"candidates.{unused[0]} is not used by candidates.from: {self.source}: drop it, or set "
+                "candidates.from to the source that reads it"
             )
-            if unused:
-                raise ValueError(
-                    f"candidates.from: fuse ranks by the fused systems, and candidates.{unused[0]} is not used by "
-                    "it: drop it, or set candidates.from to the source that reads it"
-                )
         return self
 
 
@@ -544,6 +553,21 @@ class RunConfig(BaseModel):
         if self.candidates.rerank is not None:
             uses["rerank"] = frozenset({"reranker"})
         return uses
+
+    @model_validator(mode="after")
+    def _at_least_one_step(self) -> Self:
+        """Refuse an empty step set: it executes nothing and every input check above is vacuous for it.
+
+        The run's completion test is ``all(record.succeeded for step in steps)``, which is ``True`` of no steps,
+        so ``steps: []`` was recorded ``completed`` having run nothing.
+        """
+        if not self.steps:
+            raise ConfigError(
+                "a run needs at least one step: `steps: []` executes nothing, and the run would be recorded "
+                "completed having run none",
+                hint=f"name the steps to run, one or more of: {', '.join(STEPS)}",
+            )
+        return self
 
     @model_validator(mode="after")
     def _steps_have_their_inputs(self) -> Self:

@@ -154,15 +154,27 @@ def run_suite(
     failure is in the report.
 
     Raises:
-        ConformanceError: ``target="engine"`` without a ``base_url``, or a fake target with no
-            registered fake for the recipe.
+        ConformanceError: a case belonging to another recipe (the identity check :func:`run_case` makes),
+            ``target="engine"`` without a ``base_url``, or a fake target with no registered fake for
+            the recipe.
     """
+    for case in cases:
+        _refuse_wrong_recipe(recipe, case)
     resolved = _resolve(recipe, target, base_url, fake_engine)
     try:
         results = tuple(_run_case(resolved, case) for case in cases)
     finally:
         resolved.close()
     return ConformanceReport(recipe_id=recipe.id, target=target, base_url=resolved.base_url, results=results)
+
+
+def _refuse_wrong_recipe(recipe: Recipe, case: Case) -> None:
+    """Refuse a case belonging to another recipe: a run under the wrong scorer is an identity lie."""
+    if case.recipe != recipe.id:
+        raise ConformanceError(
+            f"case {case.id!r} belongs to recipe {case.recipe!r} but the run plans recipe "
+            f"{recipe.id!r}: a run under the wrong scorer is an identity lie"
+        )
 
 
 def run_case(
@@ -174,11 +186,7 @@ def run_case(
     fake_engine: Any | None = None,
 ) -> CaseResult:
     """Run one case against one target (see :func:`run_suite` for the arguments and the errors)."""
-    if case.recipe != recipe.id:
-        raise ConformanceError(
-            f"case {case.id!r} belongs to recipe {case.recipe!r} but the run plans recipe "
-            f"{recipe.id!r}: a run under the wrong scorer is an identity lie"
-        )
+    _refuse_wrong_recipe(recipe, case)
     resolved = _resolve(recipe, target, base_url, fake_engine)
     try:
         return _run_case(resolved, case)

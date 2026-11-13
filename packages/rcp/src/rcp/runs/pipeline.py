@@ -4,11 +4,11 @@ Each step calls the library function that owns its work -- retrieval, the
 reranker, :func:`rcp.judging.judge`, :func:`rcp.calibration.calibrate`,
 the evaluation -- and writes into the layout of :mod:`rcp.runs.layout`.
 The manifest records every step's identity and the content hashes of what it
-read and wrote, so resuming a run re-does exactly the steps whose identity or
-inputs changed. The judging steps resume at window granularity on top: their
-store is append-only, so a stopped judging step asks the judge only for the
-windows that are missing (a refused window is asked again, and the later-phase
-windows its first fit selected are retired with appended tombstones).
+read and wrote, so resuming a run re-does exactly the steps whose identity,
+inputs or outputs changed. The judging steps resume at window granularity on
+top: their store is append-only, so a stopped judging step asks the judge only
+for the windows that are missing (a refused window is asked again, and the
+later-phase windows its first fit selected are retired with appended tombstones).
 
 The dataset is read through :func:`rcp.data.load_dataset`. The judging
 steps read each query's pool from ``candidates.parquet`` (a
@@ -378,11 +378,13 @@ class Pipeline:
                 if self._run_step(step, resume=resume):
                     ran.add(step)
             except IdentityError as exc:
-                self._refused(ran, recorded)
+                usage = self._judge_usage if step in JUDGE_STEPS else None
+                self.manifest.finish_step(step, status=StepStatus.FAILED, usage=usage, error=_describe(exc))
+                self._refused(ran, recorded, failed=step)
                 self._closed(
                     "step_failed",
                     step,
-                    usage=self._judge_usage if step in JUDGE_STEPS else None,
+                    usage=usage,
                     detail={"error": _describe(exc)},
                 )
                 _identity_hint(exc, self.layout, step, mirrored=self.config.mirror is not None)
@@ -424,11 +426,11 @@ class Pipeline:
         return JudgementStore(self.layout.judgements).identities()
 
     def _refused(self, ran: set[str], recorded: RunManifest, *, failed: str | None = None) -> None:
-        """Undo what a refused or failed change wrote: the recorded config and status, and the records of
-        every step but those that ran (``ran``: their outputs were rewritten, and their identity now differs from
-        the recorded config's, so the next resume redoes them) and the ``failed`` step, when the run had no record
-        of it (its error stays visible). A run recorded ``submitted`` or ``running`` (a job's first attempt, or one
-        that was stopped) is left ``failed``: no job runs it any more."""
+        """Undo what a refused or failed change wrote: the recorded config, status, run totals and families, and
+        the records of every step but those that ran (``ran``: their outputs were rewritten, and their identity now
+        differs from the recorded config's, so the next resume redoes them) and the ``failed`` step, when the run
+        had no record of it (its error stays visible). A run recorded ``submitted`` or ``running`` (a job's first
+        attempt, or one that was stopped) is left ``failed``: no job runs it any more."""
         keep = ran | ({failed} if failed is not None and recorded.step(failed) is None else set())
         steps = []
         for record in self.manifest.steps:
@@ -437,6 +439,15 @@ class Pipeline:
                 steps.append(kept)
         self.manifest.steps = steps
         self.manifest.config = recorded.config
+        # The run total and the families follow the records: the recorded ones, plus every kept record the
+        # recorded manifest did not count (a step that ran, and the failed attempt a run had no record of), so an
+        # attempt rolled back here leaves no requests, and no family, in the run it never changed.
+        total = recorded.usage
+        for record in steps:
+            if record is not recorded.step(record.name):
+                total = total.merged_with(record.usage)
+        self.manifest.usage = total
+        self.manifest.families = dict(recorded.families)
         pending = recorded.status in (RunStatus.SUBMITTED, RunStatus.RUNNING)
         self.manifest.status = RunStatus.FAILED if pending else recorded.status
         self.config = RunConfig.from_data(recorded.config)
@@ -449,12 +460,15 @@ class Pipeline:
 
     def _run_step(self, step: str, *, resume: bool) -> bool:
         """Run ``step`` unless it is current; return whether it ran."""
+        # At the step's entry, before anything can raise: a judging step sets the accumulator, also when it
+        # fails, and the failure handler records it -- a reset after `_is_current` left the previous step's
+        # usage to be recorded as this step's.
+        self._judge_usage = None
         if resume and self._is_current(step):
             # The record stays as it was: completed, with the time it took when it ran.
             logger.info("[run] %s: done with the same identity and inputs, skipping", step)
             return False
         logger.info("[run] %s: starting", step)
-        self._judge_usage = None  # a judging step sets it, also when it fails
         if step == "evaluate":
             self.manifest.metrics = {}  # a failed re-run keeps no metrics of the attempt it did not finish
         self.manifest.start_step(step, identity=self._identity(step))
@@ -494,13 +508,14 @@ class Pipeline:
             return getattr(self, f"_step_{step}")()
 
     def _is_current(self, step: str) -> bool:
-        """A recorded step is current when it succeeded with the same identity and inputs and its outputs exist."""
+        """A recorded step is current when it succeeded with the same identity and inputs and its outputs are
+        byte-identical to what it recorded writing."""
         record = self.manifest.step(step)
         if record is None or not record.succeeded or record.identity_hash != hash_payload(self._identity(step)):
             return False
         if {(r.path, r.sha256) for r in record.inputs} != {(r.path, r.sha256) for r in self._inputs(step)}:
             return False
-        return all(Path(self.layout.resolve(ref.path)).exists() for ref in record.outputs)
+        return all(_unchanged(ref, self.layout) for ref in record.outputs)
 
     @property
     def _first_stage(self) -> str:
@@ -639,7 +654,13 @@ class Pipeline:
         elif step in ("tournament", "rubric"):
             paths = [self._pools_source()]
         elif step == "calibrate":
-            paths = [layout.path("judgements", f"{stage}.jsonl") for stage in ("tournament", "rubric")]
+            # The stage files, and the store's identity: `_step_calibrate` passes `judged_bt_l2(judgements)` into
+            # the fit, and that reads `identity.json` -- a file the fit consumes must be in its digest, or an edit
+            # to it re-uses a calibration fitted under another penalty (latent while the penalty is a constant).
+            paths = [
+                layout.path("judgements", "identity.json"),
+                *(layout.path("judgements", f"{stage}.jsonl") for stage in ("tournament", "rubric")),
+            ]
         elif step == "evaluate":
             paths = [
                 self._pools_source(),
@@ -1204,6 +1225,16 @@ def _input_ref(path: str, layout: RunLayout) -> ArtifactRef:
     ref = artifact_ref(path, layout=layout)
     safe = safe_url(ref.path)
     return ref if safe == ref.path else ref.model_copy(update={"path": safe})
+
+
+def _unchanged(ref: ArtifactRef, layout: RunLayout) -> bool:
+    """Whether a recorded output is still the file the step wrote: it exists and its bytes hash to its record.
+
+    A resume that checked existence alone treated a hand-edited report (or a writer that silently shortened its
+    file) as the step's own output, and the docstring's durability promise held for inputs only.
+    """
+    path = Path(layout.resolve(ref.path))
+    return path.exists() and artifact_ref(path, layout=layout).sha256 == ref.sha256
 
 
 def _write_rankings(path: str, rankings: Rankings) -> None:

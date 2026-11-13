@@ -107,6 +107,14 @@ constant
 MIN_OPPONENTS = 5
 ```
 
+## `MIN_SHARED_ITEMS`
+
+constant
+
+```text
+MIN_SHARED_ITEMS = 1
+```
+
 ## `Priors`
 
 pydantic_model — The priors and penalties of the calibration fit; the defaults are the paper's.

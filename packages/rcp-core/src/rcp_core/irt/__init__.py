@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from rcp_core.irt._calibration import (
+    MIN_SHARED_ITEMS,
     AbilityPrior,
     CalibrationFit,
     FitDiagnostics,
@@ -162,6 +163,7 @@ def __getattr__(name: str) -> Any:
 __all__ = [
     "DEFAULT_SE_TARGET",
     "MIN_OPPONENTS",
+    "MIN_SHARED_ITEMS",
     "AbilityPrior",
     "BradleyTerryEstimator",
     "CalibrationFit",

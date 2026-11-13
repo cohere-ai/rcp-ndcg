@@ -386,12 +386,14 @@ def _fit_rubric_only(
 
 
 __all__ = [
+    "MIN_SHARED_ITEMS",
     "AbilityPrior",
     "CalibrationFit",
     "FitDiagnostics",
     "Priors",
     "FittedMode",
     "Judges",
+    "JudgeOverlapError",
     "Observation",
     "fit_calibration",
     "verdicts",

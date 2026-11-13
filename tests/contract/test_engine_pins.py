@@ -186,8 +186,8 @@ DRIFT = frozenset(
                 "vllm/multimodal/processing/context.py:376-376 MISSING",
                 "vllm/multimodal/processing/context.py:57-120 MISSING",
             ),
-            139: ("scoring/io_processor.py:807-818 NEAR",),
-            152: ("vllm/multimodal/processing/context.py:57-120 MISSING",),
+            143: ("scoring/io_processor.py:807-818 NEAR",),
+            156: ("vllm/multimodal/processing/context.py:57-120 MISSING",),
         },
         "packages/rcp-vllm/src/rcp_vllm/recipes/qwen3.8-flash-next/family.yaml": {
             92: (

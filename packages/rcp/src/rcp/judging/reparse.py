@@ -79,6 +79,10 @@ def _reparsed(
         family=family,
         window_seq=judgement.window_seq,
         phase=judgement.phase,
+        # The pool generation is not the answer: a resume keys its refused windows and its later-phase retirements
+        # on it (`_refused_windows`, `_later_generation_records`), so dropping it here would silently re-ask fewer
+        # windows than the schedule plans and fit two generations of one query together.
+        generation=judgement.generation,
         placements=[(placement.unit_id, placement.doc_id) for placement in judgement.placements],
         answer=answer,
         completion=completion,

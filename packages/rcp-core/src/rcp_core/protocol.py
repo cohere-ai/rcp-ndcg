@@ -32,7 +32,9 @@ Every preset credits tied scores with their group's mean gain (the expected nDCG
 orders of the tie), so a tie never borrows an order from document ids or from the pool,
 which is often sorted by relevance; this is mteb's ``ndcg_float_at_k`` rule.  arXiv v1 of
 the paper broke ties by document id (NanoBEIR, BRIGHT) and by pool order (TREC-DL); a
-:class:`Protocol` with ``ties="doc_id_desc"`` or ``"input_order"`` still scores that way.
+:class:`Protocol` with ``ties="doc_id_desc"`` or ``"input_order"`` still scores that way
+(``input_order`` reads the order the scores are given, so the v1 TREC-DL reproduction passes
+the scores in pool order -- see ``docs/concepts/protocols.md``).
 BRIGHT is not restricted to the judged pool because its TheoremQA reranker runs hold
 candidates outside it, which the paper scores with gain 0.  Loading the released
 HuggingFace data is ``rcp.data.load_dataset``; this module never reads files.
@@ -122,6 +124,9 @@ def candidate_docs(
 ) -> list[str]:
     """The documents of one query that enter the ranking.
 
+    The returned order is *which* documents enter (the pool's order when it is given), never the ranking's:
+    a ranking's order is the run's, which :func:`ranked_scores` gives the score mapping.
+
     Args:
         protocol: A :class:`Protocol` or a :data:`PROTOCOLS` name.
         scored: The ids the system scored.
@@ -160,6 +165,27 @@ def candidate_docs(
     return in_pool + [doc_id for doc_id in scored_ids if doc_id not in pooled]
 
 
+def ranked_scores(scores: Mapping[str, float], entering: Iterable[str]) -> dict[str, float]:
+    """The score mapping a protocol scores: the entering documents, in the run's order.
+
+    :func:`candidate_docs` decides *which* documents enter (the pool restriction and the exclusions); this
+    keeps their scores in the order ``scores`` gave them, which is the run's.  That order is the
+    ``input_order`` tie rule's, so a mapping built in the judged pool's order would hand the tie rule the
+    pool -- often a relevance order, and never a ranking.  Callers build the mapping here rather than by
+    hand, so the two orders cannot be confused.
+
+    Args:
+        scores: ``{doc_id: score}`` of the system, in the run's order; higher is better.
+        entering: The ids :func:`candidate_docs` returned for the same query.
+
+    Returns:
+        ``{doc_id: score}`` of the entering documents, in the order ``scores`` lists them.  Units: none (the
+        scores are the caller's).
+    """
+    keep = set(entering)
+    return {doc_id: score for doc_id, score in scores.items() if doc_id in keep}
+
+
 def score_query(
     scores: Mapping[str, float],
     gains: Mapping[str, float],
@@ -174,7 +200,7 @@ def score_query(
     """One query's nDCG@k under a protocol.
 
     Args:
-        scores: ``{doc_id: score}`` of the system; higher is better; finite.
+        scores: ``{doc_id: score}`` of the system, in the run's order; higher is better; finite.
         gains: For ``"rcp_ndcg"`` and ``"count_ndcg"``, ``{doc_id: gain}`` over the query's judged pool (gains in
             ``[0, 1]``); the ideal DCG sorts all of them.  For ``"qrel_ndcg"``, ``{doc_id: grade}``: grades ``> 0``
             are positives, mapped by the protocol's ``qrel_gain``; the ideal DCG sorts all positives.  A gain or
@@ -201,7 +227,7 @@ def score_query(
     _validate_scores(scores)
     drop = _excluded(rules, excluded, query_id)
     entering = candidate_docs(rules, scores, candidates=candidates, excluded=drop, query_id=query_id)
-    ranked = {doc_id: scores[doc_id] for doc_id in entering}
+    ranked = ranked_scores(scores, entering)
 
     if metric == "qrel_ndcg":
         judged = {doc_id: grade for doc_id, grade in gains.items() if doc_id not in drop}
@@ -240,6 +266,7 @@ __all__ = [
     "Protocol",
     "aggregate",
     "candidate_docs",
+    "ranked_scores",
     "resolve_protocol",
     "score_query",
 ]

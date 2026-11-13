@@ -61,6 +61,15 @@ def test_task_metadata_is_read_from_the_published_task_file_as_data() -> None:
         task_metadata("import os\n")
 
 
+def test_task_metadata_wraps_a_malformed_table_as_a_data_error() -> None:
+    """The published task file is the input, read as data: a ``_TASK_METADATA`` block that is not valid JSON
+    is a ``DataError`` naming it (``task_subsets`` wraps the identical fault the same way), never the
+    ``JSONDecodeError`` a library caller cannot tell from its own malformed input."""
+    with pytest.raises(DataError, match="_TASK_METADATA is not valid JSON") as caught:
+        task_metadata('_REVISION = "abc123"\n_TASK_METADATA = json.loads(r"""{""")\n')
+    assert caught.value.hint or ""
+
+
 def test_task_subsets_reads_the_published_alias_map_as_data() -> None:
     """`_SUBSETS` of a task-keyed file maps the subset aliases to the published task names; an older file has
     none and its table is keyed by the subset names themselves."""

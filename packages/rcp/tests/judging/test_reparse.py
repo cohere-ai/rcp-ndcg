@@ -114,6 +114,18 @@ def test_the_command_reports_recovered_still_invalid_and_unchanged(old_store: Pa
     assert row["invalid_categories"] == {"no_json": prose}
 
 
+def test_a_reparsed_record_keeps_its_pool_generation(old_store: Path, tmp_path: Path) -> None:
+    """JDG-S2: the re-parsed record was rebuilt without its ``generation``, so a resume over a re-parsed store
+    never re-asked a refused window (``_refused_windows`` keys on the generation) and never retired the later
+    phases of a query whose refusal was answered (the refit then reads two generations)."""
+    before = JudgementStore(old_store).read()
+    assert any(j.generation is not None for j in before.judgements), "the source's windows carry a generation"
+    after = reparse(old_store, tmp_path / "v2")
+    by_window = {(j.query_id, j.window_seq): j for j in after.judgements}
+    for old in before.judgements:
+        assert by_window[(old.query_id, old.window_seq)].generation == old.generation
+
+
 def test_reparse_never_writes_into_its_source_or_over_a_store(old_store: Path, tmp_path: Path) -> None:
     lines = JudgementStore(old_store).path("tournament").read_text()
     with pytest.raises(IdentityError, match="never into its source"):

@@ -385,18 +385,27 @@ class JudgementStore:
         return records
 
     def append(self, judgement: Judgement) -> None:
-        """Append one record (one line, flushed).
+        """Append one record (one line, flushed)."""
+        self._append_lines(judgement.stage, [judgement])
+
+    def _append_lines(self, stage: Stage, judgements: Sequence[Judgement]) -> None:
+        """Append ``judgements`` to ``stage``'s file: one lock, one write (a reader sees all of them or none).
 
         Overlapping passes append to one file: the torn-tail repair truncates to the last complete line, and
         a peer's in-flight line is exactly what that truncation would cut -- so the tail cut and the append
         hold the store's advisory lock, like every other writer of this directory, and the cut runs on every
-        append (a peer killed after this writer started leaves a tail only its next append merges into)."""
+        append (a peer killed after this writer started leaves a tail only its next append merges into).
+        A batch (a retirement's tombstones) is one lock and one write for the same reason: a reader takes no
+        lock, so it must never find a generation half retired.
+        """
+        if not judgements:
+            return
         with self._identity_lock():
-            path = self.path(judgement.stage)
+            path = self.path(stage)
             path.parent.mkdir(parents=True, exist_ok=True)
             _drop_torn_tail(path)
             with path.open("a", encoding="utf-8") as handle:
-                handle.write(judgement.model_dump_json() + "\n")
+                handle.write("".join(judgement.model_dump_json() + "\n" for judgement in judgements))
                 handle.flush()
 
     def supersede_records(self, stage: Stage, records: Mapping[str, Judgement], *, reason: str) -> int:
@@ -420,8 +429,9 @@ class JudgementStore:
         if not records:
             return 0
         now = datetime.now(UTC)
-        for record in records.values():
-            self.append(
+        self._append_lines(
+            stage,
+            [
                 record.model_copy(
                     update={
                         "valid": False,
@@ -435,7 +445,9 @@ class JudgementStore:
                         "recorded_at": now,
                     }
                 )
-            )
+                for record in records.values()
+            ],
+        )
         logger.warning(
             "superseded %d %s record(s) of %s (%s); their windows are asked again",
             len(records),

@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict
 from rcp_core import ndcg, pass_probabilities
 from rcp_core.gain import item_arrays
 from rcp_core.metric import TieRule, rank_by_score
-from rcp_core.protocol import candidate_docs
+from rcp_core.protocol import candidate_docs, ranked_scores
 
 from rcp.data.dataset import Dataset
 from rcp.errors import DataError
@@ -272,7 +272,7 @@ def explain(
         excluded.add(query_id)
     ideal_gains = {d: g for d, g in delta_gains.items() if d not in excluded}
 
-    systems, orders, ranked_scores = [], {}, {}
+    systems, orders, score_maps = [], {}, {}
     scored = report.systems  # the systems the report scored (systems= may have restricted the rankings' file)
     if not scored:
         raise DataError(
@@ -284,10 +284,10 @@ def explain(
         entering = candidate_docs(
             rules, scores, candidates=(part.candidates or {}).get(query_id), excluded=excluded, query_id=query_id
         )
-        ranked = {d: scores[d] for d in entering}
+        ranked = ranked_scores(scores, entering)
         order = rank_by_score(ranked, ties="input_order" if rules.ties == "input_order" else "doc_id_desc")
         orders[system] = order
-        ranked_scores[system] = ranked
+        score_maps[system] = ranked
         values = {
             f"{row.metric}@{row.k}": row.value
             for row in report.per_query
@@ -312,7 +312,7 @@ def explain(
     for other in scored[1:] if ideal_gains else []:
         total, selection, ordering = score_delta(
             orders[first], orders[other], ideal_gains, k=k,
-            scores_a=ranked_scores[first], scores_b=ranked_scores[other], ties=rules.ties,
+            scores_a=score_maps[first], scores_b=score_maps[other], ties=rules.ties,
         )  # fmt: skip
         deltas.append(ScoreDelta(system_a=first, system_b=other, total=total, selection=selection, ordering=ordering))
     return QueryExplanation(

@@ -76,6 +76,31 @@ class TestValidation:
         with pytest.raises(ValueError, match=message):
             RunConfig.model_validate({"dataset": DATASET, **fields})
 
+    def test_an_empty_step_set_is_refused(self, tmp_path: Path) -> None:
+        """A run of no steps executed nothing and was recorded `completed` (`all([])` is True), every step's
+        input check vacuous: the empty set is refused, through the typed error a caller branches on."""
+        with pytest.raises(ConfigError, match="at least one step"):
+            RunConfig.from_data({"dataset": DATASET, "judge": "fake", "steps": []})
+        with pytest.raises(ConfigError, match="at least one step"):
+            RunConfig.load(_write(tmp_path / "empty.yaml", {"dataset": DATASET, "judge": "fake", "steps": []}))
+
+    @pytest.mark.parametrize(
+        ("candidates", "unused"),
+        [
+            ({"rankings": "pools.parquet"}, "rankings"),
+            ({"system": "bm25"}, "system"),
+            ({"retrieval": {"kind": "bm25"}}, "retrieval"),
+            ({"from": "rankings", "rankings": "p.parquet", "retrieval": {"kind": "bm25"}}, "retrieval"),
+            ({"from": "retrieval", "retrieval": {"kind": "bm25"}, "system": "bm25"}, "system"),
+        ],
+    )
+    def test_a_candidates_field_its_source_never_reads_is_refused(self, candidates: dict, unused: str) -> None:
+        """runs-5: under the default `from: dataset` a set-but-unread `rankings`/`system`/`retrieval` validated,
+        was shipped to a job as a host input nothing reads, and entered every judging identity -- so editing an
+        unread path re-keyed the judging without changing anything. A source refuses what it does not read."""
+        with pytest.raises(ValueError, match=f"candidates.{unused} is not used by candidates.from"):
+            RunConfig.model_validate({"dataset": DATASET, "judge": "fake", "candidates": candidates})
+
     def test_a_retrieval_sourced_rerank_step_without_a_retrieve_step_is_refused_at_config_time(self) -> None:
         """`from: retrieval` has no first stage until the retrieve step runs it: the combination is refused in
         the config. (`from: rankings` runs fine without one -- its rankings file IS the first stage; a dataset
@@ -145,22 +170,28 @@ class TestServe:
 
     def test_a_from_rankings_run_starts_no_encoder_engine(self) -> None:
         """E: a `from: rankings` run's retrieve step only reads the rankings file, so the job must not start a
-        GPU encoder engine it never calls (it used to, and a broken engine image failed the job for nothing)."""
+        GPU encoder engine it never calls. Since a source now refuses the fields it does not read (runs-5), a
+        retrieval block cannot ride along to name one: the run has no encoder, and serving one is refused."""
         config = RunConfig.model_validate(
             {
                 "dataset": DATASET,
                 "judge": "fake",
-                "candidates": {
-                    "from": "rankings",
-                    "rankings": "rankings.jsonl",
-                    "retrieval": self.SERVED["retrieval"],
-                },
+                "candidates": {"from": "rankings", "rankings": "rankings.jsonl"},
                 "steps": ["retrieve"],
-                "serve": {"encoder": self.ENGINE},
             }
         )
 
         assert "retrieve" not in config.engine_uses()
+        with pytest.raises(ConfigError, match="no encoder"):
+            RunConfig.model_validate(
+                {
+                    "dataset": DATASET,
+                    "judge": "fake",
+                    "candidates": {"from": "rankings", "rankings": "rankings.jsonl"},
+                    "steps": ["retrieve"],
+                    "serve": {"encoder": self.ENGINE},
+                }
+            )
 
     def test_a_served_role_with_base_url_is_refused(self) -> None:
         from rcp.errors import ConfigError

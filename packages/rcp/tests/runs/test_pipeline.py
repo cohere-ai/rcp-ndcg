@@ -125,12 +125,37 @@ class TestResume:
         assert _statuses(manifest) == dict.fromkeys(STEPS, "completed")
         assert manifest.step("calibrate").ended_at > manifest.step("rubric").ended_at
 
+    def test_an_edited_store_identity_redoes_the_calibration(self, run_dir: Path) -> None:
+        """runs-6: the calibrate step passes ``judged_bt_l2(judgements)`` -- read from the store's
+        ``identity.json`` -- into the fit's own identity, but its recorded inputs were the two stage files alone,
+        so the file the fit consumes was invisible to the digest. The penalty is the constant ``Priors().bt_l2``
+        today, so the mechanism is what is pinned, not the value: a field the fit does not read still re-runs it."""
+        recorded = RunManifest.load(run_dir)
+        identity = run_dir / "judgements" / "identity.json"
+        payload = json.loads(identity.read_text(encoding="utf-8"))
+        payload["stages"]["tournament"]["sources"]["prompt"] = "a-renamed-prompt.txt"
+        identity.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        manifest = Pipeline.resume(run_dir).run()
+        assert _statuses(manifest)["calibrate"] == "completed"
+        assert manifest.step("calibrate").ended_at > recorded.step("calibrate").ended_at
+
     def test_a_missing_output_redoes_its_step(self, run_dir: Path) -> None:
         (run_dir / "metrics" / "report.json").unlink()
         manifest = Pipeline.resume(run_dir).run()
         assert _statuses(manifest)["evaluate"] == "completed"
         assert manifest.step("calibrate").ended_at < manifest.step("evaluate").started_at
         assert (run_dir / "metrics" / "report.json").is_file()
+
+    def test_an_edited_output_redoes_its_step(self, run_dir: Path) -> None:
+        """The pipeline's promise is that a resume re-does the steps whose identity or inputs changed, and the
+        manifest records the content hashes of what each step wrote: an output rewritten by hand is not that
+        step's output, and `exists()` alone made the step look done."""
+        (run_dir / "metrics" / "report.json").write_text("{}\n", encoding="utf-8")
+        manifest = Pipeline.resume(run_dir).run()
+        assert _statuses(manifest)["evaluate"] == "completed"
+        assert manifest.step("calibrate").ended_at < manifest.step("evaluate").started_at
+        report = json.loads((run_dir / "metrics" / "report.json").read_text(encoding="utf-8"))
+        assert report["schema"] == "rcp.eval-report.v1"
 
     def test_without_resume_every_step_runs_again(self, run_dir: Path) -> None:
         manifest = Pipeline.resume(run_dir).run(resume=False)
@@ -326,6 +351,91 @@ class TestAFailedChange:
             "tournament": "completed",
             "rubric": "completed",
         }
+
+
+class TestARefusedAttempt:
+    """A step the store refuses physically ran: its attempt stays on the record and the totals follow it."""
+
+    def test_a_store_refused_step_keeps_its_failed_record(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """runs-2: the identity-refusal branch restored the recorded run without the attempt's own record, so a
+        step that ran and was store-refused read `pending` in `run status` the moment the run was `failed`."""
+        from rcp.runs.inspect import step_states
+
+        def refused(self):
+            raise IdentityError("the store holds another identity")
+
+        monkeypatch.setattr(Pipeline, "_step_tournament", refused)
+        pipeline = Pipeline(tiny_config(data, steps=["tournament"]), runs_dir=str(tmp_path / "runs"))
+        with pytest.raises(IdentityError, match="another identity"):
+            pipeline.run()
+        manifest = RunManifest.load(pipeline.layout)
+        record = manifest.step("tournament")
+        assert record is not None and record.status is StepStatus.FAILED
+        assert "IdentityError" in (record.error or "")
+        assert manifest.status is RunStatus.FAILED
+        assert {state.name: state.status.value for state in step_states(pipeline.layout, manifest)} == {
+            "tournament": "failed"
+        }
+
+    def test_a_refused_attempt_leaves_no_requests_in_the_runs_total(
+        self, run_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """runs-2: the refused attempt's usage was merged into the run total and never rolled back with the
+        records it was rolled back with, so the run counted requests no step of it made."""
+        from rcp.judging import JudgeClient
+        from rcp.judging.client import BackendUnavailableError
+
+        recorded = RunManifest.load(run_dir)
+        complete = JudgeClient.complete
+        answered = []
+
+        async def down_after_one(self, request):
+            if answered:
+                raise BackendUnavailableError("the endpoint went away")
+            answered.append(request)
+            return await complete(self, request)
+
+        monkeypatch.setattr(JudgeClient, "complete", down_after_one)
+        # A shallower pool re-runs the judging step (depth is content) without re-keying the store, which is the
+        # shape a resume that changes the config and then fails has: the recorded run is restored under it.
+        with pytest.raises(BackendUnavailableError):
+            Pipeline.resume(run_dir, overrides=["candidates.depth=5"]).run()
+        manifest = RunManifest.load(run_dir)
+        assert manifest.config == recorded.config and manifest.status is RunStatus.COMPLETED
+        assert _statuses(manifest) == dict.fromkeys(STEPS, "completed")
+        assert manifest.usage.requests == recorded.usage.requests
+
+
+class TestTheStaleUsage:
+    """``_judge_usage`` is this step's, never the one the step before it left behind."""
+
+    def test_a_failed_identity_check_does_not_inherit_the_previous_steps_usage(
+        self, data: Path, tmp_path: Path
+    ) -> None:
+        """runs-3: ``_run_step`` reset the accumulator *after* ``_is_current``, so a step whose identity check
+        raised recorded the previous judging step's usage as its own and the run total counted it twice."""
+        from rcp.judging.prompts import load_prompt
+
+        prompt = tmp_path / "rubric.txt"
+        prompt.write_text(load_prompt("rubric").text, encoding="utf-8")
+        config = tiny_config(
+            data, steps=["tournament", "rubric"], rubric={**TINY_RUBRIC.model_dump(), "prompt": str(prompt)}
+        )
+        pipeline = Pipeline(config, runs_dir=str(tmp_path / "runs"))
+        pipeline.run()
+        recorded = RunManifest.load(pipeline.layout)
+        # The tournament's store file is gone, so its step re-runs and asks the judge; the rubric's prompt file is
+        # gone too, so its identity check raises before it can start -- the exact shape the accumulator leaked in.
+        (Path(pipeline.layout.judgements) / "tournament.jsonl").unlink()
+        prompt.unlink()
+        with pytest.raises(FileNotFoundError, match="rubric.txt"):
+            Pipeline.resume(pipeline.layout.root).run()
+        manifest = RunManifest.load(pipeline.layout)
+        assert manifest.step("tournament").usage.requests > 0, "the tournament re-ran and asked the judge"
+        assert manifest.step("rubric").usage == recorded.step("rubric").usage
+        assert manifest.usage.requests == recorded.usage.requests + manifest.step("tournament").usage.requests
 
 
 def test_a_failed_step_error_is_recorded_redacted(data: Path, tmp_path: Path) -> None:

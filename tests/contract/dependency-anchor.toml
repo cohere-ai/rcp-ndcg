@@ -1,0 +1,63 @@
+# The dependency anchor: the windows the shipped engine release declares for the packages this workspace's lock
+# carries. `tests/contract/test_dependency_anchor.py` reads this record and `uv.lock`, and nothing outside the
+# repository: the release is cited by tag and by the commit the tag points to, never by a checkout path, so the
+# contract suite checks the lock on a machine that has no engine tree.
+#
+# One row per window, and the rows are exactly the manifest's `[tool.uv] constraint-dependencies`: a row without a
+# declaration would be a window nothing enforces, and a declaration without a row would be an enforced ceiling
+# with no recorded provenance. A row arrives in the commit that first satisfies it, declared with the version that
+# satisfies it, never ahead of it -- a window the lock violates is a to-do, not a guard. The four forced
+# alignments (`setuptools`, `pillow`, `aiohttp`, `certifi`) arrived that way, each in the commit that moved it;
+# `filelock`'s floor was already satisfied, so its bump was permitted rather than required.
+
+[release]
+# The tag the rows were read at, and the commit it points to (`git rev-parse v0.33.0^{commit}` in the engine's
+# repository). The files are the release tree's, relative to its root.
+distribution = "vllm"
+tag = "v0.33.0"
+commit = "4ba787ec9959e566d3b587a796dff07673324da5"
+files = ["pyproject.toml", "requirements/common.txt"]
+
+[windows.torch]
+specifier = "==2.14.0"
+source = "pyproject.toml:10"
+
+[windows.transformers]
+specifier = ">=5.16.1,<5.21.0"
+source = "requirements/common.txt:11"
+
+[windows.huggingface-hub]
+specifier = ">=1.31.0"
+source = "requirements/common.txt:12"
+
+[windows.tokenizers]
+specifier = ">=0.23.2"
+source = "requirements/common.txt:13"
+
+[windows.safetensors]
+specifier = ">=0.6.2"
+source = "requirements/common.txt:14"
+
+[windows.filelock]
+specifier = ">=3.20.3"
+source = "requirements/common.txt:34"
+
+[windows.pydantic]
+specifier = ">=2.12.0"
+source = "requirements/common.txt:22"
+
+[windows.pillow]
+specifier = ">=13.0.0"
+source = "requirements/common.txt:25"
+
+[windows.aiohttp]
+specifier = ">=3.14.4"
+source = "requirements/common.txt:19"
+
+[windows.certifi]
+specifier = ">=2026.10.19"
+source = "requirements/common.txt:7"
+
+[windows.setuptools]
+specifier = ">=78.1.1,<81.0.0"
+source = "requirements/common.txt:43"

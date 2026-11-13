@@ -13,6 +13,14 @@ constant
 K_VALUES = [1, 3, 5, 10, 20, 100, 1000]
 ```
 
+## `Mode`
+
+literal_alias
+
+```text
+Mode = 'reranking' | 'retrieval'
+```
+
 ## `StoredRankings`
 
 class — mteb's ``SearchProtocol`` (duck-typed) over stored rankings: nothing to index, nothing to encode.

@@ -259,6 +259,24 @@ class TestOutages:
         with pytest.raises(BackendUnavailableError, match="ConnectError"):
             _send(_transport(script, wait_on_outage_s=0.02))
 
+    @pytest.mark.parametrize(
+        "failure",
+        [httpx.DecodingError("garbled gzip body"), httpx.TooManyRedirects("too many redirects")],
+        ids=["DecodingError", "TooManyRedirects"],
+    )
+    def test_a_request_error_that_is_not_a_transport_error_is_retried_and_typed(
+        self, failure: httpx.RequestError
+    ) -> None:
+        """``DecodingError`` and ``TooManyRedirects`` are ``httpx.RequestError``s but not
+        ``httpx.TransportError``s: caught only by the narrower class they escaped un-retried and untyped (a
+        bare ``httpx`` exception out of a library whose contract is ``rcp.errors`` types). They take the
+        unavailable path like every other failed request."""
+        retried = ReplicaScript(failure, 200)
+        assert _send(_transport(retried, max_retries=1))[0].status == 200
+        lasting = ReplicaScript(*[failure] * 1000)
+        with pytest.raises(BackendUnavailableError, match=type(failure).__name__):
+            _send(_transport(lasting, wait_on_outage_s=0.02))
+
 
 class TestOutageClock:
     """``wait_on_outage_s`` counts from a request's first unavailable failure, never its time in the queue.

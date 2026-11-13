@@ -133,6 +133,32 @@ def test_a_torn_last_line_is_ignored_and_cut_before_the_next_append(tmp_path: Pa
     assert list(JudgementStore(tmp_path).records("tournament")) == ["r1", "r3"]
 
 
+def test_a_retirement_is_never_visible_half_done(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """JDG-S3: ``supersede_records`` took the store's writer lock once per appended tombstone, so a reader (which
+    takes no lock) could see a half-retired generation -- while the store's docstring promises one generation is
+    always what it sees. The batch is now one lock and one write: the writer's exclusion boundary is the only
+    instant a concurrent reader can find the file at rest, and every such instant shows the whole retirement."""
+    from contextlib import contextmanager
+
+    store = JudgementStore(tmp_path)
+    retired = {f"r{i}": _window(f"r{i}") for i in range(3)}
+    for record in retired.values():
+        store.append(record)
+    seen: list[int] = []
+    lock = JudgementStore._identity_lock
+
+    @contextmanager
+    def watched(self):
+        with lock(self):
+            yield
+        lines = store.path("tournament").read_text(encoding="utf-8").splitlines()
+        seen.append(sum(1 for line in lines if json.loads(line)["invalid_category"] == "superseded"))
+
+    monkeypatch.setattr(JudgementStore, "_identity_lock", watched)
+    assert store.supersede_records("tournament", retired, reason="a resumed pass refitted") == len(retired)
+    assert seen and set(seen) <= {0, len(retired)}, f"a reader saw a half-retired generation: {seen}"
+
+
 def test_the_latest_valid_copy_of_a_window_wins_and_an_invalid_one_never_replaces_it(tmp_path: Path) -> None:
     store = JudgementStore(tmp_path)
     store.append(_window("r1", valid=False, response=None))

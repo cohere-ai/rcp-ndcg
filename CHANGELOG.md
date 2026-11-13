@@ -57,6 +57,51 @@ same rule covers an empty qrels, no query in both the qrels and the run, and no 
 `hole`, `paired_accuracy` and `coverage` need an input that the metric seam does not supply. They are public in
 `rcp_core.metric` only, and no metric name selects them.
 
+`rcp_core.protocol.ranked_scores` is the one spelling of the score mapping a protocol scores: the entering
+documents (`candidate_docs`'s set) in the run's order. `score_query`, `rcp.eval`'s corpus metrics and `explain`
+build their mapping through it. `score_query` built it in the judged pool's order, so a `ties="input_order"`
+protocol read the pool as the ranking: for a run ranking `b` before `a` over the pool `a, b` it scored `1.0`,
+where the run's order scores `0.0` at `k=1`. `input_order` is "the order in which the scores are given"
+([scoring protocols and tie rules](docs/concepts/protocols.md)); the arXiv v1 TREC-DL reproduction passes the
+scores in pool order and its numbers do not move, and
+no preset moves at all: all six are `group_mean`, which reads the scores alone.
+
+`rcp.eval.mteb` exports `Mode`, the alias of `get_tasks`'s `mode` argument (`Literal["reranking", "retrieval"]`).
+The generated page documented the alias in the function's signature while `__all__` omitted it, so the surface
+named a type it did not define; the page now carries `Mode`'s own entry. Additive: no name moves.
+
+`rcp_core.irt` exports `MIN_SHARED_ITEMS`, the fewest `(query, doc)` items every pair of pooled judges must
+share (`check_judge_overlap`'s shipped default, 1). `rcp_core.irt._calibration` also lists it and
+`JudgeOverlapError` -- the refusal that check raises, already re-exported -- in its own `__all__`. Additive: no
+name moves and no number changes.
+
+### Dependencies
+
+The lock carries the windows the shipped engine release (`vllm` `v0.33.0`, the tag the serving image is built
+from) declares for the packages it pins. They are `[tool.uv] constraint-dependencies` in the root manifest, read
+from the record in `tests/contract/dependency-anchor.toml` (the tag, the commit it points to, and the line each
+window is on), and `tests/contract/test_dependency_anchor.py` fails when the lock leaves one or when the record
+and the manifest stop naming the same windows. Seven of the eleven windows were already satisfied, so declaring
+them moved no version: `torch ==2.14.0`, `transformers >=5.16.1,<5.21.0`, `huggingface-hub >=1.31.0`,
+`tokenizers >=0.23.2`, `safetensors >=0.6.2`, `filelock >=3.20.3`, `pydantic >=2.12.0`. The other four are declared
+in the commit that moves their package to a satisfying version, never ahead of it.
+
+`filelock` moves 3.32.7 → 4.2.10. The release's floor is `>=3.20.3`, which 3.32.7 already met, so this is a
+security improvement the release permits rather than requires: it takes the 4.x line's fixes without changing what
+the release allows. One package moves; nothing else in the lock does.
+
+Four forced alignments move to the version the release's window requires, and their windows are declared in the
+same commit that satisfies them: `pillow` 12.3.0 → 13.0.0 (`>=13.0.0`), `aiohttp` 3.14.3 → 3.14.5 (`>=3.14.4`),
+`certifi` 2026.7.22 → 2026.10.23 (`>=2026.10.19`) and `setuptools` 84.0.0 → 80.10.2 (`>=78.1.1,<81.0.0`).
+`setuptools` is a downgrade: the release's ceiling is below the version the lock carried, so the ceiling is
+declared with the move — a bare upgrade takes 84.x, which the release forbids. Exactly four packages move.
+
+`transformers` moves 5.17.0 → 5.20.2: the highest release under the release's `<5.21.0` cap, and the version the
+`v0.33.0` reference image carries (`packages/rcp-vllm/reference-image-v0.33.0.versions.txt`). Its own
+requirements move nothing else — `tokenizers` stays 0.23.2, `safetensors` 0.8.0 and `huggingface-hub` 1.32.0,
+the last of which the release's `>=1.31.0` floor admits and whose `huggingface_hub.utils.httpx` re-export the
+release relies on. One package moves.
+
 ## 0.0.1 — 2026-11-11
 
 The engine pin is vLLM v0.33.0 throughout this release. An entry that names an older release names the code a

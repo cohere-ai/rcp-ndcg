@@ -10882,6 +10882,13 @@
           1000
         ]
       },
+      "Mode": {
+        "kind": "literal_alias",
+        "values": [
+          "reranking",
+          "retrieval"
+        ]
+      },
       "StoredRankings": {
         "bases": [],
         "defined_in": "rcp.eval.mteb.stored",
@@ -25969,6 +25976,11 @@
         "type": "int",
         "value": 5
       },
+      "MIN_SHARED_ITEMS": {
+        "kind": "constant",
+        "type": "int",
+        "value": 1
+      },
       "Priors": {
         "bases": [
           "pydantic.main.BaseModel"
@@ -26909,6 +26921,27 @@
           },
           {
             "returns": "list[str]"
+          }
+        ]
+      },
+      "ranked_scores": {
+        "defined_in": "rcp_core.protocol",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Mapping[str, float]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "scores"
+          },
+          {
+            "annotation": "Iterable[str]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "entering"
+          },
+          {
+            "returns": "dict[str, float]"
           }
         ]
       },

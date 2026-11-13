@@ -65,9 +65,11 @@ Deviations from the card's script, all declared:
   error in every mode, never a silent sampling at either rule. A media row's ``media`` field rides
   the card's per-document message builder in ``score`` only (:func:`side_payload`); ``render``
   refuses it (its contract is the text spans the client ships).
-- ``tokenize`` mirrors the card's vision-wiring fallback: when ``process_vision_info`` raises
+- ``tokenize`` refuses the card's vision-wiring fallback: when ``process_vision_info`` raises
   (a media decode failure in score mode), the card re-renders the prompt as a NULL-only user
-  turn; the reference copies that behavior verbatim.
+  turn and scores it; the reference raises ``SystemExit`` naming the failure instead, so a row
+  whose media were never read fails the wave rather than gating a score of a document the model
+  did not see (the deviation from the card is recorded in the recipe's notes).
 """
 
 from __future__ import annotations
@@ -75,7 +77,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -324,21 +325,17 @@ class Qwen3VLRerankerReference:
             tokens (the card's own over-cap shape).
         """
         text = self.processor.apply_chat_template(pairs, tokenize=False, add_generation_prompt=True)
-        try:
-            from qwen_vl_utils import process_vision_info
+        from qwen_vl_utils import process_vision_info
 
+        try:
             images, videos, video_kwargs = process_vision_info(
                 pairs, image_patch_size=16, return_video_kwargs=True, return_video_metadata=True
             )
-        except Exception as error:  # the card's fallback: drop the media, log, and score a NULL user turn
-            print(f"error in processing vision info: {error}", file=sys.stderr)
-            images, videos = None, None
-            video_kwargs = {"do_sample_frames": False}
-            text = self.processor.apply_chat_template(
-                [{"role": "user", "content": [{"type": "text", "text": "NULL"}]}],
-                add_generation_prompt=True,
-                tokenize=False,
-            )
+        except Exception as error:  # noqa: BLE001 - every failure of the wiring is the same refusal
+            # The card drops the media and scores a "NULL" user turn instead. This reference refuses the
+            # row: a row whose media were never read must fail the wave, never gate a score of a document
+            # the model did not see. The deviation from the card is recorded in the recipe's notes.
+            raise SystemExit(f"process_vision_info failed for this pair: {error}") from error
         if videos is not None:
             videos, video_metadatas = zip(*videos, strict=True)
             videos, video_metadatas = list(videos), list(video_metadatas)
