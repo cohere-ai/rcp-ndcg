@@ -680,9 +680,9 @@ def test_the_retirement_vocabulary_covers_every_shipped_generated_note() -> None
     assert generated == 41
 
 
-def test_a_late_interaction_reference_scores_through_the_products_maxsim() -> None:
-    """A ragged (multi-vector) reference's answers score through the product's own MaxSim scorer, the
-    one the conformance runner uses -- not a cosine of concatenated vectors.  The case is a real
+def test_a_late_interaction_reference_scores_by_the_cards_definition() -> None:
+    """A ragged (multi-vector) reference's answers score by the card's definition
+    ``s(Q, D) = sum_i max_j q_i . d_j`` -- not a cosine of concatenated vectors.  The case is a real
     topk-embed-v1-small one (two queries, two documents), so the matrix's document mapping is checked."""
     from rcp_test.case_fill import expected_values
 
@@ -694,3 +694,35 @@ def test_a_late_interaction_reference_scores_through_the_products_maxsim() -> No
         "document_vectors": [[[1.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 0.0]]],
     }
     assert expected_values(case, [answer, dict(answer, index=1)], "embed") == [[2.0, 1.0], [2.0, 1.0]]
+
+
+def test_a_late_interaction_fill_does_not_score_with_the_products_maxsim(monkeypatch: pytest.MonkeyPatch) -> None:
+    """(TEST S1) A golden must never be produced by the scorer it checks: the fill wrote a
+    late-interaction case's expected values with the product's ``maxsim_topk`` -- the very call the
+    conformance runner scores the served answer with -- so a scorer defect moved the expectation and
+    the actual matrix together and cancelled.  The fill computes the card's definition in float64
+    (:func:`rcp_test.jobs.maxsim_probe.expected_matrix`); a perturbed product scorer (every score
+    doubled) must leave the expectation at the definition's numbers."""
+    import numpy as np
+    from rcp_test.case_fill import expected_values
+
+    import rcp.retrieval.maxsim
+
+    original = rcp.retrieval.maxsim.maxsim_topk
+    consulted: list[int] = []
+
+    def doubled(docs: Any, queries: Any, k: int) -> Any:
+        consulted.append(k)
+        scores, indices = original(docs, queries, k)
+        return 2 * np.asarray(scores), indices
+
+    monkeypatch.setattr(rcp.retrieval.maxsim, "maxsim_topk", doubled)
+
+    case = load_case(REAL_CASES / "topk-embed-v1-small" / "text-skip-mask-punctuation.yaml")
+    answer = {
+        "index": 0,
+        "query_vectors": [[[1.0, 0.0], [0.0, 1.0]]],
+        "document_vectors": [[[1.0, 0.0], [0.0, 1.0]], [[1.0, 0.0], [0.0, 0.0]]],
+    }
+    assert expected_values(case, [answer], "embed") == [[2.0, 1.0]]
+    assert consulted == [], "the fill scored the expectation with the product's own MaxSim scorer"

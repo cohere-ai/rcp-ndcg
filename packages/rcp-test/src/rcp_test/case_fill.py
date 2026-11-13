@@ -7,8 +7,9 @@ specification; the release checklist's "Fill every ``pending_gpu`` expected valu
 loads the recipe's cases, runs the recipe's reference over the pending cases' inputs (one subprocess
 over every case's rows, one model load; the pairs rows are the reference subprocess's own input format),
 shapes the outputs into the case's ``expected.kind`` -- a scores matrix for a rerank recipe, a similarity
-matrix for an embed or multi_vector one (cosine for a single-vector reference, the product's MaxSim for
-a late-interaction one) -- and edits each case YAML: ``values`` replaced, ``status: pending_gpu`` ->
+matrix for an embed or multi_vector one (cosine for a single-vector reference, the card's MaxSim
+definition in float64 for a late-interaction one) -- and edits each case YAML: ``values`` replaced,
+``status: pending_gpu`` ->
 ``reproduced``, and the pending note's own sentence retired (a note carrying none of the known
 phrasings gets the fill's provenance appended; the report's ``notes_updated`` records the update).
 
@@ -603,8 +604,8 @@ def expected_values(case: Case, answers: list[dict[str, Any]], mode: str) -> lis
 
     ``score``: one row of scores per query, one column per document.  ``embed``: the query x document
     similarity matrix of the reference's own vectors -- cosine of the L2-normalized single vectors, the
-    product's MaxSim for a late-interaction reference.  A shape mismatch is a typed refusal, never a
-    silently padded or truncated matrix.
+    card's MaxSim definition in float64 for a late-interaction reference.  A shape mismatch is a typed
+    refusal, never a silently padded or truncated matrix.
     """
     return _score_values(case, answers) if mode == "score" else _similarity_values(case, answers)
 
@@ -627,12 +628,14 @@ def _score_values(case: Case, answers: list[dict[str, Any]]) -> list[list[float]
 def _similarity_values(case: Case, answers: list[dict[str, Any]]) -> list[list[float]]:
     """One row of cosine similarities per query, one column per document (the ``similarity_matrix`` kind).
 
-    The vectors are the reference's own; the matrix is computed the way the conformance runner computes
-    it (``rcp_test.conformance._similarity_matrix``): cosine of the L2-normalized single vectors,
-    the product's MaxSim (``rcp.retrieval.maxsim``) for a late-interaction reference.
+    The vectors are the reference's own; the matrix is the cosine of the L2-normalized single vectors,
+    and the card's definition in float64 for a late-interaction reference -- ``s(Q, D) = sum_i max_j
+    q_i . d_j``, :func:`rcp_test.jobs.maxsim_probe.expected_matrix` -- never the product's MaxSim
+    scorer the conformance runner checks, so a defect in that scorer cannot move the expectation with
+    it.
     """
     from rcp.inference.types import l2_normalize
-    from rcp.retrieval.maxsim import maxsim_topk
+    from rcp_test.jobs.maxsim_probe import expected_matrix
 
     values: list[list[float]] = []
     for answer in answers:
@@ -650,14 +653,9 @@ def _similarity_values(case: Case, answers: list[dict[str, Any]]) -> list[list[f
                 f"{len(case.inputs.documents)} document(s)"
             )
         if _is_multi_vector(documents):
-            embeddings = [_ragged(queries), _ragged(documents)]
-            scores, indices = maxsim_topk(embeddings[1], embeddings[0], k=len(documents))
-            row = [math.nan] * len(documents)
-            for position, document_index in enumerate(np.asarray(indices).reshape(-1)):
-                row[int(document_index)] = _finite(float(np.asarray(scores).reshape(-1)[position]))
-            if any(math.isnan(value) for value in row):
-                raise HarnessError(f"case {case.id}: the MaxSim matrix left a document unscored: {row}")
-            values.append(row)
+            matrices = [np.asarray(document, dtype=np.float64) for document in documents]
+            row = expected_matrix(matrices, [np.asarray(queries[0], dtype=np.float64)])[0]
+            values.append([_finite(float(value)) for value in row])
         else:
             query = np.asarray(l2_normalize(np.asarray(queries, dtype=np.float64)), dtype=np.float64)
             document = np.asarray(l2_normalize(np.asarray(documents, dtype=np.float64)), dtype=np.float64)
@@ -668,15 +666,6 @@ def _similarity_values(case: Case, answers: list[dict[str, Any]]) -> list[list[f
 def _is_multi_vector(items: list[Any]) -> bool:
     """Whether a reference's per-item vectors are ragged (one list of vectors per item)."""
     return bool(items) and isinstance(items[0], list) and bool(items[0]) and isinstance(items[0][0], list)
-
-
-def _ragged(items: list[Any]) -> Any:
-    """A reference's per-item vectors as the product's ragged :class:`Embeddings` (one item per row)."""
-    from rcp.inference.types import Embeddings
-
-    flat = [vector for item in items for vector in item]
-    offsets = np.cumsum([0, *(len(item) for item in items)]).astype(np.int64)
-    return Embeddings(vectors=np.asarray(flat, dtype=np.float64), offsets=offsets)
 
 
 def _finite(value: float) -> float:
