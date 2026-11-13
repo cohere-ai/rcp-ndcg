@@ -4,7 +4,9 @@ The seam scores **one query**. :meth:`Metric.score` receives one query's ``{doc_
 and the dataset's protocol, and returns the query's value; :func:`rcp.eval.evaluate` averages those values over
 the dataset's labelled queries, so a corpus value is that mean. A metric belongs here when its value is one
 query's; the denominator is the dataset's labelled queries, and a labelled query the run does not rank is scored
-``0.0`` (the report warns ``UNRANKED_QUERIES``).
+``0.0`` (the report warns ``UNRANKED_QUERIES``). The exception is qrel-nDCG: it is undefined for a labelled query
+with no positive grade, so that query drops out of its mean and its denominator is the labelled queries with a
+positive grade (the rule :meth:`Metric.score` states below).
 
 The ten metrics the package ships are the registry's first members, registered at import, so selecting one
 behaves exactly as it did before the seam:
