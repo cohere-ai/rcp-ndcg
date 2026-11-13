@@ -654,7 +654,13 @@ class Pipeline:
         elif step in ("tournament", "rubric"):
             paths = [self._pools_source()]
         elif step == "calibrate":
-            paths = [layout.path("judgements", f"{stage}.jsonl") for stage in ("tournament", "rubric")]
+            # The stage files, and the store's identity: `_step_calibrate` passes `judged_bt_l2(judgements)` into
+            # the fit, and that reads `identity.json` -- a file the fit consumes must be in its digest, or an edit
+            # to it re-uses a calibration fitted under another penalty (latent while the penalty is a constant).
+            paths = [
+                layout.path("judgements", "identity.json"),
+                *(layout.path("judgements", f"{stage}.jsonl") for stage in ("tournament", "rubric")),
+            ]
         elif step == "evaluate":
             paths = [
                 self._pools_source(),

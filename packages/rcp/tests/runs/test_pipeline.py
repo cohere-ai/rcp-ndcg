@@ -125,6 +125,20 @@ class TestResume:
         assert _statuses(manifest) == dict.fromkeys(STEPS, "completed")
         assert manifest.step("calibrate").ended_at > manifest.step("rubric").ended_at
 
+    def test_an_edited_store_identity_redoes_the_calibration(self, run_dir: Path) -> None:
+        """runs-6: the calibrate step passes ``judged_bt_l2(judgements)`` -- read from the store's
+        ``identity.json`` -- into the fit's own identity, but its recorded inputs were the two stage files alone,
+        so the file the fit consumes was invisible to the digest. The penalty is the constant ``Priors().bt_l2``
+        today, so the mechanism is what is pinned, not the value: a field the fit does not read still re-runs it."""
+        recorded = RunManifest.load(run_dir)
+        identity = run_dir / "judgements" / "identity.json"
+        payload = json.loads(identity.read_text(encoding="utf-8"))
+        payload["stages"]["tournament"]["sources"]["prompt"] = "a-renamed-prompt.txt"
+        identity.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        manifest = Pipeline.resume(run_dir).run()
+        assert _statuses(manifest)["calibrate"] == "completed"
+        assert manifest.step("calibrate").ended_at > recorded.step("calibrate").ended_at
+
     def test_a_missing_output_redoes_its_step(self, run_dir: Path) -> None:
         (run_dir / "metrics" / "report.json").unlink()
         manifest = Pipeline.resume(run_dir).run()
