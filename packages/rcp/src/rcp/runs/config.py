@@ -210,17 +210,26 @@ class CandidatesConfig(BaseModel):
                 f"candidates.fuse is the fusion a from: fuse run's candidates come from, and this run is from: "
                 f"{self.source}: set candidates.from: fuse, or drop candidates.fuse"
             )
-        if self.source == "fuse":
-            unused = sorted(
-                name
-                for name, value in (("rankings", self.rankings), ("system", self.system), ("retrieval", self.retrieval))
-                if value is not None
+        # What this source reads, of the fields that name an input of another source. A set-but-unread field is
+        # not harmless: a job ships it as a host input nothing reads (and is refused over it when it does not
+        # share the host's files), and it enters every judging, evaluate and rerank identity -- so editing a path
+        # nothing reads re-keys those steps. ``depth`` is source-independent and not named here.
+        reads = {
+            "dataset": (),
+            "rankings": ("rankings", "system"),
+            "retrieval": ("retrieval",),
+            "fuse": (),
+        }[self.source]
+        unused = sorted(
+            name
+            for name, value in (("rankings", self.rankings), ("system", self.system), ("retrieval", self.retrieval))
+            if value is not None and name not in reads
+        )
+        if unused:
+            raise ValueError(
+                f"candidates.{unused[0]} is not used by candidates.from: {self.source}: drop it, or set "
+                "candidates.from to the source that reads it"
             )
-            if unused:
-                raise ValueError(
-                    f"candidates.from: fuse ranks by the fused systems, and candidates.{unused[0]} is not used by "
-                    "it: drop it, or set candidates.from to the source that reads it"
-                )
         return self
 
 
