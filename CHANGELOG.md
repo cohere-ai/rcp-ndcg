@@ -57,6 +57,15 @@ same rule covers an empty qrels, no query in both the qrels and the run, and no 
 `hole`, `paired_accuracy` and `coverage` need an input that the metric seam does not supply. They are public in
 `rcp_core.metric` only, and no metric name selects them.
 
+`rcp_core.protocol.ranked_scores` is the one spelling of the score mapping a protocol scores: the entering
+documents (`candidate_docs`'s set) in the run's order. `score_query`, `rcp.eval`'s corpus metrics and `explain`
+build their mapping through it. `score_query` built it in the judged pool's order, so a `ties="input_order"`
+protocol read the pool as the ranking: for a run ranking `b` before `a` over the pool `a, b` it scored `1.0`,
+where the run's order scores `0.0` at `k=1`. `input_order` is "the order in which the scores are given"
+([scoring protocols and tie rules](docs/concepts/protocols.md)); the arXiv v1 TREC-DL reproduction passes the
+scores in pool order and its numbers do not move, and
+no preset moves at all: all six are `group_mean`, which reads the scores alone.
+
 ### Dependencies
 
 The lock carries the windows the shipped engine release (`vllm` `v0.33.0`, the tag the serving image is built

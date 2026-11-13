@@ -57,7 +57,7 @@ from importlib.metadata import EntryPoint, entry_points
 from typing import ClassVar
 
 from rcp_core import metric as core_metric
-from rcp_core.protocol import MetricName, Protocol, candidate_docs, score_query
+from rcp_core.protocol import MetricName, Protocol, candidate_docs, ranked_scores, score_query
 
 from rcp.errors import ConfigError
 from rcp.support.entrypoints import load_entry_point, provider_of, registered_names
@@ -181,9 +181,10 @@ class _CorpusMetric(Metric):
 
     The arithmetic is the corpus function's, called on a one-query corpus, so a metric has one body and the seam
     cannot disagree with :mod:`rcp_core.metric` about a query. ``protocol`` supplies the *set* of entering
-    documents (:func:`rcp_core.protocol.candidate_docs`: the pool restriction and the exclusions); the run's
-    insertion order among them is kept, because that order is the ``input_order`` tie rule of ``mrr`` and
-    ``recall_cap`` -- the pool's order is often a relevance order, and is never a ranking.
+    documents (:func:`rcp_core.protocol.candidate_docs`: the pool restriction and the exclusions);
+    :func:`rcp_core.protocol.ranked_scores` keeps the run's insertion order among them, because that order is
+    the ``input_order`` tie rule of ``mrr`` and ``recall_cap`` -- the pool's order is often a relevance order,
+    and is never a ranking.
 
     The mean is over the dataset's labelled queries: a labelled query the run does not rank is scored ``0.0``,
     where the standalone function divides by the queries it evaluates (``mrr`` and ``recall_cap``: by every
@@ -212,8 +213,8 @@ class _CorpusMetric(Metric):
         candidates: Sequence[str] | None = None,
         excluded: Collection[str] = (),
     ) -> float | None:
-        entering = set(candidate_docs(protocol, ranking, candidates=candidates, excluded=excluded, query_id=query))
-        ordered = {doc_id: ranking[doc_id] for doc_id in ranking if doc_id in entering}
+        entering = candidate_docs(protocol, ranking, candidates=candidates, excluded=excluded, query_id=query)
+        ordered = ranked_scores(ranking, entering)
         return self.function({query: labels}, {query: ordered}, k=k)
 
 

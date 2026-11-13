@@ -26912,6 +26912,27 @@
           }
         ]
       },
+      "ranked_scores": {
+        "defined_in": "rcp_core.protocol",
+        "kind": "function",
+        "signature": [
+          {
+            "annotation": "Mapping[str, float]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "scores"
+          },
+          {
+            "annotation": "Iterable[str]",
+            "default": "<required>",
+            "kind": "positional_or_keyword",
+            "name": "entering"
+          },
+          {
+            "returns": "dict[str, float]"
+          }
+        ]
+      },
       "resolve_protocol": {
         "defined_in": "rcp_core.protocol",
         "kind": "function",

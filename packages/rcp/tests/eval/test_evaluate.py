@@ -845,6 +845,26 @@ def test_explain_shows_each_systems_top_k_with_criteria_and_splits_the_gap(repor
     assert delta.selection == pytest.approx(0.0) and delta.ordering == pytest.approx(delta.total)
 
 
+def test_explain_shows_the_runs_order_under_an_input_order_protocol() -> None:
+    """(EVAL#14, H1's mirror) ``explain`` promises "``input_order`` keeps the rankings' order", but it built
+    the score mapping from the judged pool's order: the displayed top was the pool's relevance order and the
+    deltas' mapping the same.  The run ranks ``b`` first; the pool lists ``a`` first."""
+    from rcp_core.protocol import Protocol
+
+    dataset = Dataset(name="toy", qrels={"q0": {"a": 1.0, "b": 0.0}}, candidates={"q0": ["a", "b"]})
+    gains = {"q0": {"a": 1.0, "b": 0.0}}
+    rankings = Rankings.from_scores({"q0": {"b": 0.5, "a": 0.5}}, system="A")
+    report = evaluate(
+        rankings, dataset=dataset, gains=gains, protocol=Protocol(name="run-order", ties="input_order"),
+        k=2, bootstrap=0,
+    )  # fmt: skip
+
+    explained = explain(report, "q0", k=2)
+
+    assert [doc.doc_id for doc in explained.systems[0].top] == ["b", "a"], "the run's order, not the pool's"
+    assert explained.systems[0].values["rcp_ndcg@2"] == pytest.approx(1 / LOG2_3), "the report's own value"
+
+
 def test_explain_needs_a_report_from_evaluate(report: EvalReport) -> None:
     with pytest.raises(DataError, match="use a report returned by evaluate"):
         explain(EvalReport.model_validate_json(report.to_json()), "q1")

@@ -193,15 +193,34 @@ def test_a_non_finite_qrel_grade_is_refused_not_read_as_absent() -> None:
         score_query({"a": 2.0, "b": 1.0}, {"a": float("inf"), "b": 1.0}, protocol="plain", metric="qrel_ndcg", k=2)
 
 
-def test_input_order_ties_follow_the_judged_pool_order() -> None:
+def test_input_order_ties_follow_the_runs_order_not_the_judged_pool() -> None:
+    """``input_order`` is "the order in which the scores are given" (docs/concepts/protocols.md), and a judged
+    pool's order is never a ranking.  The run here ranks ``b`` first; the pool lists ``a`` first.  The old
+    mapping was built in pool order, so it scored 1.0 -- the pool's relevance order -- where the run's order
+    puts the only relevant document second (0.0 at k=1)."""
     scores = {"b": 1.0, "a": 1.0}
     gains = {"a": 1.0}
-    pool_order = Protocol(name="pool-order", ties="input_order", restrict_to_candidates=True)
+    run_order = Protocol(name="run-order", ties="input_order", restrict_to_candidates=True)
 
-    assert score_query(scores, gains, protocol=pool_order, k=1, candidates=["a", "b"]) == 1.0
-    assert score_query(scores, gains, protocol=pool_order, k=1, candidates=["b", "a"]) == 0.0
+    assert score_query(scores, gains, protocol=run_order, k=1, candidates=["a", "b"]) == 0.0
+    assert score_query(scores, gains, protocol=run_order, k=1, candidates=["b", "a"]) == 0.0
+    assert score_query(scores, gains, protocol=run_order, k=2, candidates=["a", "b"]) == pytest.approx(1 / LOG2_3)
     with pytest.raises(ValueError, match="judged pool"):
-        score_query(scores, gains, protocol=pool_order)
+        score_query(scores, gains, protocol=run_order)
+
+
+def test_ranked_scores_keeps_the_runs_order_over_the_entering_set() -> None:
+    """The one spelling of the mapping a protocol scores: the entering documents, in the run's order.  Which
+    documents enter is the pool's decision (``a`` before ``b`` here); the mapping's order is the run's (``b``
+    before ``a``), which is what ``input_order`` reads -- the hand-built copies took the pool's order instead."""
+    from rcp_core.protocol import ranked_scores
+
+    scores = {"b": 1.0, "x": 0.5, "a": 1.0}
+    entering = candidate_docs("mteb", scores, candidates=["a", "b"])
+
+    assert entering == ["a", "b"], "which documents enter is the pool's rule"
+    assert ranked_scores(scores, entering) == {"b": 1.0, "a": 1.0}
+    assert list(ranked_scores(scores, entering)) == ["b", "a"], "the mapping is in the run's order"
 
 
 @pytest.mark.parametrize("preset", sorted(PROTOCOLS))

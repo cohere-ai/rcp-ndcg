@@ -57,6 +57,14 @@ function — The documents of one query that enter the ranking.
 candidate_docs(protocol: str | Protocol, scored: Iterable[str], *, candidates: Sequence[str] | None = None, excluded: Collection[str] = [], query_id: str | None = None) -> list[str]
 ```
 
+## `ranked_scores`
+
+function — The score mapping a protocol scores: the entering documents, in the run's order.
+
+```text
+ranked_scores(scores: Mapping[str, float], entering: Iterable[str]) -> dict[str, float]
+```
+
 ## `resolve_protocol`
 
 function — The :class:`Protocol` a preset name (a key of :data:`PROTOCOLS`) stands for; a ``Protocol`` passes through.
