@@ -328,6 +328,61 @@ class TestAFailedChange:
         }
 
 
+class TestARefusedAttempt:
+    """A step the store refuses physically ran: its attempt stays on the record and the totals follow it."""
+
+    def test_a_store_refused_step_keeps_its_failed_record(
+        self, data: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """runs-2: the identity-refusal branch restored the recorded run without the attempt's own record, so a
+        step that ran and was store-refused read `pending` in `run status` the moment the run was `failed`."""
+        from rcp.runs.inspect import step_states
+
+        def refused(self):
+            raise IdentityError("the store holds another identity")
+
+        monkeypatch.setattr(Pipeline, "_step_tournament", refused)
+        pipeline = Pipeline(tiny_config(data, steps=["tournament"]), runs_dir=str(tmp_path / "runs"))
+        with pytest.raises(IdentityError, match="another identity"):
+            pipeline.run()
+        manifest = RunManifest.load(pipeline.layout)
+        record = manifest.step("tournament")
+        assert record is not None and record.status is StepStatus.FAILED
+        assert "IdentityError" in (record.error or "")
+        assert manifest.status is RunStatus.FAILED
+        assert {state.name: state.status.value for state in step_states(pipeline.layout, manifest)} == {
+            "tournament": "failed"
+        }
+
+    def test_a_refused_attempt_leaves_no_requests_in_the_runs_total(
+        self, run_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """runs-2: the refused attempt's usage was merged into the run total and never rolled back with the
+        records it was rolled back with, so the run counted requests no step of it made."""
+        from rcp.judging import JudgeClient
+        from rcp.judging.client import BackendUnavailableError
+
+        recorded = RunManifest.load(run_dir)
+        complete = JudgeClient.complete
+        answered = []
+
+        async def down_after_one(self, request):
+            if answered:
+                raise BackendUnavailableError("the endpoint went away")
+            answered.append(request)
+            return await complete(self, request)
+
+        monkeypatch.setattr(JudgeClient, "complete", down_after_one)
+        # A shallower pool re-runs the judging step (depth is content) without re-keying the store, which is the
+        # shape a resume that changes the config and then fails has: the recorded run is restored under it.
+        with pytest.raises(BackendUnavailableError):
+            Pipeline.resume(run_dir, overrides=["candidates.depth=5"]).run()
+        manifest = RunManifest.load(run_dir)
+        assert manifest.config == recorded.config and manifest.status is RunStatus.COMPLETED
+        assert _statuses(manifest) == dict.fromkeys(STEPS, "completed")
+        assert manifest.usage.requests == recorded.usage.requests
+
+
 def test_a_failed_step_error_is_recorded_redacted(data: Path, tmp_path: Path) -> None:
     """runs-12: a credentialed URI the recorded config strips must not ride the error text into the mirrored
     ``manifest.json`` or ``logs/run.log``."""

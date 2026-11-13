@@ -378,11 +378,13 @@ class Pipeline:
                 if self._run_step(step, resume=resume):
                     ran.add(step)
             except IdentityError as exc:
-                self._refused(ran, recorded)
+                usage = self._judge_usage if step in JUDGE_STEPS else None
+                self.manifest.finish_step(step, status=StepStatus.FAILED, usage=usage, error=_describe(exc))
+                self._refused(ran, recorded, failed=step)
                 self._closed(
                     "step_failed",
                     step,
-                    usage=self._judge_usage if step in JUDGE_STEPS else None,
+                    usage=usage,
                     detail={"error": _describe(exc)},
                 )
                 _identity_hint(exc, self.layout, step, mirrored=self.config.mirror is not None)
@@ -424,11 +426,11 @@ class Pipeline:
         return JudgementStore(self.layout.judgements).identities()
 
     def _refused(self, ran: set[str], recorded: RunManifest, *, failed: str | None = None) -> None:
-        """Undo what a refused or failed change wrote: the recorded config and status, and the records of
-        every step but those that ran (``ran``: their outputs were rewritten, and their identity now differs from
-        the recorded config's, so the next resume redoes them) and the ``failed`` step, when the run had no record
-        of it (its error stays visible). A run recorded ``submitted`` or ``running`` (a job's first attempt, or one
-        that was stopped) is left ``failed``: no job runs it any more."""
+        """Undo what a refused or failed change wrote: the recorded config, status, run totals and families, and
+        the records of every step but those that ran (``ran``: their outputs were rewritten, and their identity now
+        differs from the recorded config's, so the next resume redoes them) and the ``failed`` step, when the run
+        had no record of it (its error stays visible). A run recorded ``submitted`` or ``running`` (a job's first
+        attempt, or one that was stopped) is left ``failed``: no job runs it any more."""
         keep = ran | ({failed} if failed is not None and recorded.step(failed) is None else set())
         steps = []
         for record in self.manifest.steps:
@@ -437,6 +439,15 @@ class Pipeline:
                 steps.append(kept)
         self.manifest.steps = steps
         self.manifest.config = recorded.config
+        # The run total and the families follow the records: the recorded ones, plus every kept record the
+        # recorded manifest did not count (a step that ran, and the failed attempt a run had no record of), so an
+        # attempt rolled back here leaves no requests, and no family, in the run it never changed.
+        total = recorded.usage
+        for record in steps:
+            if record is not recorded.step(record.name):
+                total = total.merged_with(record.usage)
+        self.manifest.usage = total
+        self.manifest.families = dict(recorded.families)
         pending = recorded.status in (RunStatus.SUBMITTED, RunStatus.RUNNING)
         self.manifest.status = RunStatus.FAILED if pending else recorded.status
         self.config = RunConfig.from_data(recorded.config)
