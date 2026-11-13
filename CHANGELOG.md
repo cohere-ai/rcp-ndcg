@@ -68,6 +68,10 @@ this entry moves no version: `torch ==2.14.0`, `transformers >=5.16.1,<5.21.0`, 
 `tokenizers >=0.23.2`, `safetensors >=0.6.2`, `filelock >=3.20.3`, `pydantic >=2.12.0`. A window the lock violates
 is declared in the commit that moves its package to a satisfying version, never ahead of it.
 
+`filelock` moves 3.32.7 → 4.2.10. The release's floor is `>=3.20.3`, which 3.32.7 already met, so this is a
+security improvement the release permits rather than requires: it takes the 4.x line's fixes without changing what
+the release allows. One package moves; nothing else in the lock does.
+
 ## 0.0.1 — 2026-11-11
 
 The engine pin is vLLM v0.33.0 throughout this release. An entry that names an older release names the code a
