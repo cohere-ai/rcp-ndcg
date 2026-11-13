@@ -4,11 +4,11 @@ Each step calls the library function that owns its work -- retrieval, the
 reranker, :func:`rcp.judging.judge`, :func:`rcp.calibration.calibrate`,
 the evaluation -- and writes into the layout of :mod:`rcp.runs.layout`.
 The manifest records every step's identity and the content hashes of what it
-read and wrote, so resuming a run re-does exactly the steps whose identity or
-inputs changed. The judging steps resume at window granularity on top: their
-store is append-only, so a stopped judging step asks the judge only for the
-windows that are missing (a refused window is asked again, and the later-phase
-windows its first fit selected are retired with appended tombstones).
+read and wrote, so resuming a run re-does exactly the steps whose identity,
+inputs or outputs changed. The judging steps resume at window granularity on
+top: their store is append-only, so a stopped judging step asks the judge only
+for the windows that are missing (a refused window is asked again, and the
+later-phase windows its first fit selected are retired with appended tombstones).
 
 The dataset is read through :func:`rcp.data.load_dataset`. The judging
 steps read each query's pool from ``candidates.parquet`` (a
@@ -508,13 +508,14 @@ class Pipeline:
             return getattr(self, f"_step_{step}")()
 
     def _is_current(self, step: str) -> bool:
-        """A recorded step is current when it succeeded with the same identity and inputs and its outputs exist."""
+        """A recorded step is current when it succeeded with the same identity and inputs and its outputs are
+        byte-identical to what it recorded writing."""
         record = self.manifest.step(step)
         if record is None or not record.succeeded or record.identity_hash != hash_payload(self._identity(step)):
             return False
         if {(r.path, r.sha256) for r in record.inputs} != {(r.path, r.sha256) for r in self._inputs(step)}:
             return False
-        return all(Path(self.layout.resolve(ref.path)).exists() for ref in record.outputs)
+        return all(_unchanged(ref, self.layout) for ref in record.outputs)
 
     @property
     def _first_stage(self) -> str:
@@ -1218,6 +1219,16 @@ def _input_ref(path: str, layout: RunLayout) -> ArtifactRef:
     ref = artifact_ref(path, layout=layout)
     safe = safe_url(ref.path)
     return ref if safe == ref.path else ref.model_copy(update={"path": safe})
+
+
+def _unchanged(ref: ArtifactRef, layout: RunLayout) -> bool:
+    """Whether a recorded output is still the file the step wrote: it exists and its bytes hash to its record.
+
+    A resume that checked existence alone treated a hand-edited report (or a writer that silently shortened its
+    file) as the step's own output, and the docstring's durability promise held for inputs only.
+    """
+    path = Path(layout.resolve(ref.path))
+    return path.exists() and artifact_ref(path, layout=layout).sha256 == ref.sha256
 
 
 def _write_rankings(path: str, rankings: Rankings) -> None:

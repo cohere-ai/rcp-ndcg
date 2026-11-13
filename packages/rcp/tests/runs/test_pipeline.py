@@ -132,6 +132,17 @@ class TestResume:
         assert manifest.step("calibrate").ended_at < manifest.step("evaluate").started_at
         assert (run_dir / "metrics" / "report.json").is_file()
 
+    def test_an_edited_output_redoes_its_step(self, run_dir: Path) -> None:
+        """The pipeline's promise is that a resume re-does the steps whose identity or inputs changed, and the
+        manifest records the content hashes of what each step wrote: an output rewritten by hand is not that
+        step's output, and `exists()` alone made the step look done."""
+        (run_dir / "metrics" / "report.json").write_text("{}\n", encoding="utf-8")
+        manifest = Pipeline.resume(run_dir).run()
+        assert _statuses(manifest)["evaluate"] == "completed"
+        assert manifest.step("calibrate").ended_at < manifest.step("evaluate").started_at
+        report = json.loads((run_dir / "metrics" / "report.json").read_text(encoding="utf-8"))
+        assert report["schema"] == "rcp.eval-report.v1"
+
     def test_without_resume_every_step_runs_again(self, run_dir: Path) -> None:
         manifest = Pipeline.resume(run_dir).run(resume=False)
         assert _statuses(manifest) == dict.fromkeys(STEPS, "completed")
