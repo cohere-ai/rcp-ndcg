@@ -107,7 +107,8 @@ tokenizer. It starts from the judge's `context_tokens` and subtracts four things
 
 The rest is shared equally by the documents of the window. Each document's text is cut to its share at a token
 boundary, as the prompt carries it: stripped and XML-escaped. The cut is recorded under `window_budget` in
-`preprocessing.jsonl`, beside the judgement store.
+`preprocessing.jsonl`, beside the judgement store. A context that leaves less than one token per document is
+refused with `CapabilityError`. Documents are never judged cut to nothing.
 
 A judge config without `context_tokens` sends documents whole. It logs a warning when it names a tokenizer,
 which sizes no window budget without one. A judge without a tokenizer behaves the same way. It logs a warning

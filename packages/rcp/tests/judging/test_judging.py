@@ -790,6 +790,19 @@ class TestTheWindowTextBudget:
         assert budget is not None and 0 < budget < words.count(html.escape(self.DOCS["a"]))
         return fake, budget, list(result.judgements)
 
+    def test_a_context_just_above_the_prompt_overhead_judges_nothing(
+        self, tmp_path: Path, word_tokenizer_file: Path
+    ) -> None:
+        """JDG-S1's reproduction: a context one token above the prompt's own overhead gave every document an
+        empty cut, and the pass stored 7 valid judgements about empty documents."""
+        fake = _Recording(lambda text: 0.0)
+        words = load_tokenizer(str(word_tokenizer_file))
+        overhead = prompt_overhead_tokens(load_prompt("rubric"), "rubric", "a query", self.SCHEDULE.window, words)
+        _tokenized(fake, word_tokenizer_file, context_tokens=overhead + 1)
+        with pytest.raises(CapabilityError, match="does not fit"):
+            judge(self.ROWS, None, fake, stage="rubric", out=tmp_path, schedule=self.SCHEDULE)
+        assert fake.requests == [], "a window with no text budget is refused before it is asked"
+
     def test_every_request_fits_the_context_counted_with_the_tokenizer(
         self, tmp_path: Path, word_tokenizer_file: Path
     ) -> None:
@@ -989,6 +1002,15 @@ def test_a_torn_last_census_line_does_not_poison_the_store(
     )
     with pytest.raises(DataError, match="preprocessing.jsonl"):
         _rubric(store, _tokenized(FakeJudge(lambda text: 0.0), word_tokenizer_file), preprocessing=policy)
+
+
+def test_a_window_with_no_text_budget_is_refused() -> None:
+    """JDG-S1: the per-document budget was floored at 0, so a context that leaves less than one token per
+    document returned 0 and the pass judged documents cut to nothing (and stored them valid)."""
+    judge_cfg = JudgeConfig(base_url="http://h/v1", model="m", context_tokens=10_000, max_output_tokens=1_000)
+    # usable = 5 tokens, the reserve takes half of it: 2.5 tokens are left for 10 documents.
+    with pytest.raises(CapabilityError, match="does not fit"):
+        window_tokens(judge_cfg, 10, overhead_tokens=9_995)
 
 
 def test_the_window_text_budget_follows_the_context() -> None:

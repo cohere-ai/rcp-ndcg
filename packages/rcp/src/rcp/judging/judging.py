@@ -142,7 +142,8 @@ def window_tokens(
     documents are sent whole.
 
     Raises:
-        CapabilityError: the prompt and the media alone do not fit.
+        CapabilityError: the prompt and the media alone do not fit, or the completion reserve leaves less than
+            one token per document (a budget of 0 would judge documents cut to nothing).
     """
     context = config.context_tokens
     if context is None:
@@ -155,7 +156,17 @@ def window_tokens(
             f"({media_tokens_per_doc:,} per document)",
             hint="use a smaller window, or a lower pixel budget in the resolution policy",
         )
-    usable -= min(max(config.max_output_tokens or 0, 0), usable * 0.5)
+    reserved = min(max(config.max_output_tokens or 0, 0), usable * 0.5)
+    usable -= reserved
+    if usable < window:
+        # `int(usable // window)` would be 0: every document of the window would be cut to nothing, and the pass
+        # would record valid judgements about empty documents (the estimate accepted the same config silently).
+        raise CapabilityError(
+            f"a window of {window} documents does not fit the judge's context of {context:,} tokens: its prompt "
+            f"takes {overhead_tokens:,} tokens, its completion reserves {reserved:,.0f}, and {usable:,.0f} tokens "
+            f"are left for {window} documents",
+            hint="use a smaller window, a smaller judge.max_output_tokens, or a judge with a larger context",
+        )
     return int(usable // window)
 
 
