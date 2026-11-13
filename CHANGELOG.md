@@ -57,6 +57,17 @@ same rule covers an empty qrels, no query in both the qrels and the run, and no 
 `hole`, `paired_accuracy` and `coverage` need an input that the metric seam does not supply. They are public in
 `rcp_core.metric` only, and no metric name selects them.
 
+### Dependencies
+
+The lock carries the windows the shipped engine release (`vllm` `v0.33.0`, the tag the serving image is built
+from) declares for the packages it pins. They are `[tool.uv] constraint-dependencies` in the root manifest, read
+from the record in `tests/contract/dependency-anchor.toml` (the tag, the commit it points to, and the line each
+window is on), and `tests/contract/test_dependency_anchor.py` fails when the lock leaves one or when the record
+and the manifest stop naming the same windows. Seven of the eleven windows are declared, all already satisfied, so
+this entry moves no version: `torch ==2.14.0`, `transformers >=5.16.1,<5.21.0`, `huggingface-hub >=1.31.0`,
+`tokenizers >=0.23.2`, `safetensors >=0.6.2`, `filelock >=3.20.3`, `pydantic >=2.12.0`. A window the lock violates
+is declared in the commit that moves its package to a satisfying version, never ahead of it.
+
 ## 0.0.1 — 2026-11-11
 
 The engine pin is vLLM v0.33.0 throughout this release. An entry that names an older release names the code a
