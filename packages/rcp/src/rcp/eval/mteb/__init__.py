@@ -359,6 +359,7 @@ def _task_base() -> type:
 
 __all__ = [
     "K_VALUES",
+    "Mode",
     "StoredRankings",
     "get_tasks",
     "model_meta",

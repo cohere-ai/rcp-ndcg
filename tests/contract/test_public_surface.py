@@ -144,6 +144,9 @@ def test_the_curated_surface_classifies_the_nowhere_names() -> None:
     assert "ChangeMechanism" in rcp.data.preprocess.__all__
     assert "ResolvedRevision" in revisions.__all__
     assert "StoredRankings" in rcp.eval.mteb.__all__
+    # ``get_tasks``'s published signature is ``mode: Mode = 'reranking'``: the page names the alias, so the
+    # surface defines it (a reader cannot import a type the ``__all__`` omits).
+    assert "Mode" in rcp.eval.mteb.__all__
 
 
 def test_every_module_declares_all(every_module: dict) -> None:

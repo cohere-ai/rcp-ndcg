@@ -10882,6 +10882,13 @@
           1000
         ]
       },
+      "Mode": {
+        "kind": "literal_alias",
+        "values": [
+          "reranking",
+          "retrieval"
+        ]
+      },
       "StoredRankings": {
         "bases": [],
         "defined_in": "rcp.eval.mteb.stored",

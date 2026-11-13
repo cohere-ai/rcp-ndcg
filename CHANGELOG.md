@@ -66,6 +66,10 @@ where the run's order scores `0.0` at `k=1`. `input_order` is "the order in whic
 scores in pool order and its numbers do not move, and
 no preset moves at all: all six are `group_mean`, which reads the scores alone.
 
+`rcp.eval.mteb` exports `Mode`, the alias of `get_tasks`'s `mode` argument (`Literal["reranking", "retrieval"]`).
+The generated page documented the alias in the function's signature while `__all__` omitted it, so the surface
+named a type it did not define; the page now carries `Mode`'s own entry. Additive: no name moves.
+
 ### Dependencies
 
 The lock carries the windows the shipped engine release (`vllm` `v0.33.0`, the tag the serving image is built
