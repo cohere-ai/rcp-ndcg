@@ -458,7 +458,10 @@ class Transport:
         except (httpx.UnsupportedProtocol, httpx.InvalidURL) as exc:
             # The URL, not the endpoint: a config error now, never an outage parked out for 30 minutes.
             raise _malformed_url(replica.url, exc) from None
-        except httpx.TransportError as exc:
+        except httpx.RequestError as exc:
+            # Every request failure, not only ``TransportError``: ``DecodingError`` (a garbled body) and
+            # ``TooManyRedirects`` are ``RequestError``s outside that subclass, and the Sender contract
+            # names rcp types only -- they retry and set aside like any other failed request.
             raise _Unavailable(describe_failure(exc), cause=_redacted(exc)) from None
         status = response.status_code
         if status_is_unavailable(status):
