@@ -158,12 +158,23 @@ def task_metadata(source: str) -> tuple[str, dict[str, dict[str, Any]]]:
 
     The table is the file's ``_TASK_METADATA`` JSON, keyed as the release keys it: the published task names
     from the 2026-10 rename on, the subset names before that.
+
+    Raises:
+        DataError: The text is not an ``rcp_ndcg_tasks.py``, or its ``_TASK_METADATA`` is not valid JSON
+            (the published file is the input; a caller cannot tell that from its own malformed input).
     """
     revision = re.search(r'^_REVISION = "([0-9a-f]+)"', source, re.M)
     table = re.search(r'_TASK_METADATA[^=]*= json\.loads\(r"""(.*?)"""\)', source, re.S)
     if revision is None or table is None:
         raise DataError("not an rcp_ndcg_tasks.py: no _REVISION or _TASK_METADATA")
-    return revision.group(1), json.loads(table.group(1))
+    try:
+        metadata = json.loads(table.group(1))
+    except json.JSONDecodeError as exc:
+        raise DataError(
+            f"the published file's _TASK_METADATA is not valid JSON: {exc}",
+            hint="the file is broken: re-download it, or pin a revision that ships the task table intact",
+        ) from exc
+    return revision.group(1), metadata
 
 
 def task_subsets(source: str) -> dict[str, str]:
