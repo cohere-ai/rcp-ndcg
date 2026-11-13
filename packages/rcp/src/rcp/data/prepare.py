@@ -564,9 +564,25 @@ def apply_media_fit(contents: Sequence[Content], fit: MediaFit) -> list[Content]
     """
     kept: list[Content] = []
     applied = 0
-    for content in contents:
+
+    def decision_for(content_index: int, part_index: int) -> Any:
+        """The next prepared item's decision, or a refusal naming where the fit ran out."""
+        nonlocal applied
+        if applied >= len(fit.decisions):
+            raise DataError(
+                f"content {content_index} part {part_index} carries a prepared media item, and the fit has "
+                f"only {len(fit.decisions)} decision(s) for the {applied} item(s) before it; the parts of "
+                "these contents do not carry the media :func:`prepare_request` prepared for them",
+                hint="apply_media_fit is called with the media :func:`prepare_request` prepared for the same "
+                "contents, in part order",
+            )
+        decision = fit.decisions[applied]
+        applied += 1
+        return decision
+
+    for content_index, content in enumerate(contents):
         parts: list[Any] = []
-        for part in content.parts:
+        for part_index, part in enumerate(content.parts):
             if not part.media_refs():
                 parts.append(part)
                 continue
@@ -578,9 +594,8 @@ def apply_media_fit(contents: Sequence[Content], fit: MediaFit) -> list[Content]
                     sampled = part.frame_indices
                     pairs: list[tuple[Any, Any]] = []
                     for frame_position, _frame in enumerate(part.frames):
-                        decision = fit.decisions[applied]
+                        decision = decision_for(content_index, part_index)
                         index = sampled[frame_position] if sampled and frame_position < len(sampled) else frame_position
-                        applied += 1
                         if decision is not None:
                             pairs.append((decision, index))
                     if pairs:
@@ -590,14 +605,12 @@ def apply_media_fit(contents: Sequence[Content], fit: MediaFit) -> list[Content]
                         parts.append(part.model_copy(update=update))
                     continue
                 # A ref-only container (``wire: video_url``): one prepared item, sent or dropped whole.
-                decision = fit.decisions[applied]
-                applied += 1
+                decision = decision_for(content_index, part_index)
                 if decision is not None:
                     parts.append(part.model_copy(update={"ref": decision}))
                 continue
             if isinstance(part, ImagePart):
-                decision = fit.decisions[applied]
-                applied += 1
+                decision = decision_for(content_index, part_index)
                 if decision is not None:
                     parts.append(part.model_copy(update={"ref": decision}))
                 continue

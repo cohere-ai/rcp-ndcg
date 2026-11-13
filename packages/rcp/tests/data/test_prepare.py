@@ -243,6 +243,22 @@ class TestFrames:
         assert [frame.uri for frame in part.frames] == [frames[0].uri, frames[2].uri]
         assert part.frame_indices == [10, 30]
 
+    def test_a_fit_with_too_few_decisions_names_the_content_and_part_it_ran_out_at(self, tmp_path: Path):
+        """A fit made for another request carries fewer decisions than these contents have media parts.
+        The mismatch is a ``DataError`` naming the content and the part the fit ran out at -- the caller has
+        to know which row's contents it handed over, never a bare ``IndexError`` with neither."""
+        page = _png(tmp_path / "page.png", (640, 360))
+        contents = [
+            Content.from_parts([ImagePart(ref=page)]),
+            Content.from_parts([TextPart(text="a second row"), ImagePart(ref=page)]),
+        ]
+        fit = MediaFit(media=[], tokens=0, dropped=[], decisions=(page,))
+
+        with pytest.raises(DataError, match="content 1") as caught:
+            apply_media_fit(contents, fit)
+
+        assert caught.value.hint or ""
+
     def test_frames_are_sampled_and_each_prepared_as_an_image(self, tmp_path: Path):
         frames = [_png(tmp_path / "clip" / f"{i:03d}.png", (640, 360), color=(i, i, i)) for i in range(10)]
         image = ImagePolicy(min_px=65536, max_px=256 * 32 * 32, processor="qwen3_vl")
