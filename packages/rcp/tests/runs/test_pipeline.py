@@ -383,6 +383,36 @@ class TestARefusedAttempt:
         assert manifest.usage.requests == recorded.usage.requests
 
 
+class TestTheStaleUsage:
+    """``_judge_usage`` is this step's, never the one the step before it left behind."""
+
+    def test_a_failed_identity_check_does_not_inherit_the_previous_steps_usage(
+        self, data: Path, tmp_path: Path
+    ) -> None:
+        """runs-3: ``_run_step`` reset the accumulator *after* ``_is_current``, so a step whose identity check
+        raised recorded the previous judging step's usage as its own and the run total counted it twice."""
+        from rcp.judging.prompts import load_prompt
+
+        prompt = tmp_path / "rubric.txt"
+        prompt.write_text(load_prompt("rubric").text, encoding="utf-8")
+        config = tiny_config(
+            data, steps=["tournament", "rubric"], rubric={**TINY_RUBRIC.model_dump(), "prompt": str(prompt)}
+        )
+        pipeline = Pipeline(config, runs_dir=str(tmp_path / "runs"))
+        pipeline.run()
+        recorded = RunManifest.load(pipeline.layout)
+        # The tournament's store file is gone, so its step re-runs and asks the judge; the rubric's prompt file is
+        # gone too, so its identity check raises before it can start -- the exact shape the accumulator leaked in.
+        (Path(pipeline.layout.judgements) / "tournament.jsonl").unlink()
+        prompt.unlink()
+        with pytest.raises(FileNotFoundError, match="rubric.txt"):
+            Pipeline.resume(pipeline.layout.root).run()
+        manifest = RunManifest.load(pipeline.layout)
+        assert manifest.step("tournament").usage.requests > 0, "the tournament re-ran and asked the judge"
+        assert manifest.step("rubric").usage == recorded.step("rubric").usage
+        assert manifest.usage.requests == recorded.usage.requests + manifest.step("tournament").usage.requests
+
+
 def test_a_failed_step_error_is_recorded_redacted(data: Path, tmp_path: Path) -> None:
     """runs-12: a credentialed URI the recorded config strips must not ride the error text into the mirrored
     ``manifest.json`` or ``logs/run.log``."""

@@ -460,12 +460,15 @@ class Pipeline:
 
     def _run_step(self, step: str, *, resume: bool) -> bool:
         """Run ``step`` unless it is current; return whether it ran."""
+        # At the step's entry, before anything can raise: a judging step sets the accumulator, also when it
+        # fails, and the failure handler records it -- a reset after `_is_current` left the previous step's
+        # usage to be recorded as this step's.
+        self._judge_usage = None
         if resume and self._is_current(step):
             # The record stays as it was: completed, with the time it took when it ran.
             logger.info("[run] %s: done with the same identity and inputs, skipping", step)
             return False
         logger.info("[run] %s: starting", step)
-        self._judge_usage = None  # a judging step sets it, also when it fails
         if step == "evaluate":
             self.manifest.metrics = {}  # a failed re-run keeps no metrics of the attempt it did not finish
         self.manifest.start_step(step, identity=self._identity(step))
