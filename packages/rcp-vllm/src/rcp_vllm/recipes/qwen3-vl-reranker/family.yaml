@@ -118,7 +118,11 @@ reference:
                                             # cut. One exception, in the notes ("Budgets"): a cut
                                             # inside the query also drops the fixed
                                             # "\n<Document>:" text. reference.py renders the
-                                            # card's cut
+                                            # card's cut. The family's other deviation -- a media
+                                            # row the vision wiring cannot read is refused, where the
+                                            # card scores a NULL turn -- is in the notes, not here:
+                                            # every value above is a rule the harness acts on, and a
+                                            # refusal needs none
 gates: {}
 status:
   state: verified
@@ -258,6 +262,13 @@ notes: |-
   are scored like text rows and gate by the same score rule; the retired query_image/documents_images
   columns are refused loudly, never scored as text. The media stage still gates placement, geometry
   and tokens.
+  A media row the vision wiring cannot read (declared deviation from the card): when the card's
+  `process_vision_info` raises for a pair -- an image or a frame that does not decode -- the card
+  re-renders the prompt as a NULL-only user turn and scores it, which would gate a plausible score for
+  a document the model never read. reference.py refuses the row instead (`process_vision_info failed
+  for this pair: ...` on stderr, exit 1) and the wave stops there. That refusal is this family's second
+  deviation from the card, and it is why the recipe declares no `media_approximation`: its media rows
+  are compared, and one the reference cannot read fails rather than degrades.
   One declared deviation from the card's script (E2 round 4): the reference hands the model a TENSOR
   `mm_token_type_ids`. The card's `tokenize` calls the processor without `return_tensors` (it truncates
   `input_ids` in place, which needs lists), and transformers' processor answers `mm_token_type_ids` as a

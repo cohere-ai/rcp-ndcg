@@ -705,7 +705,7 @@ def _reference_module() -> Any:
     return module
 
 
-def test_the_reference_hands_the_model_tensor_token_type_ids() -> None:
+def test_the_reference_hands_the_model_tensor_token_type_ids(monkeypatch: pytest.MonkeyPatch) -> None:
     """The card's ``tokenize`` calls the processor without ``return_tensors`` (it truncates
     ``input_ids`` in place, so it cannot ask for tensors), and transformers' processor answers
     ``mm_token_type_ids`` as a LIST of lists (``ProcessorMixin.create_mm_token_type_ids``); the pinned
@@ -744,6 +744,15 @@ def test_the_reference_hands_the_model_tensor_token_type_ids() -> None:
         def create_mm_token_type_ids(self, input_ids):
             return [[0] * len(row) for row in input_ids]
 
+    # The vision wiring succeeds and finds no media: a pair the wiring cannot process is refused by the
+    # reference (the recipe's declared deviation), so this test stubs it rather than leaning on the card's
+    # NULL-turn fallback.
+    class _VisionWiring:
+        @staticmethod
+        def process_vision_info(*args: Any, **kwargs: Any) -> tuple[None, None, dict[str, Any]]:  # noqa: ARG004
+            return (None, None, {})
+
+    monkeypatch.setitem(sys.modules, "qwen_vl_utils", _VisionWiring)
     reference = module.Qwen3VLRerankerReference("example-org/checkpoint")
     reference.processor = _StubProcessor()
     inputs = reference.tokenize([[{"role": "user", "content": [{"type": "text", "text": "a pair"}]}]])
