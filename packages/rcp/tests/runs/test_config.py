@@ -76,6 +76,14 @@ class TestValidation:
         with pytest.raises(ValueError, match=message):
             RunConfig.model_validate({"dataset": DATASET, **fields})
 
+    def test_an_empty_step_set_is_refused(self, tmp_path: Path) -> None:
+        """A run of no steps executed nothing and was recorded `completed` (`all([])` is True), every step's
+        input check vacuous: the empty set is refused, through the typed error a caller branches on."""
+        with pytest.raises(ConfigError, match="at least one step"):
+            RunConfig.from_data({"dataset": DATASET, "judge": "fake", "steps": []})
+        with pytest.raises(ConfigError, match="at least one step"):
+            RunConfig.load(_write(tmp_path / "empty.yaml", {"dataset": DATASET, "judge": "fake", "steps": []}))
+
     def test_a_retrieval_sourced_rerank_step_without_a_retrieve_step_is_refused_at_config_time(self) -> None:
         """`from: retrieval` has no first stage until the retrieve step runs it: the combination is refused in
         the config. (`from: rankings` runs fine without one -- its rankings file IS the first stage; a dataset

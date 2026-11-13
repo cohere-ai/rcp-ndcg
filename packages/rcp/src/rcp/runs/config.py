@@ -546,6 +546,21 @@ class RunConfig(BaseModel):
         return uses
 
     @model_validator(mode="after")
+    def _at_least_one_step(self) -> Self:
+        """Refuse an empty step set: it executes nothing and every input check above is vacuous for it.
+
+        The run's completion test is ``all(record.succeeded for step in steps)``, which is ``True`` of no steps,
+        so ``steps: []`` was recorded ``completed`` having run nothing.
+        """
+        if not self.steps:
+            raise ConfigError(
+                "a run needs at least one step: `steps: []` executes nothing, and the run would be recorded "
+                "completed having run none",
+                hint=f"name the steps to run, one or more of: {', '.join(STEPS)}",
+            )
+        return self
+
+    @model_validator(mode="after")
     def _steps_have_their_inputs(self) -> Self:
         if "retrieve" in self.steps and self.candidates.source in ("dataset", "fuse"):
             raise ValueError("the retrieve step needs candidates.from: retrieval or rankings")
