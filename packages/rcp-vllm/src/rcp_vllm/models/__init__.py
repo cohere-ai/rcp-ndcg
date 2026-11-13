@@ -14,9 +14,6 @@ The topk and pplx distributions folded into this one wheel (layout-move item 3):
 
 from __future__ import annotations
 
-import sys
-from typing import NoReturn
-
 LAZY_MODEL_MODULES: tuple[str, ...] = (
     "rcp_vllm.models.embedding_gemma2.attention",
     "rcp_vllm.models.keep_pooler",
@@ -127,10 +124,7 @@ def register() -> None:
 
     Raises:
         RuntimeError: the running vLLM is outside the validated range
-            (:mod:`rcp_vllm.models.version_guard`), or a folded package's registration failed. The
-            failure is printed with the package's name before it is re-raised: vLLM's entry-point loader
-            catches it and only logs the traceback, and the packages are registered in turn, so an engine
-            whose log does not name the package would start half-registered.
+            (:mod:`rcp_vllm.models.version_guard`).
     """
     from .version_guard import require_vllm_version
 
@@ -143,26 +137,5 @@ def register() -> None:
     from .pplx import register_pplx
     from .topk.plugin import register_topk
 
-    try:
-        register_topk()
-    except Exception as error:
-        _refuse("rcp_vllm.models.topk", error)
-    try:
-        register_pplx()
-    except Exception as error:
-        _refuse("rcp_vllm.models.pplx", error)
-
-
-def _refuse(package: str, error: Exception) -> NoReturn:
-    """Print a folded package's registration failure with its name, then re-raise it.
-
-    vLLM's entry-point loader catches what :func:`register` raises and only logs the traceback, and the two
-    packages register in turn: the refusal has to name the package in the log, or the engine starts
-    half-registered with no line saying which half.
-    """
-    print(
-        f"rcp-vllm: registering {package} failed ({type(error).__name__}: {error}); the engine would start "
-        f"with {package}'s architectures unregistered",
-        file=sys.stderr,
-    )
-    raise error
+    register_topk()
+    register_pplx()
