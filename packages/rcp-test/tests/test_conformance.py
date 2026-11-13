@@ -287,6 +287,17 @@ def test_the_run_refuses_a_case_whose_recipe_disagrees() -> None:
         run_case(recipe, case, target="fake", fake_engine=FakePoolEngine())
 
 
+def test_the_suite_refuses_a_case_whose_recipe_disagrees() -> None:
+    """(TEST S2) ``run_suite`` runs its cases through ``_run_case`` directly, so the identity check
+    ``run_case`` makes never ran: a mixed-up suite sent another recipe's cases through this recipe's
+    client and compared them against whatever values they carried.  Both entry points refuse."""
+    recipe = load_recipe(RECIPES / "fake-pool")
+    case = load_case(PACKAGED / "fake-embed" / "short-single.yaml")
+    assert case.recipe == "fake-embed"
+    with pytest.raises(ConformanceError, match="belongs to recipe"):
+        run_suite(recipe, [case], target="fake", fake_engine=FakePoolEngine())
+
+
 def test_a_spearman_prefix_expectation_is_not_a_free_pass_when_displaced() -> None:
     """(v1-F5) A ``kind: ranking`` row under ``spearman_min`` names the derived **top-k prefix** (its
     documents must hold the top-k positions exactly); correlating absolute ranks is shift-invariant
