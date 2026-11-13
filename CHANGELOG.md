@@ -70,6 +70,11 @@ no preset moves at all: all six are `group_mean`, which reads the scores alone.
 The generated page documented the alias in the function's signature while `__all__` omitted it, so the surface
 named a type it did not define; the page now carries `Mode`'s own entry. Additive: no name moves.
 
+`rcp_core.irt` exports `MIN_SHARED_ITEMS`, the fewest `(query, doc)` items every pair of pooled judges must
+share (`check_judge_overlap`'s shipped default, 1). `rcp_core.irt._calibration` also lists it and
+`JudgeOverlapError` -- the refusal that check raises, already re-exported -- in its own `__all__`. Additive: no
+name moves and no number changes.
+
 ### Dependencies
 
 The lock carries the windows the shipped engine release (`vllm` `v0.33.0`, the tag the serving image is built

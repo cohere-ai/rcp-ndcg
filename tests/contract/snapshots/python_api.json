@@ -25976,6 +25976,11 @@
         "type": "int",
         "value": 5
       },
+      "MIN_SHARED_ITEMS": {
+        "kind": "constant",
+        "type": "int",
+        "value": 1
+      },
       "Priors": {
         "bases": [
           "pydantic.main.BaseModel"
