@@ -63,14 +63,20 @@ The lock carries the windows the shipped engine release (`vllm` `v0.33.0`, the t
 from) declares for the packages it pins. They are `[tool.uv] constraint-dependencies` in the root manifest, read
 from the record in `tests/contract/dependency-anchor.toml` (the tag, the commit it points to, and the line each
 window is on), and `tests/contract/test_dependency_anchor.py` fails when the lock leaves one or when the record
-and the manifest stop naming the same windows. Seven of the eleven windows are declared, all already satisfied, so
-this entry moves no version: `torch ==2.14.0`, `transformers >=5.16.1,<5.21.0`, `huggingface-hub >=1.31.0`,
-`tokenizers >=0.23.2`, `safetensors >=0.6.2`, `filelock >=3.20.3`, `pydantic >=2.12.0`. A window the lock violates
-is declared in the commit that moves its package to a satisfying version, never ahead of it.
+and the manifest stop naming the same windows. Seven of the eleven windows were already satisfied, so declaring
+them moved no version: `torch ==2.14.0`, `transformers >=5.16.1,<5.21.0`, `huggingface-hub >=1.31.0`,
+`tokenizers >=0.23.2`, `safetensors >=0.6.2`, `filelock >=3.20.3`, `pydantic >=2.12.0`. The other four are declared
+in the commit that moves their package to a satisfying version, never ahead of it.
 
 `filelock` moves 3.32.7 → 4.2.10. The release's floor is `>=3.20.3`, which 3.32.7 already met, so this is a
 security improvement the release permits rather than requires: it takes the 4.x line's fixes without changing what
 the release allows. One package moves; nothing else in the lock does.
+
+Four forced alignments move to the version the release's window requires, and their windows are declared in the
+same commit that satisfies them: `pillow` 12.3.0 → 13.0.0 (`>=13.0.0`), `aiohttp` 3.14.3 → 3.14.5 (`>=3.14.4`),
+`certifi` 2026.7.22 → 2026.10.23 (`>=2026.10.19`) and `setuptools` 84.0.0 → 80.10.2 (`>=78.1.1,<81.0.0`).
+`setuptools` is a downgrade: the release's ceiling is below the version the lock carried, so the ceiling is
+declared with the move — a bare upgrade takes 84.x, which the release forbids. Exactly four packages move.
 
 ## 0.0.1 — 2026-11-11
 

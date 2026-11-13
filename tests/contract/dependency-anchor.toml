@@ -45,3 +45,19 @@ source = "requirements/common.txt:34"
 [windows.pydantic]
 specifier = ">=2.12.0"
 source = "requirements/common.txt:22"
+
+[windows.pillow]
+specifier = ">=13.0.0"
+source = "requirements/common.txt:25"
+
+[windows.aiohttp]
+specifier = ">=3.14.4"
+source = "requirements/common.txt:19"
+
+[windows.certifi]
+specifier = ">=2026.10.19"
+source = "requirements/common.txt:7"
+
+[windows.setuptools]
+specifier = ">=78.1.1,<81.0.0"
+source = "requirements/common.txt:43"
