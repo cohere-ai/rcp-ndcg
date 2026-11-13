@@ -54,7 +54,7 @@ from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
 from rcp_core.content import Content, ImagePart, MediaRef, VideoPart
 
-from rcp.data.media import DEFAULT_IMAGE_MIME, data_uri, decode_rgb, default_resolver
+from rcp.data.media import DEFAULT_IMAGE_MIME, MediaError, data_uri, decode_rgb, default_resolver
 from rcp.data.resolution import (
     ImagePolicy,
     MediaTokenCount,
@@ -270,6 +270,8 @@ def fit_media_to_budget(
     Raises:
         ConfigError: media whose token cost cannot be counted (a native policy, or no processor family) --
             a budget is never decided on a guess.
+        MediaError: an image the shrink step cannot read again. The row fails; a source that cannot be
+            decoded is not an item the budget chose not to send.
     """
 
     def count(items: Sequence[PreparedMedia]) -> int:
@@ -302,6 +304,8 @@ def fit_media_to_budget(
                 continue
             try:
                 candidate = prepare_image(item.source, minimum, kind=item.kind)
+            except MediaError:
+                raise  # the item cannot be read: the row fails, it is not a budget decision
             except DataError:
                 shrunk.append(item)  # no fixed point at the floor; the drop step decides instead
                 continue

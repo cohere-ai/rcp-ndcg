@@ -14,7 +14,9 @@ from pathlib import Path
 import pytest
 from rcp_core.content import Content, ImagePart, MediaRef, TextPart, VideoPart
 
+import rcp.data.prepare as prepare_module
 from rcp.data import Preprocessing
+from rcp.data.media import MediaError
 from rcp.data.prepare import (
     MediaCensus,
     MediaFit,
@@ -403,6 +405,23 @@ class TestFitMediaToBudget:
         assert fit.tokens == self.POLICY.image_tokens(2200, 1700) + 2
         assert fit.dropped == []
 
+    def test_a_re_prepare_that_cannot_decode_is_an_error_not_a_budget_drop(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """The shrink step re-prepares every image; a failure there is the row's failure, never a budget
+        decision -- ``except DataError`` around it used to swallow ``MediaError`` (its subclass) and drop
+        the item as if it had no fixed point at the floor."""
+        media = self._prepared(tmp_path, [(2560, 2560)])
+        full = self.POLICY.image_tokens(2560, 2560) + 2
+
+        def undecodable(*args: object, **kwargs: object) -> object:
+            raise MediaError("could not decode p0.png as an image: cannot identify image file")
+
+        monkeypatch.setattr(prepare_module, "prepare_image", undecodable)
+
+        with pytest.raises(MediaError, match="could not decode"):
+            fit_media_to_budget(media, image=self.POLICY, video=None, text_budget_tokens=full // 2)
+
     def test_a_pinned_budget_below_the_stock_floor_shrinks_under_its_own_pinning(self, tmp_path: Path):
         """H4: the shrink step's minimum policy carries every field of the declared one -- the engine pinning
         included -- so a pinned budget below the family's stock floor (Qwen3-VL-Embedding's 4096..1843200 px)
@@ -528,23 +547,21 @@ class TestFitMediaToBudget:
         assert fit.media == [] and fit.tokens == 0 and len(fit.dropped) == 1
 
     def test_drops_are_decided_on_exact_counts_not_guesses(self, tmp_path: Path):
-        """An item with no recorded size is bounded, so the fit errs high and says so is not needed:
-        the decision still never cuts a block. The source is a local file that does not decode, so the
-        shrink step fails here and now: a remote URI would have the test resolve a name (and wait out the
-        object store's retries) to learn the same thing."""
-        undecodable = tmp_path / "not-an-image.png"
-        undecodable.write_bytes(b"not an image")
+        """An item with no recorded size is bounded, so the fit errs high rather than guessing, and the
+        decision still never cuts a block. The source is a real image whose 131072 px floor is not a fixed
+        point of the engine's resize, so the item cannot shrink and is dropped whole."""
+        policy = ImagePolicy(min_px=131072, max_px=1310720, processor="qwen3_vl")
         media = [
             PreparedMedia(
                 kind="image",
-                source=MediaRef(uri=undecodable.as_uri()),
+                source=MediaRef(uri=_png(tmp_path / "p.png", (1000, 300)).uri),
                 sent=MediaRef(uri="data:image/png;base64,AAAA", width=None, height=None),
-                processor=self.POLICY.processor,
+                processor=policy.processor,
                 resized=False,
             )
         ]
 
-        fit = fit_media_to_budget(media, image=self.POLICY, video=None, text_budget_tokens=100)
+        fit = fit_media_to_budget(media, image=policy, video=None, text_budget_tokens=100)
 
         assert fit.media == [] and len(fit.dropped) == 1
 
